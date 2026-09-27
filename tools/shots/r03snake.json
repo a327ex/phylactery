@@ -1,0 +1,9 @@
+[
+ {"step": 420},
+ {"eval": "GAME.hud(false)"},
+ {"eval": "GAME.look('snake', 30, 25, 1.3, 45)"}, {"step": 1}, {"shot": "sn_near"},
+ {"eval": "GAME.look('snake', 100, 8, 0.6, 45)"}, {"step": 1}, {"shot": "sn_head"},
+ {"eval": "GAME.look('snake', 0, 60, 3.2, 50)"}, {"step": 1}, {"shot": "sn_top"},
+ {"eval": "GAME.hud(true)"}, {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "static"},
+ {"step": 90}, {"shot": "static2"}
+]

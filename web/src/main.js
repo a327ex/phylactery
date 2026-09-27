@@ -21,9 +21,10 @@ const L = new THREE.Vector3();                  // the lich's pelvis, world
 const snakes = create_snakes(R, cave, () => L);
 
 const G = { t: 0, tick: 0, cam: 0, manual: false, hud: true, approach_t: 0, dark: 1,
+  static: { eye: [-3.6, 9.8, -10.4], tgt: [0.4, 0.1, 2.4] },   // owner, round 2: lower, tilted up; the far wall just shows
   free: { yaw: 200, pitch: 22, dist: 6.5 } };
 window.G = G;
-G.bake_ms = Math.round(cave.bake_ms); G.tris = cave.tris; G.cave = cave; G.gi_cached = cave.gi_cached;
+G.bake_ms = Math.round(cave.bake_ms); G.tris = cave.tris; G.cave = cave; G.gi_cached = cave.gi_cached; G.lich = lich; G.snakes = snakes;
 
 // ------------------------------------------------------------------ the lich's place
 const HOVER = new THREE.Vector3(LAYOUT.hover.x, 0, LAYOUT.hover.z);
@@ -58,8 +59,8 @@ const v = (x, y, z) => new THREE.Vector3(x, y, z);
 const CAMS = [
   // this room's camera (owner, round 1: the game uses Resident Evil-like static cameras; this
   // room's sits between HIGH and OVERHEAD). It never moves; the dome is cut away above it.
-  { name: 'STATIC', note: 'THE ROOM CAMERA, FIXED: BETWEEN HIGH AND OVERHEAD', fov: 50, dome: false,
-    rig: () => [v(0, 15.0, -8.8), v(0, 0, 0.6)] },
+  { name: 'STATIC', note: 'THE ROOM CAMERA, FIXED', fov: 50,
+    rig: () => [v(...G.static.eye), v(...G.static.tgt)] },
   { name: 'CHASE', note: 'RISK OF RAIN: BEHIND AND ABOVE, OVER THE SHOULDER', fov: 60,
     rig: () => [L.clone().addScaledVector(F, -5.2).addScaledVector(UP, 2.1).addScaledVector(SIDE, -1.1), L.clone().addScaledVector(F, 3.4).addScaledVector(UP, -0.5).addScaledVector(SIDE, -0.5)] },
   { name: 'HIGH', note: 'HIGHER AND FURTHER: THE WHOLE RING AROUND THE EGG', fov: 50,
@@ -179,6 +180,17 @@ window.GAME = {
   step(n = 1) { for (let i = 0; i < (n | 0); i++) tick(); render(n*DT); return G.tick; },
   cam(i, free) { set_cam(i); if (free) Object.assign(G.free, free); render(0); return CAMS[G.cam].name; },
   hud(on) { G.hud = !!on; render(0); return G.hud; },
+  // inspection: look at a point of the lich (a joint name) from a direction, at a distance
+  look(joint, yaw, pitch, dist, fov = 40) {
+    const n = joint === 'head' ? lich.nodes.head : joint === 'pelvis' ? lich.nodes.pelvis : joint === 'chest' ? lich.nodes.chest : joint === 'handL' ? lich.nodes.arms[1].wr : joint === 'footL' ? lich.nodes.legs[1].an : lich.root;
+    const p = new THREE.Vector3(); n.updateWorldMatrix(true, false); n.getWorldPosition(p);
+    if (joint === 'snake') { const live = snakes.S.filter(q => q.delay <= 0 && q.dying < 0).sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z)); const sn = live[0]; if (sn) p.set(sn.x, cave.ground_y(sn.x, sn.z) + 0.2, sn.z); }
+    if (joint === 'head') p.y += 0.09; if (joint === 'chest') p.y += 0.12;
+    const y = yaw*Math.PI/180, pi = pitch*Math.PI/180;
+    CAMS[CAM_FREE].rig = () => [p.clone().add(new THREE.Vector3(Math.sin(y)*Math.cos(pi)*dist, Math.sin(pi)*dist, Math.cos(y)*Math.cos(pi)*dist)), p.clone()];
+    CAMS[CAM_FREE].fov = fov;
+    set_cam(CAM_FREE); render(0); return joint;
+  },
   mode(m) { lich.mode = m; render(0); return lich.MODES[lich.mode]; },
   drift(on) { G.drift = !!on; return G.drift; },
   dark(i) { G.dark = i; const n = cave.set_darkness(i); render(0); return n; },

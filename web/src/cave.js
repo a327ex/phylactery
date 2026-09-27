@@ -1,6 +1,6 @@
 // cave.js -- the dream's cave: a round chamber of dark rock, one narrow shaft in the ceiling
 // that lets a column of sunlight fall on the egg at the centre, a tunnel the lich enters by,
-// stalagmites, outcrops, slabs and rubble breaking up the floor, stalactites under the dome.
+// fractured blocks, piles, leaning slabs and stones breaking up the floor.
 //
 // Light (round 2, owner: "more realistic light ... properly model light reflections"):
 // - DIRECT: one directional sun. Everything casts shadows and a shadow-only lid covers the
@@ -13,6 +13,7 @@
 // Colours and surface treatment follow the It Follows egg cover; the geometry does not.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { make_rng, clamp, smoothstep, lerp } from 'game/util.js';
 import * as TX from 'game/textures.js';
 import { bake_gi, gi_static, gi_uniforms, export_gi, import_gi } from 'game/gi.js';
@@ -271,143 +272,96 @@ export function build_cave(R, seed = 7, opts = {}) {
   }
 
   // ---------------------------------------------------------------- rocks and formations
+  // Round 3 (owner: "a mix of cave 04 and cave 06" -- Astra's refs): angular fractured blocks
+  // with flat break faces and sharp edges, stacked and tilted (04), dark boulders over a floor
+  // strewn with stones and grit (06). No stalagmites or stalactites. Every rock is the convex
+  // hull of points scattered in a box, a few pinned near its corners, which gives big planar
+  // fracture faces.
   const rocks = [];
   const outward_from = c => (m, n) => n.x*(m.x - c.x) + n.y*(m.y - c.y) + n.z*(m.z - c.z) > 0;
-  const add_rock = (x, z, s, sy = 1, tilt = 0.3, sink = 0.35, detail = 0, y_off = 0) => {
-    let g = new THREE.IcosahedronGeometry(1, detail);
-    g = flat(g);
-    const p = g.attributes.position;
-    const sd = rng.int(1, 9999);
-    for (let i = 0; i < p.count; i++) {
-      const vx = p.getX(i), vyy = p.getY(i), vz = p.getZ(i);
-      const d = 0.75 + noise3(vx*1.3 + sd, vyy*1.3, vz*1.3, sd)*0.5;
-      p.setXYZ(i, vx*d, vyy*d, vz*d);
-    }
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.spread(tilt), rng.float(0, Math.PI*2), rng.spread(tilt)));
-    const c = new THREE.Vector3(x, ground_y(x, z) + s*sy*(1 - sink*2) + y_off, z);
-    g.applyMatrix4(new THREE.Matrix4().compose(c, q, new THREE.Vector3(s, s*sy, s)));
-    rocks.push(orient(flat(g), outward_from(c)));
-  };
-  const ang_from_tunnel = th => Math.abs(Math.atan2(Math.sin(th - LAYOUT.tunnel_theta), Math.cos(th - LAYOUT.tunnel_theta)));
-  // boulders along the walls, thinning toward the open floor
-  for (let i = 0; i < 90; i++) {
-    const th = rng.float(0, Math.PI*2);
-    if (ang_from_tunnel(th) < 0.24) continue;
-    const r = rng.float(12.5, 17.5);
-    const s = rng.float(0.4, 1.6)*smoothstep(11, 16, r) + 0.25;
-    add_rock(Math.cos(th)*r, Math.sin(th)*r, s, rng.float(0.6, 1.2));
-  }
-  // scattered stones on the open floor
-  for (let i = 0; i < 90; i++) {
-    const th = rng.float(0, Math.PI*2), r = rng.float(3.2, 13);
-    const x = Math.cos(th)*r, z = Math.sin(th)*r;
-    if (Math.abs(x) < 2.2 && z < -2) continue;
-    add_rock(x, z, rng.float(0.08, 0.3), rng.float(0.5, 1), 0.6, 0.3);
-  }
-  // rubble around the egg's mound
-  for (let i = 0; i < 22; i++) {
-    const th = rng.float(0, Math.PI*2), r = rng.float(0.7, 1.9);
-    add_rock(Math.cos(th)*r, Math.sin(th)*r, rng.float(0.06, 0.17), rng.float(0.5, 0.9), 0.7, 0.25);
-  }
-  // outcrops: masses of fused boulders rising out of the floor
-  const OUTCROPS = [];
-  for (let n = 0, tries = 0; n < 7 && tries < 200; tries++) {
-    const th = rng.float(0, Math.PI*2), r = rng.float(6.5, 12.5);
-    const x = Math.cos(th)*r, z = Math.sin(th)*r;
-    if (clear(x, z, 1.8) || OUTCROPS.some(o => Math.hypot(o[0] - x, o[1] - z) < 5)) continue;
-    OUTCROPS.push([x, z]); n++;
-    const H = rng.float(1.2, 2.8), W = rng.float(1.2, 2.2);
-    for (let k = 0; k < 4; k++) {
-      const ox = rng.spread(W*0.7), oz = rng.spread(W*0.7);
-      add_rock(x + ox, z + oz, W*rng.float(0.55, 0.9), H/W*rng.float(0.7, 1.1), 0.25, 0.2, 1);
-    }
-    add_rock(x, z, W*0.6, 0.7, 0.4, 0.1, 1, H*0.55);           // a cap on top
-  }
-  // stalagmites: clusters of tapered, lumpy columns
-  const stalag = (x, z, h, r0, lean) => {
+  const block = (w, h, d, corners = 0.55, n = 12) => {
     const pts = [];
-    const NS = 7;
-    for (let k = 0; k <= NS; k++) {
-      const t = k/NS;
-      const rr = r0*Math.pow(1 - t, 0.85)*(1 + (noise3(x*3, t*4, z*3, 71) - 0.5)*0.5) + (k === NS ? 0 : 0.02);
-      pts.push(new THREE.Vector2(Math.max(rr, 0.015), t*h - 0.3));
+    for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(rng.spread(w/2), rng.spread(h/2), rng.spread(d/2)));
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      if (rng.chance(corners)) pts.push(new THREE.Vector3(sx*w/2*rng.float(0.7, 1), sy*h/2*rng.float(0.7, 1), sz*d/2*rng.float(0.7, 1)));
     }
-    let g = new THREE.LatheGeometry(pts, 8);
-    g = flat(g);
-    const p = g.attributes.position;
-    const sd = rng.int(1, 9999);
-    for (let i = 0; i < p.count; i++) {
-      const vx = p.getX(i), vyy = p.getY(i), vz = p.getZ(i);
-      const t = clamp(vyy/h, 0, 1);
-      const d = 1 + (noise3(vx*4 + sd, vyy*1.8, vz*4, sd) - 0.5)*0.45;
-      p.setXYZ(i, vx*d + lean[0]*t*t*h, vyy, vz*d + lean[1]*t*t*h);
-    }
-    const c = new THREE.Vector3(x, ground_y(x, z), z);
-    g.applyMatrix4(new THREE.Matrix4().makeRotationY(rng.float(0, 6.28)).setPosition(c));
-    rocks.push(orient(flat(g), (m, n) => n.x*(m.x - c.x - lean[0]*0) + n.z*(m.z - c.z) + n.y*0.3 > 0));
+    return new ConvexGeometry(pts);
   };
-  const CLUSTERS = [];
-  for (let n = 0, tries = 0; n < 11 && tries < 300; tries++) {
-    const th = rng.float(0, Math.PI*2), r = rng.float(4.5, 15.5);
-    const x = Math.cos(th)*r, z = Math.sin(th)*r;
-    if (clear(x, z, 1.2) || ang_from_tunnel(th) < 0.3 && r > 11) continue;
-    if (CLUSTERS.some(o => Math.hypot(o[0] - x, o[1] - z) < 3.2) || OUTCROPS.some(o => Math.hypot(o[0] - x, o[1] - z) < 3)) continue;
-    CLUSTERS.push([x, z]); n++;
-    const big = smoothstep(7, 15, r);                           // taller toward the walls
-    const cnt = rng.int(2, 6);
-    for (let k = 0; k < cnt; k++) {
-      const sx = x + rng.spread(1.1), sz = z + rng.spread(1.1);
-      const h = (k === 0 ? 1.4 : rng.float(0.35, 0.9))*lerp(1.2, 4.2, big)*rng.float(0.7, 1.15);
-      stalag(sx, sz, h, h*rng.float(0.13, 0.2) + 0.1, [rng.spread(0.04), rng.spread(0.04)]);
-    }
-  }
-  // tall broken slabs leaning against the walls
-  for (let i = 0; i < 34; i++) {
-    const th = rng.float(0, Math.PI*2);
-    if (ang_from_tunnel(th) < 0.3) continue;
-    const r = rng.float(15.2, 17.2);
-    const x = Math.cos(th)*r, z = Math.sin(th)*r;
-    const hgt = rng.float(2.5, 7.5), wid = rng.float(0.9, 2.4), dep = rng.float(0.35, 0.8);
-    let g = new THREE.BoxGeometry(wid, hgt, dep, 2, 4, 1);
-    const p = g.attributes.position, sd = rng.int(1, 9999);
-    for (let k = 0; k < p.count; k++) {
-      const vx = p.getX(k), vyy = p.getY(k), vz = p.getZ(k);
-      const top = vyy/hgt + 0.5;
-      p.setXYZ(k, vx*(1 - top*0.45) + (noise3(vx, vyy*0.6, vz, sd) - 0.5)*0.5, vyy + (noise3(vx*2, vyy, vz, sd + 3) - 0.5)*0.6, vz + (noise3(vx, vyy, vz*2, sd + 5) - 0.5)*0.3);
-    }
-    g = flat(g);
-    const yaw = Math.atan2(x, z);
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-rng.float(0.05, 0.3), yaw, rng.spread(0.12), 'YXZ'));
-    const c = new THREE.Vector3(x, ground_y(x, z) + hgt*0.42, z);
+  // place a block: centre at ground + lift, tilted and turned; `sink` buries its lower part
+  const add_block = (x, z, w, h, d, o = {}) => {
+    const g = flat(block(w, h, d, o.corners ?? 0.55, o.n ?? 12));
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.spread(o.tilt ?? 0.35), o.yaw ?? rng.float(0, Math.PI*2), rng.spread(o.tilt ?? 0.35), 'YXZ'));
+    const c = new THREE.Vector3(x, ground_y(x, z) + h*(0.5 - (o.sink ?? 0.25)) + (o.lift || 0), z);
     g.applyMatrix4(new THREE.Matrix4().compose(c, q, new THREE.Vector3(1, 1, 1)));
     rocks.push(orient(flat(g), outward_from(c)));
+    return c;
+  };
+  const ang_from_tunnel = th => Math.abs(Math.atan2(Math.sin(th - LAYOUT.tunnel_theta), Math.cos(th - LAYOUT.tunnel_theta)));
+  // big fractured blocks piled along the walls
+  for (let i = 0; i < 80; i++) {
+    const th = rng.float(0, Math.PI*2);
+    if (ang_from_tunnel(th) < 0.26) continue;
+    const r = rng.float(12.8, 17.6);
+    const s = lerp(0.6, 3.2, Math.pow(rng.next(), 1.5))*smoothstep(11, 16, r) + 0.3;
+    add_block(Math.cos(th)*r, Math.sin(th)*r, s*rng.float(0.8, 1.5), s*rng.float(0.5, 1.1), s*rng.float(0.7, 1.3), { tilt: 0.45, sink: 0.3 });
+  }
+  // broken slabs leaning against the walls (thin, tall, tilted back)
+  for (let i = 0; i < 30; i++) {
+    const th = rng.float(0, Math.PI*2);
+    if (ang_from_tunnel(th) < 0.32) continue;
+    const r = rng.float(15.0, 17.0);
+    const x = Math.cos(th)*r, z = Math.sin(th)*r;
+    const hgt = rng.float(2.5, 7.0);
+    const yaw = Math.atan2(x, z);
+    const g = flat(block(rng.float(1.0, 2.6), hgt, rng.float(0.35, 0.8), 0.8, 10));
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-rng.float(0.08, 0.35), yaw, rng.spread(0.15), 'YXZ'));
+    const c = new THREE.Vector3(x, ground_y(x, z) + hgt*0.4, z);
+    g.applyMatrix4(new THREE.Matrix4().compose(c, q, new THREE.Vector3(1, 1, 1)));
+    rocks.push(orient(flat(g), outward_from(c)));
+  }
+  // formations on the floor: piles of big angular blocks, stacked and tilted
+  const PILES = [];
+  for (let n = 0, tries = 0; n < 10 && tries < 400; tries++) {
+    const th = rng.float(0, Math.PI*2), r = rng.float(5.5, 13.5);
+    const x = Math.cos(th)*r, z = Math.sin(th)*r;
+    if (clear(x, z, 2.0) || PILES.some(o => Math.hypot(o[0] - x, o[1] - z) < 4.6)) continue;
+    PILES.push([x, z]); n++;
+    const S = lerp(0.9, 2.1, rng.next())*lerp(0.8, 1.2, smoothstep(6, 13, r));
+    // a base of two or three blocks, one or two resting on them, a few fallen pieces around
+    const base = rng.int(2, 3);
+    for (let k = 0; k < base; k++) {
+      const a = rng.float(0, 6.28), d = rng.float(0.2, 0.8)*S;
+      add_block(x + Math.cos(a)*d, z + Math.sin(a)*d, S*rng.float(1.0, 1.7), S*rng.float(0.6, 1.1), S*rng.float(0.8, 1.4), { tilt: 0.3, sink: 0.2 });
+    }
+    const top = rng.int(0, 2);
+    for (let k = 0; k < top; k++) {
+      add_block(x + rng.spread(0.4*S), z + rng.spread(0.4*S), S*rng.float(0.7, 1.2), S*rng.float(0.4, 0.8), S*rng.float(0.6, 1.0), { tilt: 0.6, sink: 0, lift: S*0.75 });
+    }
+    for (let k = 0; k < rng.int(3, 7); k++) {
+      const a = rng.float(0, 6.28), d = S*rng.float(1.0, 2.0);
+      const s = S*rng.float(0.15, 0.4);
+      add_block(x + Math.cos(a)*d, z + Math.sin(a)*d, s*rng.float(0.8, 1.5), s*rng.float(0.5, 1), s, { tilt: 0.7, sink: 0.3 });
+    }
+  }
+  // stones across the open floor, and grit
+  for (let i = 0; i < 170; i++) {
+    const th = rng.float(0, Math.PI*2), r = rng.float(2.4, 14.5);
+    const x = Math.cos(th)*r, z = Math.sin(th)*r;
+    if (Math.abs(x) < 1.8 && z < -1.5 && z > -16) continue;              // the lich's lane stays walkable
+    const s = lerp(0.06, 0.5, Math.pow(rng.next(), 2.2));
+    add_block(x, z, s*rng.float(0.9, 1.6), s*rng.float(0.4, 0.9), s*rng.float(0.8, 1.3), { tilt: 0.8, sink: 0.35, n: 8 });
+  }
+  // rubble inside and around the pool: its edge breaks up on stones instead of a clean disc
+  // (cave 06), bigger stones where the light's edge falls
+  for (let i = 0; i < 60; i++) {
+    const th = rng.float(0, Math.PI*2), r = i < 22 ? rng.float(1.5, 2.4) : rng.float(0.6, 2.8);
+    if (Math.abs(Math.cos(th)*r) < 0.9 && Math.sin(th)*r < -1.8) continue;     // not under the lich
+    const s = i < 22 ? lerp(0.12, 0.36, rng.next()) : lerp(0.04, 0.22, Math.pow(rng.next(), 1.8));
+    add_block(Math.cos(th)*r, Math.sin(th)*r, s*rng.float(0.9, 1.6), s*rng.float(0.4, 0.9), s*rng.float(0.8, 1.3), { tilt: 0.9, sink: 0.35, n: 8 });
   }
   {
     const g = world_uv(mergeGeometries(rocks, false), TILE);
     add_static(g, M.rock);
-  }
-  // stalactites under the dome (they belong to the dome: hidden with it from above)
-  {
-    const tites = [];
-    for (let i = 0; i < 40; i++) {
-      const th = rng.float(0, Math.PI*2), r = rng.float(4.5, 13);
-      const x = Math.cos(th)*r, z = Math.sin(th)*r;
-      const top = dome_h_at(r) + 0.6;
-      const h = rng.float(0.5, 2.6)*smoothstep(3.5, 9, r) + 0.3;
-      const pts = [];
-      for (let k = 0; k <= 5; k++) { const t = k/5; pts.push(new THREE.Vector2(Math.max(0.015, (h*0.16 + 0.06)*Math.pow(1 - t, 1.1)), -t*h)); }
-      let g = flat(new THREE.LatheGeometry(pts, 6));
-      const p = g.attributes.position, sd = rng.int(1, 9999);
-      for (let k = 0; k < p.count; k++) {
-        const vx = p.getX(k), vyy = p.getY(k), vz = p.getZ(k);
-        const d = 1 + (noise3(vx*5 + sd, vyy*2, vz*5, sd) - 0.5)*0.5;
-        p.setXYZ(k, vx*d, vyy, vz*d);
-      }
-      const c = new THREE.Vector3(x, top, z);
-      g.applyMatrix4(new THREE.Matrix4().setPosition(c));
-      tites.push(orient(flat(g), (m, n) => n.x*(m.x - c.x) + n.z*(m.z - c.z) - n.y*0.3 > 0));
-    }
-    add_static(world_uv(mergeGeometries(tites, false), TILE), M.dome);
   }
 
   // ---------------------------------------------------------------- the egg (0.8 m tall)
@@ -460,6 +414,9 @@ export function build_cave(R, seed = 7, opts = {}) {
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.03;
   group.add(sun, sun.target);
+  // owner, round 2: the egg and the lit floor too bright. The bake keeps the full sun (it sets
+  // how much light enters the room); the direct light drawn on the pool is scaled down.
+  const DIRECT_K = 0.55;
   // a glimpse of sky at the top of the shaft: an HDR cap for the bloom to catch
   const SKY_L = [2.4, 2.5, 2.7];
   {
@@ -483,6 +440,7 @@ export function build_cave(R, seed = 7, opts = {}) {
     grid: { min: [-17, 0.2, -24], max: [17, 6.5, 17], n: [18, 6, 22], rays: 64 },
   });
   const bake_ms = performance.now() - t0;
+  sun.intensity = SUN_E*DIRECT_K;
   GU.uGIUp.value = baked.probes.up; GU.uGIDown.value = baked.probes.down;
   GU.uGIMin.value.copy(baked.probes.min); GU.uGIMax.value.copy(baked.probes.max);
 
@@ -492,7 +450,7 @@ export function build_cave(R, seed = 7, opts = {}) {
   P.sky.on = false;
   Object.assign(P.fog, { near: 8, far: 50, max: 0.6, curve: 1.3, sky: 0.0, base_y: 0, falloff: 0.0, height_mix: 0.0 });
   P.fog.color.setRGB(0.004, 0.0037, 0.0034);
-  P.shafts = { on: true, light: sun, color: [1.0, 0.8, 0.46], density: 0.022, max_dist: 48, steps: 40, phase: 0.35, ambient: 0.0,
+  P.shafts = { on: true, light: sun, color: [0.82, 0.65, 0.37], density: 0.022, max_dist: 48, steps: 40, phase: 0.35, ambient: 0.0,
     streak: 0.85, rise: 1.0 };
   P.dither_dark = [0.04, 0.16];
   R.set_shadow_light(sun);

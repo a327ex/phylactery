@@ -1,0 +1,11 @@
+[
+ {"step": 30},
+ {"eval": "({build_ms: Math.round(G.lich.build_ms), tris: G.lich.tris})"},
+ {"eval": "GAME.hud(false)"},
+ {"eval": "GAME.look('head', 0, 5, 0.55)"}, {"step": 1}, {"shot": "head_front"},
+ {"eval": "GAME.look('head', 70, 5, 0.55)"}, {"step": 1}, {"shot": "head_side"},
+ {"eval": "GAME.look('pelvis', 10, 10, 0.8)"}, {"step": 1}, {"shot": "pelvis_front"},
+ {"eval": "GAME.look('chest', 20, 5, 1.0)"}, {"step": 1}, {"shot": "chest_front"},
+ {"eval": "GAME.look('handL', 60, 5, 0.45)"}, {"step": 1}, {"shot": "hand"},
+ {"eval": "GAME.look('footL', 90, 5, 0.6)"}, {"step": 1}, {"shot": "foot"}
+]

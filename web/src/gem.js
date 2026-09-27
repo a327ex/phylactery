@@ -50,7 +50,8 @@ export function gem_material(opts = {}) {
   {
     vec3 gnW = normalize((vec4(normal, 0.0)*viewMatrix).xyz);
     // a stable random per facet (flat normals are constant across a facet)
-    float facet = fract(sin(dot(floor(gnW*9.0 + 0.5), vec3(12.9898, 78.233, 37.719)))*43758.5453);
+    // a smooth, slowly varying phase over the surface (normal + position): colour shifts across a bone like a gem's play of colour
+    float facet = 0.5 + 0.25*sin(dot(gnW, vec3(4.1, 3.3, 5.2)) + dot(vGemW, vec3(7.0, 5.0, 6.0))) + 0.25*sin(dot(gnW, vec3(-3.7, 4.6, 2.9))*1.7);
     float nv = dot(normal, normalize(vViewPosition));
     vec3 fire = gem_spectrum(facet + nv*1.6 + uGemTime*0.02);
     reflectedLight.directSpecular += fire*gem_luma(reflectedLight.directSpecular)*uFire;

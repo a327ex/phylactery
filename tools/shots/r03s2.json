@@ -1,0 +1,7 @@
+[
+ {"step": 600},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "static_a"},
+ {"step": 150}, {"shot": "static_b"},
+ {"eval": "GAME.hud(false)"},
+ {"eval": "GAME.look('snake', 60, 20, 1.2, 45)"}, {"step": 1}, {"shot": "sn_near"}
+]
