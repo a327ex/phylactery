@@ -1,0 +1,39 @@
+{
+  "runtime": {
+    "version": "Lua 5.4"
+  },
+  "workspace": {
+    "checkThirdParty": false,
+    "preloadFileSize": 4096,
+    "ignoreDir": [
+      "replays",
+      "render",
+      "renders",
+      "dist",
+      "reference",
+      "verify",
+      "tools",
+      ".timeline"
+    ],
+    "library": []
+  },
+  "diagnostics": {
+    "disable": [
+      "lowercase-global",
+      "need-check-nil",
+      "trailing-space",
+      "inject-field",
+      "undefined-field",
+      "cast-local-type"
+    ],
+    "globals": [
+      "update",
+      "draw",
+      "init",
+      "on_reload"
+    ],
+    "globalsRegex": [
+      "_layer$"
+    ]
+  }
+}
