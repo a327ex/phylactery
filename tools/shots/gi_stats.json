@@ -1,0 +1,4 @@
+[
+ {"step": 2},
+ {"eval": "(() => { const out = []; G.cave.group.traverse(o => { if (o.isMesh && o.geometry.attributes.gi) { const a = o.geometry.attributes.gi.array; let mx = 0, s = 0, n = a.length/3; const lum = []; for (let i = 0; i < a.length; i += 3) { const l = (a[i] + a[i+1] + a[i+2])/3; lum.push(l); s += l; if (l > mx) mx = l; } lum.sort((x, y) => x - y); out.push({ mat: o.material === G.cave.M_floor ? 'floor' : o.geometry.attributes.position.count, mean: +(s/n).toFixed(4), p50: +lum[n >> 1].toFixed(4), p90: +lum[Math.floor(n*0.9)].toFixed(4), max: +mx.toFixed(3) }); } }); return out; })()"}
+]

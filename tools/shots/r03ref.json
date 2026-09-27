@@ -1,0 +1,9 @@
+[
+ {"step": 30},
+ {"eval": "({build_ms: Math.round(G.lich.build_ms), tris: G.lich.tris})"},
+ {"eval": "GAME.hud(false)"},
+ {"eval": "GAME.look('pelvis', 55, -4, 2.3, 42)"}, {"step": 1}, {"shot": "as07"},
+ {"eval": "GAME.look('head', 30, 0, 0.55)"}, {"step": 1}, {"shot": "head_34"},
+ {"eval": "GAME.look('pelvis', 90, 0, 2.3, 42)"}, {"step": 1}, {"shot": "side"},
+ {"eval": "GAME.look('pelvis', -60, 5, 2.3, 42)"}, {"step": 1}, {"shot": "other34"}
+]

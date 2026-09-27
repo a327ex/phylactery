@@ -1,0 +1,6 @@
+[
+ {"step": 960}, {"eval": "GAME.cam(0)"}, {"eval": "GAME.hud(false)"},
+ {"eval": "GAME.hover(0, -1.9)"}, {"step": 1}, {"shot": "a_edge"},
+ {"eval": "GAME.hover(2.4, -0.5)"}, {"step": 1}, {"shot": "b_side"},
+ {"eval": "GAME.hover(-2.3, 0.6)"}, {"step": 1}, {"shot": "c_left"}
+]

@@ -1,0 +1,19 @@
+[
+ {"step": 300},
+ {"eval": "GAME.cam(1)"},
+ {"eval": "GAME.dark(0)"}, {"step": 1}, {"shot": "d0_high"},
+ {"eval": "GAME.dark(1)"}, {"step": 1}, {"shot": "d1_high"},
+ {"eval": "GAME.dark(2)"}, {"step": 1}, {"shot": "d2_high"},
+ {"eval": "GAME.dark(1)"},
+ {"eval": "GAME.cam(0)"},
+ {"eval": "GAME.mode(0)"}, {"step": 1}, {"shot": "m0_chase"},
+ {"eval": "GAME.mode(1)"}, {"step": 1}, {"shot": "m1_chase"},
+ {"eval": "GAME.mode(2)"}, {"step": 1}, {"shot": "m2_chase"},
+ {"eval": "GAME.cam(6, {\"yaw\": 180, \"pitch\": 6, \"dist\": 2.6})"},
+ {"eval": "GAME.mode(0)"}, {"step": 1}, {"shot": "m0_face"},
+ {"eval": "GAME.mode(1)"}, {"step": 1}, {"shot": "m1_face"},
+ {"eval": "GAME.mode(2)"}, {"step": 1}, {"shot": "m2_face"},
+ {"eval": "GAME.mode(0)"},
+ {"eval": "GAME.cam(4)"}, {"step": 1}, {"shot": "c5_wide"},
+ {"eval": "GAME.cam(2)"}, {"step": 1}, {"shot": "c3_low"}
+]

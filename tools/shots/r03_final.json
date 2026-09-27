@@ -1,0 +1,16 @@
+[
+ {"step": 960},
+ {"eval": "({lich_ms: Math.round(G.lich.build_ms), lich_tris: G.lich.tris})"},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "01_room_camera"},
+ {"eval": "GAME.cam(5)"}, {"step": 1}, {"shot": "02_wide"},
+ {"eval": "GAME.hud(false)"},
+ {"eval": "GAME.look('pelvis', 55, -4, 2.3, 42)"}, {"step": 1}, {"shot": "03_lich_as_07"},
+ {"eval": "GAME.look('pelvis', 95, 0, 2.4, 42)"}, {"step": 1}, {"shot": "04_lich_side"},
+ {"eval": "GAME.look('head', 28, 2, 0.6, 40)"}, {"step": 1}, {"shot": "05_skull"},
+ {"eval": "GAME.look('chest', 15, 4, 1.1, 40)"}, {"step": 1}, {"shot": "06_ribcage"},
+ {"eval": "GAME.look('snake', 60, 16, 1.8, 45)"}, {"step": 1}, {"shot": "07_snake"},
+ {"eval": "GAME.look('snake', 100, 6, 0.8, 45)"}, {"step": 1}, {"shot": "08_snake_head"},
+ {"eval": "GAME.drift(true)"}, {"step": 420},
+ {"eval": "GAME.look('pelvis', 30, 6, 2.2, 42)"}, {"step": 1}, {"shot": "09_lich_in_light"},
+ {"eval": "GAME.drift(false)"}
+]

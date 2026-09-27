@@ -1,0 +1,9 @@
+[
+ {"step": 60},
+ {"eval": "({build_ms: Math.round(G.lich.build_ms), tris: G.lich.tris})"},
+ {"eval": "GAME.cam(7, {\"yaw\": 60, \"pitch\": 4, \"dist\": 2.9})"}, {"step": 1}, {"shot": "l_34"},
+ {"eval": "GAME.cam(7, {\"yaw\": 90, \"pitch\": 2, \"dist\": 3.0})"}, {"step": 1}, {"shot": "l_side"},
+ {"eval": "GAME.cam(7, {\"yaw\": 0, \"pitch\": 4, \"dist\": 2.6})"}, {"step": 1}, {"shot": "l_front"},
+ {"eval": "GAME.cam(7, {\"yaw\": 20, \"pitch\": 2, \"dist\": 0.9})"}, {"step": 1}, {"shot": "l_skull"},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "static"}
+]

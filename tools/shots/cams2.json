@@ -1,0 +1,14 @@
+[
+ {"step": 300},
+ {"eval": "GAME.snakes()"},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "c1_chase_A"},
+ {"eval": "GAME.mode(1)"}, {"step": 1}, {"shot": "c1_chase_B"},
+ {"eval": "GAME.mode(2)"}, {"step": 1}, {"shot": "c1_chase_C"},
+ {"eval": "GAME.mode(0)"},
+ {"eval": "GAME.cam(1)"}, {"step": 1}, {"shot": "c2_high"},
+ {"eval": "GAME.cam(2)"}, {"step": 1}, {"shot": "c3_low"},
+ {"eval": "GAME.cam(3)"}, {"step": 1}, {"shot": "c4_overhead"},
+ {"eval": "GAME.cam(4)"}, {"step": 1}, {"shot": "c5_wide"},
+ {"eval": "GAME.cam(5)"}, {"step": 240}, {"shot": "c6_approach_tunnel"},
+ {"eval": "GAME.cam(6, {\"yaw\": 150, \"pitch\": 8, \"dist\": 3.2})"}, {"step": 1}, {"shot": "c7_free_close"}
+]

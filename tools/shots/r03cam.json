@@ -1,0 +1,8 @@
+[
+ {"step": 120},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "a"},
+ {"eval": "(G.static = {eye: [0, 10.8, -10.2], tgt: [0, 0.0, 3.0]}, GAME.cam(0))"}, {"step": 1}, {"shot": "b"},
+ {"eval": "(G.static = {eye: [0, 8.6, -11.2], tgt: [0, 0.6, 2.4]}, GAME.cam(0))"}, {"step": 1}, {"shot": "c"},
+ {"eval": "(G.static = {eye: [0, 9.6, -10.6], tgt: [0, 0.2, 2.6]}, GAME.cam(3))"}, {"step": 1}, {"shot": "low"},
+ {"eval": "GAME.cam(7, {\"yaw\": 200, \"pitch\": 8, \"dist\": 3.2})"}, {"step": 1}, {"shot": "lich_side"}
+]
