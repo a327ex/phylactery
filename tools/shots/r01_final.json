@@ -1,0 +1,15 @@
+[
+ {"step": 360},
+ {"eval": "GAME.dark(1)"}, {"eval": "GAME.mode(0)"},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "1_chase"},
+ {"eval": "GAME.cam(1)"}, {"step": 1}, {"shot": "2_high"},
+ {"eval": "GAME.cam(2)"}, {"step": 1}, {"shot": "3_low"},
+ {"eval": "GAME.cam(3)"}, {"step": 1}, {"shot": "4_overhead"},
+ {"eval": "GAME.cam(4)"}, {"step": 1}, {"shot": "5_wide"},
+ {"eval": "GAME.cam(6, {\"yaw\": 20, \"pitch\": 10, \"dist\": 4.5})"}, {"step": 1}, {"shot": "7_free"},
+ {"eval": "GAME.cam(5)"}, {"step": 300}, {"shot": "6_approach"},
+ {"eval": "GAME.cam(1)"}, {"step": 60},
+ {"eval": "GAME.dark(0)"}, {"step": 1}, {"shot": "dark_0_cover"},
+ {"eval": "GAME.dark(1)"}, {"step": 1}, {"shot": "dark_1_dim"},
+ {"eval": "GAME.dark(2)"}, {"step": 1}, {"shot": "dark_2_readable"}
+]

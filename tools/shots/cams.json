@@ -1,0 +1,12 @@
+[
+ {"step": 150},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "c1_chase"},
+ {"eval": "GAME.cam(1)"}, {"step": 1}, {"shot": "c2_high"},
+ {"eval": "GAME.cam(2)"}, {"step": 1}, {"shot": "c3_low"},
+ {"eval": "GAME.cam(3)"}, {"step": 1}, {"shot": "c4_overhead"},
+ {"eval": "GAME.cam(4)"}, {"step": 1}, {"shot": "c5_wide"},
+ {"eval": "GAME.cam(5)"}, {"step": 240}, {"shot": "c6_approach_tunnel"},
+ {"step": 420}, {"shot": "c6_approach_arrive"},
+ {"eval": "GAME.cam(6)"}, {"step": 1}, {"shot": "c7_free"},
+ {"state": "state"}
+]

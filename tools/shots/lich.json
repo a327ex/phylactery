@@ -1,0 +1,7 @@
+[
+ {"step": 200},
+ {"eval": "GAME.cam(6, {\"yaw\": 20, \"pitch\": 8, \"dist\": 2.8})"},
+ {"eval": "GAME.mode(0)"}, {"step": 1}, {"shot": "a"}, {"step": 40}, {"shot": "a2"},
+ {"eval": "GAME.mode(1)"}, {"step": 1}, {"shot": "b"}, {"step": 40}, {"shot": "b2"},
+ {"eval": "GAME.mode(2)"}, {"step": 1}, {"shot": "c"}, {"step": 40}, {"shot": "c2"}
+]
