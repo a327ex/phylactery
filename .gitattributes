@@ -1,0 +1,38 @@
+# Line endings. Git for Windows converts text to CRLF on checkout
+# (core.autocrlf=true, system-wide); text is stored and checked out LF here.
+* text=auto eol=lf
+
+# cmd.exe wants CRLF.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Shell scripts must be LF: `#!/bin/bash` + CR is fatal on Linux.
+*.sh   text eol=lf
+
+# Binaries: never touch.
+*.exe  binary
+*.dll  binary
+*.wasm binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.psd  binary
+*.ase  binary
+*.aseprite binary
+*.ttf  binary
+*.otf  binary
+*.ogg  binary
+*.mp3  binary
+*.wav  binary
+*.flac binary
+*.mp4  binary
+*.webm binary
+*.zip  binary
+*.apr  binary
+*.glb  binary
+*.gltf binary
+*.fbx  binary
+*.blend binary

@@ -1,0 +1,7 @@
+replay_last.txt
+verify/
+renders/
+replays/
+dist/
+*.fxbak
+tools/__pycache__/
