@@ -18,6 +18,7 @@ import { make_rng, clamp, smoothstep, lerp } from 'game/util.js';
 import * as TX from 'game/textures.js';
 import { bake_gi, gi_static, gi_uniforms, export_gi, import_gi } from 'game/gi.js';
 import { GI_DATA } from 'game/gi_data.js';
+import { install_soft_shadows } from 'game/soft_shadows.js';
 
 // ---------------------------------------------------------------- geometry noise
 function h3(ix, iy, iz, seed) {
@@ -94,7 +95,7 @@ export const LAYOUT = {
   floor_r: 15.5,
   tunnel_theta: -Math.PI/2,                                   // tunnel mouth toward -z
   tunnel_half_w: 2.7, tunnel_h: 4.2,
-  hover: new THREE.Vector3(0, 0, -2.9),                       // where the lich stops (xz), facing +z
+  hover: new THREE.Vector3(0, 0, -1.9),                       // where the lich stops: at the pool edge, the sun on his skull and shoulders (round 4)
   entrance: new THREE.Vector3(0, 0, -40),
 };
 
@@ -146,8 +147,8 @@ export function build_cave(R, seed = 7, opts = {}) {
   const PROFILE = [
     [-0.8, 16.8], [0.8, 17.4], [2.6, 17.8], [4.8, 17.2], [7.2, 15.4], [9.4, 12.6], [11.2, 9.6],
     [12.6, 6.8], [13.6, 4.4], [14.3, 2.6], [15.0, 2.1], [16.5, 1.95], [19.0, 2.05], [22.0, 1.95],
-    [25.5, 2.1], [29.0, 2.2],
-  ];
+    [25.5, 2.1], [29.0, 2.2], [33.0, 2.05], [37.0, 2.15], [41.0, 2.1], [44.0, 2.2], [46.5, 2.3],
+  ];                               // owner, round 3: the light comes from further above (~46 m)
   const TOP = PROFILE[PROFILE.length - 1][0];
   const axis_at = h => { const k = smoothstep(11.5, 15.0, h); return [sun_xz.x*h*k, sun_xz.y*h*k]; };
   // the dome's height above a given radius (for hanging stalactites)
@@ -391,7 +392,7 @@ export function build_cave(R, seed = 7, opts = {}) {
   const SUN_E = opts.sun_E || 9.0;
   const SUN_COL = new THREE.Color(0xffe6b8);
   const sun = new THREE.DirectionalLight(SUN_COL, SUN_E);
-  sun.position.copy(S).multiplyScalar(40);
+  sun.position.copy(S).multiplyScalar(70);
   sun.target.position.set(0, 0, 0);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -408,15 +409,17 @@ export function build_cave(R, seed = 7, opts = {}) {
     }
     const tx_ = (a1 - a0)/2048, ty_ = (b1 - b0)/2048;
     sc.left = Math.floor(a0/tx_)*tx_; sc.right = Math.ceil(a1/tx_)*tx_; sc.bottom = Math.floor(b0/ty_)*ty_; sc.top = Math.ceil(b1/ty_)*ty_;
-    sc.near = 1; sc.far = 90;
+    sc.near = 1; sc.far = 130;
     sc.updateProjectionMatrix();
+    // shadows soften with the distance to their caster (the sun's half-degree disc)
+    install_soft_shadows({ depth_range: sc.far - sc.near, texel_m: Math.max(sc.right - sc.left, sc.top - sc.bottom)/2048, sun_angle: 0.0093*1.6, max_texels: 20 });
   }
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.03;
   group.add(sun, sun.target);
   // owner, round 2: the egg and the lit floor too bright. The bake keeps the full sun (it sets
   // how much light enters the room); the direct light drawn on the pool is scaled down.
-  const DIRECT_K = 0.55;
+  const DIRECT_K = 0.42;                   // round 3: dimmer still where it lands
   // a glimpse of sky at the top of the shaft: an HDR cap for the bloom to catch
   const SKY_L = [2.4, 2.5, 2.7];
   {
@@ -450,8 +453,8 @@ export function build_cave(R, seed = 7, opts = {}) {
   P.sky.on = false;
   Object.assign(P.fog, { near: 8, far: 50, max: 0.6, curve: 1.3, sky: 0.0, base_y: 0, falloff: 0.0, height_mix: 0.0 });
   P.fog.color.setRGB(0.004, 0.0037, 0.0034);
-  P.shafts = { on: true, light: sun, color: [0.82, 0.65, 0.37], density: 0.022, max_dist: 48, steps: 40, phase: 0.35, ambient: 0.0,
-    streak: 0.85, rise: 1.0 };
+  P.shafts = { on: true, light: sun, color: [0.74, 0.59, 0.34], density: 0.02, max_dist: 70, steps: 48, phase: 0.35, ambient: 0.0,
+    streak: 0.85, rise: 1.0, soft: 0.00022, top: LID_Y };
   P.dither_dark = [0.04, 0.16];
   R.set_shadow_light(sun);
   R.rebuild();

@@ -13,7 +13,7 @@ import { gem_material, GEM_LEVELS } from 'game/gem.js';
 import { build_skeleton_geometry, RIG, FINGERS } from 'game/skeleton.js';
 
 export function create_lich(R, opts = {}) {
-  const mat = gem_material({ flat: false, roughness: 0.34 });
+  const mat = gem_material({ flat: false, roughness: 0.44, color: 0xefe6d2 });
   if (opts.GU) gi_dynamic(mat, opts.GU);
   const GU = mat.userData.gemU;
   const t0 = performance.now();
@@ -74,7 +74,7 @@ export function create_lich(R, opts = {}) {
   const light = new THREE.PointLight(0xffffff, 0, 0.1, 2);   // kept at zero: the lich emits nothing
 
   const MODES = GEM_LEVELS.map(l => 'GEM, ' + l.name);
-  let mode = 2;                               // owner, round 2: STRONG is the right one
+  let mode = 0;                               // round 4: SOLID (STRONG was right for the look; the owner asked for more solid)
   mat.userData.set_level(GEM_LEVELS[mode]);
   const lich = {
     root, body, mat, light, MODES, build_ms, tris, nodes: { pelvis, spine, chest, neck, head, jaw, arms, legs },

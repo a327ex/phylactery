@@ -22,9 +22,9 @@ vec3 gem_spectrum(float h){
 float gem_luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }`;
 
 export const GEM_LEVELS = [
+  { name: 'SOLID', fire: 4.0, inner: 0.14, irid: 0.32 },       // round 4 default: solid ivory, fired by the light
+  { name: 'STRONG (ROUND 3)', fire: 6.0, inner: 0.6, irid: 0.9 },
   { name: 'SUBTLE', fire: 1.6, inner: 0.16, irid: 0.35 },
-  { name: 'MEDIUM', fire: 3.2, inner: 0.32, irid: 0.6 },
-  { name: 'STRONG', fire: 6.0, inner: 0.6, irid: 0.9 },
 ];
 
 export function gem_material(opts = {}) {

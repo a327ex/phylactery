@@ -1,0 +1,10 @@
+[
+ {"step": 960},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "01_room_camera"},
+ {"eval": "GAME.cam(5)"}, {"step": 1}, {"shot": "02_wide"},
+ {"eval": "GAME.hud(false)"},
+ {"eval": "GAME.cam(7, {\"yaw\": 200, \"pitch\": 28, \"dist\": 5.5})"}, {"step": 1}, {"shot": "03_pool_edge"},
+ {"eval": "GAME.cam(3)"}, {"step": 1}, {"shot": "04_low"},
+ {"eval": "GAME.look('pelvis', 40, 2, 2.4, 42)"}, {"step": 1}, {"shot": "05_lich"},
+ {"eval": "GAME.look('head', 25, 4, 0.7, 40)"}, {"step": 1}, {"shot": "06_skull"}
+]

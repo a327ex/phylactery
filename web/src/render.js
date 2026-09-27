@@ -123,7 +123,7 @@ vec3 sky_color(vec3 rd, vec2 px){
 }`;
 
 const SHAFT_GLSL = /* glsl */`
-uniform float uShaftOn, uShaftDensity, uShaftMax, uShaftPhase, uShaftAmb, uShaftStreak, uShaftRise;
+uniform float uShaftOn, uShaftDensity, uShaftMax, uShaftPhase, uShaftAmb, uShaftStreak, uShaftRise, uShaftSoft, uShaftTop;
 uniform vec3 uShaftCol;
 uniform sampler2D uShadowMap;
 uniform mat4 uShadowMat;
@@ -132,7 +132,16 @@ float sh_lit(vec3 p){
   vec4 sc = uShadowMat*vec4(p, 1.0);
   vec3 s = sc.xyz/sc.w;
   if (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0 || s.z > 1.0) return 1.0;
-  return step(s.z - 0.0015, dot(texture2D(uShadowMap, s.xy), SH_UNPACK));
+  if (uShaftSoft <= 0.0) return step(s.z - 0.0015, dot(texture2D(uShadowMap, s.xy), SH_UNPACK));
+  // lich-survivors: the beam's edge blurs with the distance below the opening (the sun's disc)
+  float r = uShaftSoft*max(uShaftTop - p.y, 0.0);
+  float l = 0.0;
+  for (int i = 0; i < 5; i++) {
+    float a = float(i)*1.2566371;
+    vec2 o = i == 0 ? vec2(0.0) : vec2(cos(a), sin(a))*r;
+    l += step(s.z - 0.0015, dot(texture2D(uShadowMap, s.xy + o), SH_UNPACK));
+  }
+  return l*0.2;
 }
 // lich-survivors: streaks across the column (value noise in the plane across the sun's
 // direction, so they run along the beam) and a rise in brightness toward the top of the shaft
@@ -286,7 +295,7 @@ export function create_render(parent = document.body) {
   const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, stencil: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
   renderer.setPixelRatio(1);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.BasicShadowMap;       // hard, pixel-crisp shadow edges
+  renderer.shadowMap.type = THREE.PCFShadowMap;         // lich-survivors: the PCF branch is replaced by soft_shadows.js
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const canvas = renderer.domElement;
   canvas.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;display:block;cursor:crosshair';
@@ -368,7 +377,7 @@ export function create_render(parent = document.body) {
     uZenith: { value: new THREE.Vector3() }, uHorizon: { value: new THREE.Vector3() }, uGroundCol: { value: new THREE.Vector3() },
     uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3() }, uHalo: { value: new THREE.Vector3() },
     uCloudCol: { value: new THREE.Vector3() }, uCloudShade: { value: new THREE.Vector3() },
-    uShaftStreak: { value: 0 }, uShaftRise: { value: 0 },
+    uShaftStreak: { value: 0 }, uShaftRise: { value: 0 }, uShaftSoft: { value: 0 }, uShaftTop: { value: 30 },
     uShaftOn: { value: 0 }, uShaftDensity: { value: 0 }, uShaftMax: { value: 30 }, uShaftPhase: { value: 0.5 }, uShaftAmb: { value: 0 },
     uShaftCol: { value: new THREE.Vector3() }, uShadowMap: { value: black }, uShadowMat: { value: new THREE.Matrix4() },
   };
@@ -441,7 +450,7 @@ export function create_render(parent = document.body) {
       U.uShadowMat.value.copy(sl.shadow.matrix);
       U.uShaftDensity.value = sh.density; U.uShaftMax.value = sh.max_dist; U.uShaftPhase.value = sh.phase; U.uShaftAmb.value = sh.ambient;
       U.uShaftCol.value.fromArray(sh.color);
-      U.uShaftStreak.value = sh.streak || 0; U.uShaftRise.value = sh.rise || 0;
+      U.uShaftStreak.value = sh.streak || 0; U.uShaftRise.value = sh.rise || 0; U.uShaftSoft.value = sh.soft || 0; U.uShaftTop.value = sh.top || 30;
       if (!(sk && sk.on)) U.uSunDir.value.subVectors(sl.position, sl.target.position).normalize();
     }
     U.uProjInv.value.copy(world_camera.projectionMatrixInverse);

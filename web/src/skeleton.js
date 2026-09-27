@@ -244,39 +244,44 @@ function cartilage_points(k, s, rib_end) {
 
 // ------------------------------------------------------------------ build all meshes
 // Returns { node_name: [geometries...] } in each node's own frame, plus the finger segments.
-export function build_skeleton_geometry(res = 1) {
+export function build_skeleton_geometry(res = 1, grow = 0.0032) {
+  // owner, round 3: "the lich is almost invisible ... he should be a bit more solid". At the room
+  // camera a real bone is under a pixel wide; every surface is pushed out by `grow` metres.
   const H = h => h*res;
+  const GROW = grow;
+  const mesh_sdf_g = (f, box, h) => mesh_sdf((x, y, z) => f(x, y, z) - GROW, [box[0] - GROW, box[1] - GROW, box[2] - GROW, box[3] + GROW, box[4] + GROW, box[5] + GROW], h);
+  const sweep_g = (pts, w, t, prof, up, sides) => sweep(pts, w + GROW*0.8, t + GROW*0.8, prof, up, sides);
   const G = {};
   const add = (node, g) => { (G[node] = G[node] || []).push(g); };
   // skull and jaw (head / jaw nodes)
-  add('head', mesh_sdf(skull, [-0.085, -0.06, -0.125, 0.085, 0.155, 0.13], H(0.0028)*0.8));
-  add('jaw', mesh_sdf(mandible, [-0.065, -0.1, -0.025, 0.065, 0.015, 0.09], H(0.0024)*0.85));
+  add('head', mesh_sdf_g(skull, [-0.085, -0.06, -0.125, 0.085, 0.155, 0.13], H(0.0028)*0.8));
+  add('jaw', mesh_sdf_g(mandible, [-0.065, -0.1, -0.025, 0.065, 0.015, 0.09], H(0.0024)*0.85));
   // spine: lumbar (spine node), thoracic (chest), cervical (neck)
-  add('spine', mesh_sdf((x, y, z) => {
+  add('spine', mesh_sdf_g((x, y, z) => {
     let d = Infinity;
     for (let i = 0; i < 5; i++) { const yc = 0.015 + i*0.034; d = Math.min(d, vertebra(x, y, z, yc, 0.014*Math.sin(Math.PI*yc/0.18), 0.021 - i*0.0008, 0.0115, 0.028, 0.004, 0.028)); }
     return d;
   }, [-0.06, -0.01, -0.075, 0.06, 0.2, 0.04], H(0.0024)));
-  add('chest', mesh_sdf((x, y, z) => {
+  add('chest', mesh_sdf_g((x, y, z) => {
     let d = Infinity;
     for (let k = 0; k < 12; k++) { const yc = T_Y(k); d = Math.min(d, vertebra(x, y, z, yc, T_Z(yc), 0.0125 + k*0.0006, 0.0085, 0.03, 0.02 - Math.abs(k - 6)*0.001, 0.024)); }
     return d;
   }, [-0.05, -0.03, -0.1, 0.05, 0.29, 0.03], H(0.0022)));
-  add('neck', mesh_sdf((x, y, z) => {
+  add('neck', mesh_sdf_g((x, y, z) => {
     let d = Infinity;
     for (let i = 0; i < 7; i++) { const yc = 0.008 + i*0.0165; d = Math.min(d, vertebra(x, y, z, yc, 0.012*Math.sin(Math.PI*yc/0.12), 0.0105 - i*0.0003, 0.006, i === 0 ? 0.03 : 0.014, 0.006, 0.02)); }
     return d;
   }, [-0.045, -0.01, -0.07, 0.045, 0.13, 0.03], H(0.002)));
   // pelvis and sacrum
-  add('pelvis', mesh_sdf(pelvis, [-0.18, -0.11, -0.12, 0.18, 0.17, 0.09], H(0.0028)*1.15));
+  add('pelvis', mesh_sdf_g(pelvis, [-0.18, -0.11, -0.12, 0.18, 0.17, 0.09], H(0.0028)*1.15));
   // ribcage: ribs, costal cartilage, sternum, scapulae, clavicles (chest node)
   for (const s of [-1, 1]) for (let k = 0; k < 12; k++) {
     const rp = rib_points(k, s);
-    add('chest', sweep(rp, 0.0062, 0.0031, t => (t < 0.08 ? 0.75 + t*3 : 1 - Math.max(0, t - 0.7)*0.6), [0, 1, 0], 8));
+    add('chest', sweep_g(rp, 0.0062, 0.0031, t => (t < 0.08 ? 0.75 + t*3 : 1 - Math.max(0, t - 0.7)*0.6), [0, 1, 0], 8));
     const cp = cartilage_points(k, s, rp[rp.length - 1]);
-    if (cp) add('chest', sweep(cp, 0.0048, 0.0028, () => 1, [0, 1, 0], 6));
+    if (cp) add('chest', sweep_g(cp, 0.0048, 0.0028, () => 1, [0, 1, 0], 6));
   }
-  add('chest', mesh_sdf((x, y, z) => {
+  add('chest', mesh_sdf_g((x, y, z) => {
     // sternum: manubrium, body, xiphoid, tilted with the chest
     let d = Infinity;
     const P = [0, 0.08, 0.3, 0.55, 0.8, 0.95, 1.05].map(t => { const p = sternum_at(Math.min(t, 1)); return [p[0], p[1] - (t > 1 ? 0.012 : 0), p[2] + (t > 1 ? 0.005 : 0), t < 0.15 ? 0.022 : t > 1 ? 0.006 : 0.014]; });
@@ -302,20 +307,20 @@ export function build_skeleton_geometry(res = 1) {
       const t = i/12*(cl.length - 1), a = Math.floor(Math.min(t, cl.length - 2)), f = t - a;
       pts.push([0, 1, 2].map(c => lerp(cl[a][c], cl[a + 1][c], f)));
     }
-    add('chest', sweep(pts, 0.0075, 0.0055, t => 1 + 0.25*Math.abs(t - 0.5)*2, [0, 1, 0], 8));
+    add('chest', sweep_g(pts, 0.0075, 0.0055, t => 1 + 0.25*Math.abs(t - 0.5)*2, [0, 1, 0], 8));
   }
   // limbs, per side
   for (const s of [-1, 1]) {
     const S = s > 0 ? 'L' : 'R';
-    add('upper' + S, mesh_sdf((x, y, z) => humerus(x, y, z, s), [-0.045, -0.32, -0.04, 0.045, 0.02, 0.04], H(0.0026)*1.3));
-    add('fore' + S, mesh_sdf((x, y, z) => forearm(x, y, z, s), [-0.035, -0.27, -0.03, 0.035, 0.03, 0.03], H(0.0022)*1.25));
-    add('hand' + S, mesh_sdf((x, y, z) => carpals(x, y, z, s), [-0.015, -0.035, -0.03, 0.015, 0.005, 0.03], H(0.0016)));
-    add('thigh' + S, mesh_sdf((x, y, z) => femur(x, y, z, s), [-0.08, -0.46, -0.05, 0.08, 0.035, 0.05], H(0.003)*1.3));
-    add('shin' + S, mesh_sdf((x, y, z) => shin(x, y, z, s), [-0.055, -0.42, -0.04, 0.055, 0.005, 0.045], H(0.0027)*1.3));
-    add('knee' + S, mesh_sdf(patella, [-0.025, -0.01, 0.02, 0.025, 0.045, 0.05], H(0.002)));
-    add('foot' + S, mesh_sdf((x, y, z) => foot(x, y, z, s), [-0.05, -0.07, -0.08, 0.05, 0.005, 0.17], H(0.0021)));
+    add('upper' + S, mesh_sdf_g((x, y, z) => humerus(x, y, z, s), [-0.045, -0.32, -0.04, 0.045, 0.02, 0.04], H(0.0026)*1.3));
+    add('fore' + S, mesh_sdf_g((x, y, z) => forearm(x, y, z, s), [-0.035, -0.27, -0.03, 0.035, 0.03, 0.03], H(0.0022)*1.25));
+    add('hand' + S, mesh_sdf_g((x, y, z) => carpals(x, y, z, s), [-0.015, -0.035, -0.03, 0.015, 0.005, 0.03], H(0.0016)));
+    add('thigh' + S, mesh_sdf_g((x, y, z) => femur(x, y, z, s), [-0.08, -0.46, -0.05, 0.08, 0.035, 0.05], H(0.003)*1.3));
+    add('shin' + S, mesh_sdf_g((x, y, z) => shin(x, y, z, s), [-0.055, -0.42, -0.04, 0.055, 0.005, 0.045], H(0.0027)*1.3));
+    add('knee' + S, mesh_sdf_g(patella, [-0.025, -0.01, 0.02, 0.025, 0.045, 0.05], H(0.002)));
+    add('foot' + S, mesh_sdf_g((x, y, z) => foot(x, y, z, s), [-0.05, -0.07, -0.08, 0.05, 0.005, 0.17], H(0.0021)));
     // metacarpals (rigid with the hand) and the finger segments (each its own joint)
-    add('hand' + S, mesh_sdf((x, y, z) => {
+    add('hand' + S, mesh_sdf_g((x, y, z) => {
       let d = Infinity;
       for (const f of FINGERS) d = Math.min(d, cone(x, y, z, 0, -0.028, f.z*0.8, 0, -0.028 - f.meta, f.z, 0.0058, 0.0052), smin(d, sphere(x, y, z, 0, -0.028 - f.meta, f.z, 0.0064), 0.003));
       // thumb metacarpal, angled out toward the front
@@ -324,11 +329,11 @@ export function build_skeleton_geometry(res = 1) {
     }, [-0.02, -0.1, -0.03, 0.02, -0.01, 0.06], H(0.0016)));
     FINGERS.forEach((f, i) => f.ph.forEach((L, j) => {
       const r = (0.0052 - j*0.0009)*(i === 3 ? 0.85 : 1);
-      add(`finger${S}${i}_${j}`, mesh_sdf((x, y, z) => smin(cone(x, y, z, 0, 0, 0, 0, -L, 0, r, r*0.82), sphere(x, y, z, 0, -L, 0, r*0.95), 0.002), [-0.009, -L - 0.008, -0.009, 0.009, 0.008, 0.009], H(0.0014)));
+      add(`finger${S}${i}_${j}`, mesh_sdf_g((x, y, z) => smin(cone(x, y, z, 0, 0, 0, 0, -L, 0, r, r*0.82), sphere(x, y, z, 0, -L, 0, r*0.95), 0.002), [-0.009, -L - 0.008, -0.009, 0.009, 0.008, 0.009], H(0.0014)));
     }));
     [0.034, 0.026].forEach((L, j) => {
       const r = 0.006 - j*0.001;
-      add(`thumb${S}_${j}`, mesh_sdf((x, y, z) => smin(cone(x, y, z, 0, 0, 0, 0, -L, 0, r, r*0.85), sphere(x, y, z, 0, -L, 0, r), 0.002), [-0.01, -L - 0.008, -0.01, 0.01, 0.008, 0.01], H(0.0014)));
+      add(`thumb${S}_${j}`, mesh_sdf_g((x, y, z) => smin(cone(x, y, z, 0, 0, 0, 0, -L, 0, r, r*0.85), sphere(x, y, z, 0, -L, 0, r), 0.002), [-0.01, -L - 0.008, -0.01, 0.01, 0.008, 0.01], H(0.0014)));
     });
   }
   // merge each node's pieces

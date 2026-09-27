@@ -48,7 +48,8 @@ function lich_place() {
     L.y = cave.ground_y(L.x, L.z) + lich.hover_h;
   } else L.copy(HOVER);
   lich.root.position.copy(L);
-  lich.root.rotation.y = 0;                      // faces +z, toward the egg
+  // face the egg (the root's +z toward it)
+  lich.root.rotation.y = G.cam === CAM_APPROACH ? 0 : Math.atan2(EGG.x - L.x, EGG.z - L.z);
   return drift;
 }
 
@@ -180,6 +181,7 @@ window.GAME = {
   step(n = 1) { for (let i = 0; i < (n | 0); i++) tick(); render(n*DT); return G.tick; },
   cam(i, free) { set_cam(i); if (free) Object.assign(G.free, free); render(0); return CAMS[G.cam].name; },
   hud(on) { G.hud = !!on; render(0); return G.hud; },
+  hover(x, z) { HOVER.set(x, 0, z); HOVER.y = cave.ground_y(x, z) + lich.hover_h; lich_place(); render(0); return [x, z]; },
   // inspection: look at a point of the lich (a joint name) from a direction, at a distance
   look(joint, yaw, pitch, dist, fov = 40) {
     const n = joint === 'head' ? lich.nodes.head : joint === 'pelvis' ? lich.nodes.pelvis : joint === 'chest' ? lich.nodes.chest : joint === 'handL' ? lich.nodes.arms[1].wr : joint === 'footL' ? lich.nodes.legs[1].an : lich.root;
