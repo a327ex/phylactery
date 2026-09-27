@@ -1,0 +1,14 @@
+[
+ {"step": 240},
+ {"eval": "GAME.dark(1)"},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "1_static"},
+ {"eval": "GAME.dark(0)"}, {"step": 1}, {"shot": "1_static_dimmer"},
+ {"eval": "GAME.dark(2)"}, {"step": 1}, {"shot": "1_static_brighter"},
+ {"eval": "GAME.dark(1)"},
+ {"eval": "GAME.cam(3)"}, {"step": 1}, {"shot": "4_low"},
+ {"eval": "GAME.cam(5)"}, {"step": 1}, {"shot": "6_wide"},
+ {"eval": "GAME.cam(7, {\"yaw\": 205, \"pitch\": 14, \"dist\": 10})"}, {"step": 1}, {"shot": "8_free_room"},
+ {"eval": "GAME.cam(7, {\"yaw\": 25, \"pitch\": 10, \"dist\": 3.4})"},
+ {"eval": "GAME.drift(true)"}, {"step": 1}, {"shot": "gem_1"}, {"step": 300}, {"shot": "gem_2"}, {"step": 300}, {"shot": "gem_3"},
+ {"eval": "GAME.drift(false)"}
+]

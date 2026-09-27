@@ -8,6 +8,8 @@
 // with a brighter band travelling upward; HDR, so the bloom pass makes it glow. A point light
 // carries the colour at the chest onto the floor around the lich.
 import * as THREE from 'three';
+import { gi_dynamic } from 'game/gi.js';
+import { gem_material, GEM_LEVELS } from 'game/gem.js';
 
 const PRISM_DECL = /* glsl */`
 uniform float uTime, uGlow, uBand, uMode;
@@ -59,10 +61,12 @@ export function prism_material(opts = {}) {
 }
 
 export function create_lich(R, opts = {}) {
-  const mat = prism_material(opts);
-  const U = mat.userData.U;
+  // round 2: prismatic gem bone (gem.js), lit only by the scene (sun + baked bounce)
+  const mat = gem_material();
+  if (opts.GU) gi_dynamic(mat, opts.GU);
+  const GU = mat.userData.gemU;
   const socket = new THREE.MeshBasicMaterial({ color: 0x050407 });
-  const glint = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 3.0, 2.6) });
+  const glint = socket;
 
   const root = new THREE.Group();            // world placement (position + yaw), set by the caller
   const body = new THREE.Group();            // bob and lean
@@ -169,18 +173,18 @@ export function create_lich(R, opts = {}) {
 
   // chest light: the prism colour spilling onto the floor
   // below the feet, so it colours the floor and not the lich's own bones
-  const light = new THREE.PointLight(0xffffff, 2.4, 4.2, 1.6);
-  light.position.set(0, -1.05, 0.1);
-  body.add(light);
+  const light = new THREE.PointLight(0xffffff, 0, 0.1, 2);   // kept at zero: the lich emits nothing
 
   R.world_scene.add(root);
 
   const tmp = new THREE.Vector3(), col = new THREE.Color();
-  const MODES = ['A RAINBOW BONES', 'B PALE BONE, RAINBOW PASSING', 'C PRISM EDGES'];
+  const MODES = GEM_LEVELS.map(l => 'GEM, ' + l.name);
+  let mode = 0;
+  mat.userData.set_level(GEM_LEVELS[0]);
   const lich = {
     root, body, mat, light, MODES,
-    get mode() { return U.uMode.value | 0; },
-    set mode(m) { U.uMode.value = ((m % MODES.length) + MODES.length) % MODES.length; },
+    get mode() { return mode; },
+    set mode(m) { mode = ((m % MODES.length) + MODES.length) % MODES.length; mat.userData.set_level(GEM_LEVELS[mode]); },
     hover_h: 1.25,          // pelvis height above the ground
     pose(t, drift = 0) {
       // bob, a slow sway, a lean into the direction of travel
@@ -206,9 +210,8 @@ export function create_lich(R, opts = {}) {
       }
     },
     update(t) {
-      U.uTime.value = t;
+      GU.uGemTime.value = t;
       root.getWorldPosition(tmp);
-      U.uBase.value.copy(tmp);
       // the chest light takes the rainbow colour at chest height (same formula as the shader)
       const h = 0.45*0.85 - t*0.32;
       const f = x => Math.pow(0.5 + 0.5*Math.cos(6.28318*(h + x)), 1.6);

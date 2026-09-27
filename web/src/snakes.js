@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { make_rng, clamp } from 'game/util.js';
 import * as TX from 'game/textures.js';
+import { gi_dynamic } from 'game/gi.js';
 
 const SEGS = 32, SPACING = 0.14, MAX_R = 0.19;
 const radius_at = i => {
@@ -20,6 +21,7 @@ export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
     sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       totalEmissiveRadiance += vec3(0.09, 0.062, 0.034)*pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.5);`);
   };
+  if (cave.GU) gi_dynamic(mat, cave.GU);
   const body_geo = new THREE.SphereGeometry(1, 10, 7);
   const body = new THREE.InstancedMesh(body_geo, mat, count*SEGS);
   body.castShadow = true; body.receiveShadow = true;

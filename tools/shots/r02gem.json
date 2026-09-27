@@ -1,0 +1,16 @@
+[
+ {"step": 120},
+ {"eval": "GAME.dark(1)"},
+ {"eval": "GAME.cam(7, {\"yaw\": 25, \"pitch\": 10, \"dist\": 3.4})"},
+ {"eval": "GAME.drift(true)"},
+ {"step": 1}, {"shot": "g0"},
+ {"step": 200}, {"shot": "g1"},
+ {"step": 200}, {"shot": "g2"},
+ {"step": 200}, {"shot": "g3"},
+ {"eval": "GAME.mode(1)"}, {"step": 1}, {"shot": "g3_med"},
+ {"eval": "GAME.mode(2)"}, {"step": 1}, {"shot": "g3_strong"},
+ {"eval": "GAME.mode(0)"},
+ {"eval": "GAME.drift(false)"},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "static"},
+ {"eval": "GAME.cam(5)"}, {"step": 1}, {"shot": "wide"}
+]

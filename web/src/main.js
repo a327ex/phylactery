@@ -16,13 +16,14 @@ import { draw_text } from 'game/hud_font.js';
 const R = create_render(document.body);
 R.canvas.style.cursor = 'default';
 const cave = build_cave(R);
-const lich = create_lich(R);
+const lich = create_lich(R, { GU: cave.GU });
 const L = new THREE.Vector3();                  // the lich's pelvis, world
 const snakes = create_snakes(R, cave, () => L);
 
 const G = { t: 0, tick: 0, cam: 0, manual: false, hud: true, approach_t: 0, dark: 1,
   free: { yaw: 200, pitch: 22, dist: 6.5 } };
 window.G = G;
+G.bake_ms = Math.round(cave.bake_ms); G.tris = cave.tris; G.cave = cave; G.gi_cached = cave.gi_cached;
 
 // ------------------------------------------------------------------ the lich's place
 const HOVER = new THREE.Vector3(LAYOUT.hover.x, 0, LAYOUT.hover.z);
@@ -34,12 +35,16 @@ const approach_len = ENTRY.distanceTo(HOVER);
 
 function lich_place() {
   let drift = 0;
-  if (G.cam === 5) {
+  if (G.cam === CAM_APPROACH) {
     const d = Math.min(G.approach_t*APPROACH_SPEED, approach_len);
     const f = d/approach_len;
     L.lerpVectors(ENTRY, HOVER, f);
     L.y = cave.ground_y(L.x, L.z) + lich.hover_h;
     drift = 1 - smoothstep(0.85, 1.0, f);
+  } else if (G.drift) {
+    // M: drift slowly across the column, in and out of the sunlight, to see the bones catch it
+    L.set(3.4*Math.sin(G.t*0.21), 0, -1.2 + 0.7*Math.cos(G.t*0.33));
+    L.y = cave.ground_y(L.x, L.z) + lich.hover_h;
   } else L.copy(HOVER);
   lich.root.position.copy(L);
   lich.root.rotation.y = 0;                      // faces +z, toward the egg
@@ -51,6 +56,10 @@ const UP = new THREE.Vector3(0, 1, 0), F = new THREE.Vector3(0, 0, 1), SIDE = ne
 const EGG = cave.egg.position;
 const v = (x, y, z) => new THREE.Vector3(x, y, z);
 const CAMS = [
+  // this room's camera (owner, round 1: the game uses Resident Evil-like static cameras; this
+  // room's sits between HIGH and OVERHEAD). It never moves; the dome is cut away above it.
+  { name: 'STATIC', note: 'THE ROOM CAMERA, FIXED: BETWEEN HIGH AND OVERHEAD', fov: 50, dome: false,
+    rig: () => [v(0, 15.0, -8.8), v(0, 0, 0.6)] },
   { name: 'CHASE', note: 'RISK OF RAIN: BEHIND AND ABOVE, OVER THE SHOULDER', fov: 60,
     rig: () => [L.clone().addScaledVector(F, -5.2).addScaledVector(UP, 2.1).addScaledVector(SIDE, -1.1), L.clone().addScaledVector(F, 3.4).addScaledVector(UP, -0.5).addScaledVector(SIDE, -0.5)] },
   { name: 'HIGH', note: 'HIGHER AND FURTHER: THE WHOLE RING AROUND THE EGG', fov: 50,
@@ -60,7 +69,7 @@ const CAMS = [
   { name: 'OVERHEAD', note: 'NEARLY TOP DOWN, VAMPIRE SURVIVORS READABILITY', fov: 46,
     rig: () => { const m = L.clone().lerp(EGG, 0.5); m.y = EGG.y; return [m.clone().addScaledVector(UP, 16).addScaledVector(F, -4.0), m]; }, dome: false },
   { name: 'WIDE', note: 'THE COVER: ESTABLISHING, LOW AT THE EDGE', fov: 58,
-    rig: () => [v(-5.2, cave.ground_y(-5.2, -12) + 1.0, -12), v(0.3, 4.6, 0)] },
+    rig: () => [v(-2.0, cave.ground_y(-2.0, -12.5) + 1.2, -12.5), v(0.2, 4.2, 0)] },
   { name: 'APPROACH', note: 'THE ENTRANCE: THE LICH DRIFTS IN FROM THE TUNNEL', fov: 60,
     rig: () => [L.clone().addScaledVector(F, -5.2).addScaledVector(UP, 2.1).addScaledVector(SIDE, -1.1), L.clone().addScaledVector(F, 3.4).addScaledVector(UP, -0.5).addScaledVector(SIDE, -0.5)] },
   { name: 'FREE', note: 'DRAG TO ORBIT, SCROLL TO ZOOM', fov: 58,
@@ -70,12 +79,13 @@ const CAMS = [
       return [eye, L.clone()];
     } },
 ];
+const CAM_APPROACH = CAMS.findIndex(c => c.name === 'APPROACH'), CAM_FREE = CAMS.findIndex(c => c.name === 'FREE');
 const cam_eye = new THREE.Vector3(), cam_tgt = new THREE.Vector3();
 let cam_snap = true;
 function place_camera(dt) {
   const c = CAMS[G.cam];
   const [eye, tgt] = c.rig();
-  if (cam_snap || G.cam !== 5) { cam_eye.copy(eye); cam_tgt.copy(tgt); cam_snap = false; }
+  if (cam_snap || G.cam !== CAM_APPROACH) { cam_eye.copy(eye); cam_tgt.copy(tgt); cam_snap = false; }
   else { cam_eye.lerp(eye, 1 - Math.exp(-6*dt)); cam_tgt.lerp(tgt, 1 - Math.exp(-6*dt)); }
   cave.set_dome_visible(c.dome !== false);
   const C = R.world_camera;
@@ -87,7 +97,7 @@ function place_camera(dt) {
 function set_cam(i) {
   G.cam = clamp(i | 0, 0, CAMS.length - 1);
   cam_snap = true;
-  if (G.cam === 5) G.approach_t = 0;
+  if (G.cam === CAM_APPROACH) G.approach_t = 0;
 }
 
 // ------------------------------------------------------------------ hud
@@ -99,20 +109,20 @@ function draw_hud() {
   const ink = 'rgba(8,6,5,0.85)';
   draw_text(hud, `${G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
-  if (G.cam === 6) {
+  if (G.cam === CAM_FREE) {
     const f = G.free;
     draw_text(hud, `YAW ${Math.round(((f.yaw % 360) + 360) % 360)}  PITCH ${Math.round(f.pitch)}  DIST ${f.dist.toFixed(1)}`, 8, 30, '#a8987c', 1, 'left', null, ink);
   }
-  draw_text(hud, `P LICH: ${lich.MODES[lich.mode]}`, 8, R.H - 26, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `P LICH: ${lich.MODES[lich.mode]}${G.drift ? '   M DRIFTING THROUGH THE LIGHT' : ''}`, 8, R.H - 26, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `D DARKNESS: ${cave.DARK[G.dark].name}`, 8, R.H - 15, '#a8987c', 1, 'left', null, ink);
-  draw_text(hud, '1-7 CAMERA   P LICH   D DARKNESS   H HIDE TEXT', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-8 CAMERA   P LICH   M DRIFT   D DARKNESS   H HIDE TEXT', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
 function tick() {
   G.tick++;
   G.t += DT;
-  if (G.cam === 5) {
+  if (G.cam === CAM_APPROACH) {
     G.approach_t += DT;
     if (G.approach_t > approach_len/APPROACH_SPEED + APPROACH_HOLD) G.approach_t = 0;
   }
@@ -130,22 +140,23 @@ function render(dt) {
 
 // ------------------------------------------------------------------ input
 addEventListener('keydown', (e) => {
-  const d = /^(Digit|Numpad)([1-7])$/.exec(e.code);
+  const d = /^(Digit|Numpad)([1-8])$/.exec(e.code);
   if (d) set_cam(+d[2] - 1);
   if (e.code === 'KeyH') G.hud = !G.hud;
   if (e.code === 'KeyP') lich.mode = lich.mode + 1;
+  if (e.code === 'KeyM') G.drift = !G.drift;
   if (e.code === 'KeyD') { G.dark = (G.dark + 1) % cave.DARK.length; cave.set_darkness(G.dark); }
 });
 let drag = null;
-R.canvas.addEventListener('pointerdown', (e) => { if (G.cam === 6) { drag = [e.clientX, e.clientY]; R.canvas.setPointerCapture(e.pointerId); } });
+R.canvas.addEventListener('pointerdown', (e) => { if (G.cam === CAM_FREE) { drag = [e.clientX, e.clientY]; R.canvas.setPointerCapture(e.pointerId); } });
 R.canvas.addEventListener('pointerup', () => { drag = null; });
 R.canvas.addEventListener('pointermove', (e) => {
-  if (!drag || G.cam !== 6) return;
+  if (!drag || G.cam !== CAM_FREE) return;
   G.free.yaw -= (e.clientX - drag[0])*0.3;
   G.free.pitch = clamp(G.free.pitch + (e.clientY - drag[1])*0.25, -10, 88);
   drag = [e.clientX, e.clientY];
 });
-R.canvas.addEventListener('wheel', (e) => { if (G.cam === 6) G.free.dist = clamp(G.free.dist*Math.exp(e.deltaY*0.001), 2, 30); }, { passive: true });
+R.canvas.addEventListener('wheel', (e) => { if (G.cam === CAM_FREE) G.free.dist = clamp(G.free.dist*Math.exp(e.deltaY*0.001), 2, 30); }, { passive: true });
 
 let last = performance.now(), acc = 0;
 function frame(now) {
@@ -169,6 +180,7 @@ window.GAME = {
   cam(i, free) { set_cam(i); if (free) Object.assign(G.free, free); render(0); return CAMS[G.cam].name; },
   hud(on) { G.hud = !!on; render(0); return G.hud; },
   mode(m) { lich.mode = m; render(0); return lich.MODES[lich.mode]; },
+  drift(on) { G.drift = !!on; return G.drift; },
   dark(i) { G.dark = i; const n = cave.set_darkness(i); render(0); return n; },
   snakes() { return snakes.S.map(s => [+s.x.toFixed(2), +s.z.toFixed(2), s.dying, +s.delay.toFixed(2)]); },
   state() { return { t: G.t, tick: G.tick, cam: CAMS[G.cam].name, lich: L.toArray().map(x => +x.toFixed(3)) }; },

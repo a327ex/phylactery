@@ -1,0 +1,13 @@
+[
+ {"step": 200},
+ {"eval": "({ms: G.bake_ms, tris: G.tris, cached: G.gi_cached})"},
+ {"eval": "GAME.dark(1)"},
+ {"eval": "GAME.cam(0)"}, {"step": 1}, {"shot": "s0_static"},
+ {"eval": "GAME.cam(2)"}, {"step": 1}, {"shot": "s2_high"},
+ {"eval": "GAME.cam(5)"}, {"step": 1}, {"shot": "s5_wide"},
+ {"eval": "GAME.cam(3)"}, {"step": 1}, {"shot": "s3_low"},
+ {"eval": "GAME.cam(7, {\"yaw\": 200, \"pitch\": 12, \"dist\": 9})"}, {"step": 1}, {"shot": "s7_free"},
+ {"eval": "GAME.cam(0)"},
+ {"eval": "GAME.dark(0)"}, {"step": 1}, {"shot": "d0"},
+ {"eval": "GAME.dark(2)"}, {"step": 1}, {"shot": "d2"}
+]

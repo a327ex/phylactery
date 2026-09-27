@@ -89,9 +89,10 @@ function cells2(x, y, w, h, n, seed) {
 }
 
 export const PAL = {
-  rock_hi: [118, 102, 82], rock: [84, 74, 62], rock_mid: [66, 58, 50], rock_lo: [48, 43, 39], rock_deep: [34, 31, 30],
-  bronze: [150, 112, 66],
-  floor_hi: [132, 112, 84], floor: [96, 82, 64], floor_lo: [70, 60, 50], floor_deep: [50, 44, 38],
+  // albedo of real cave rock (the darkness comes from the light, round 2): ~0.12-0.35 linear
+  rock_hi: [168, 150, 126], rock: [136, 121, 103], rock_mid: [114, 102, 89], rock_lo: [90, 81, 72], rock_deep: [64, 58, 53],
+  bronze: [186, 146, 96],
+  floor_hi: [164, 142, 110], floor: [132, 114, 90], floor_lo: [104, 90, 74], floor_deep: [76, 67, 57],
   egg_hi: [246, 238, 216], egg: [232, 220, 192], egg_lo: [206, 192, 162], egg_spot: [150, 128, 100],
   bone: [236, 228, 212],
   scale_hi: [104, 84, 56], scale: [62, 50, 36], scale_lo: [38, 31, 24], scale_belly: [120, 100, 70],
