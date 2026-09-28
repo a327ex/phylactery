@@ -16,8 +16,8 @@
 //             focus follows the snake while it crawls
 //   FIRE      the cone goes out as the focus becomes the laser (round 13's beam: L = fire laser
 //             / prism in fire): the glass flares a moment, the focal point ignites (sparks, a
-//             puff); it sweeps across the snake from right beside it, at its neck (the head
-//             comes off) or its middle; tails are never cut
+//             puff); it sweeps across the snake from right beside it, at its middle (round 17:
+//             no longer the neck); tails are never cut
 //   END       the beam thins out, the glass dissolves into glints
 // Cut halves part charred and smoking, twitch, and sink into the ground. With fewer powers
 // left, several lenses form at once.
@@ -28,9 +28,9 @@ import { LAYOUT } from 'game/cave.js';
 const FORM = 0.4, CONVERGE = 0.8, SPEED = 3.0, SWEEP = 2.6, LEAD = 0.35, OFF = 0.2, FADE = 0.45, CUT_R = 0.13;
 const LENS_R = 0.38;
 const LIGHTS_OFF = 0.15;             // the cone goes out this fast as it fires
-// where a cut may fall: from just behind the snout back to here (metres along the body); past
-// it, the tail
-const CUT_MAX = 2.6;
+// where a cut may fall, in metres from the snout (round 17: the middle; the head and the tail
+// are never cut, even by a beam that happens to cross another snake)
+const CUT_MIN = 1.0, CUT_MAX = 2.6;
 export const LENS_LOOKS = ['FIRE LASER (TITAN, PHRIKE)', 'THE PRISMATIC BEAM, IN FIRE'];
 
 export function create_lens(ctx) {
@@ -183,9 +183,10 @@ export function create_lens(ctx) {
   function spawn(s, k, quick = false) {
     const L = LENSES.find(q => !q.on);
     if (!L) return;
-    // aim: the neck (the head comes off) or the middle. The body moves on while the beam
-    // crosses it, so it aims a little ahead of where the cut should fall.
-    const cut_at = rng.next() < 0.5 ? 0.3 : 1.9;
+    // aim: the middle of the body (round 17, owner: the neck cuts fell too close to the head,
+    // sometimes ahead of it). The body moves on while the beam crosses it, so it aims a little
+    // ahead of where the cut should fall.
+    const cut_at = rng.float(1.7, 2.3);
     const ring = Math.max(1, Math.round(snakes.ring_at(Math.max(0.05, cut_at - 0.18))));
     const h = rng.float(3.8, 6.0) + k*0.4;
     const pos = axis_at(h).add(new THREE.Vector3(rng.spread(0.8), 0, rng.spread(0.8)));
@@ -316,7 +317,7 @@ export function create_lens(ctx) {
             if (!snakes.free(s)) continue;
             let best = 1e9, bi = -1;
             for (let j = 2; j < N - 2; j += 1) { const d = Math.hypot(s.spine[j].x - sp.x, s.spine[j].z - sp.z); if (d < best) { best = d; bi = j; } }
-            if (best < CUT_R && snakes.arc(bi) <= CUT_MAX && snakes.arc(bi) >= 0.12) { s.claim = null; snakes.take(s, cut_fx(s, Math.max(3, bi))); cuts.push({ arc: +snakes.arc(bi).toFixed(2), target: s === q.s }); }
+            if (best < CUT_R && snakes.arc(bi) <= CUT_MAX && snakes.arc(bi) >= CUT_MIN) { s.claim = null; snakes.take(s, cut_fx(s, Math.max(3, bi))); cuts.push({ arc: +snakes.arc(bi).toFixed(2), target: s === q.s }); }
           }
         }
       }
