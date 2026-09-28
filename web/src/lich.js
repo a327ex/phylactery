@@ -10,11 +10,11 @@
 // Round 5: that pose is only where the parts rest; each one floats on a spring around it (pose()).
 import * as THREE from 'three';
 import { gi_dynamic } from 'game/gi.js';
-import { gem_material, GEM_LEVELS } from 'game/gem.js';
+import { gem_material, GEM_LEVELS, PATTERNS } from 'game/gem.js';
 import { build_skeleton_geometry, RIG, FINGERS } from 'game/skeleton.js';
 
 export function create_lich(R, opts = {}) {
-  const mat = gem_material({ flat: false, roughness: 0.44, color: 0xefe6d2 });
+  const mat = gem_material({ flat: false, roughness: 0.44, color: 0xecdab2 });   // round 8: warmer ivory (owner: "more yellow, less grey")
   if (opts.GU) gi_dynamic(mat, opts.GU);
   const GU = mat.userData.gemU;
   const t0 = performance.now();
@@ -29,6 +29,8 @@ export function create_lich(R, opts = {}) {
   const skin = (n, key) => {
     const g = GEO[key];
     if (!g) return;
+    // a number per bone for the gem's PER BONE pattern
+    if (!g.attributes.aBone) { let h = 0; for (const c of key) h = (h*31 + c.charCodeAt(0)) % 9973; g.setAttribute('aBone', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count).fill(h), 1)); }
     const m = new THREE.Mesh(g, mat);
     m.castShadow = true; m.receiveShadow = true;
     n.add(m);
@@ -76,13 +78,16 @@ export function create_lich(R, opts = {}) {
   // shine on their own, faintly or clearly; NONE is round 4. The point light stays at zero.
   const light = new THREE.PointLight(0xffffff, 0, 0.1, 2);   // kept at zero: the lich lights nothing around him
 
+  // round 8 (owner: out of the light "less bright, following the surrounding's light level"):
+  // the bone keeps the light it gets (lifted or dimmed in proportion to it), plus a faint warm
+  // floor; bone is pale, so even unlifted it reads ~4x brighter than the dark rock beside it
   const GLOWS = [
-    { name: 'FAINT', glow: 0.045 },
-    { name: 'CLEAR', glow: 0.1 },
-    { name: 'NONE (ROUND 4)', glow: 0 },
+    { name: 'FOLLOWS THE LIGHT', lift: 0, glow: 0.0015 },
+    { name: 'A LITTLE BRIGHTER', lift: 0.7, glow: 0.004 },
+    { name: 'DIMMER', lift: -0.35, glow: 0 },
   ];
   let glow = 0;
-  const set_glow = (i) => { glow = ((i % GLOWS.length) + GLOWS.length) % GLOWS.length; GU.uGlow.value = GLOWS[glow].glow; };
+  const set_glow = (i) => { glow = ((i % GLOWS.length) + GLOWS.length) % GLOWS.length; GU.uGlow.value = GLOWS[glow].glow; GU.uLift.value = GLOWS[glow].lift || 0; };
   set_glow(0);
   const MODES = GEM_LEVELS.map(l => 'GEM, ' + l.name);
   let mode = 0;                               // round 4: SOLID (STRONG was right for the look; the owner asked for more solid)
@@ -137,7 +142,9 @@ export function create_lich(R, opts = {}) {
 
   const lich = {
     root, body, mat, light, MODES, build_ms, tris, nodes: { pelvis, spine, chest, neck, head, jaw, arms, legs },
-    JUICE, springs: S, GLOWS,
+    JUICE, springs: S, GLOWS, PATTERNS,
+    get pattern() { return GU.uPattern.value; },
+    set pattern(i) { GU.uPattern.value = ((i % PATTERNS.length) + PATTERNS.length) % PATTERNS.length; },
     get glow() { return glow; },
     set glow(i) { set_glow(i); },
     get mode() { return mode; },

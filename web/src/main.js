@@ -5,7 +5,8 @@
 // torso and head lag and settle, the arms swing, the jaw clacks shut when he stops.
 //
 // Keys: 1-4 camera (1 = the room camera, the game's; 2-4 follow him to judge the motion),
-// J floatiness, G glow, P gem level, B darkness, H hides the text. In 4 (FREE) right-drag orbits.
+// J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
+// H hides the text. In 4 (FREE) right-drag orbits.
 // Fixed 60 Hz step, rendering every animation frame. window.GAME is the harness API
 // (tools/shoot.mjs): ready, setManual, step(n, input), state(), cam(i), juice(i).
 import * as THREE from 'three';
@@ -179,6 +180,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyP') lich.mode = lich.mode + 1;
   if (e.code === 'KeyJ') lich.juice = lich.juice + 1;
   if (e.code === 'KeyG') lich.glow = lich.glow + 1;
+  if (e.code === 'KeyR') lich.pattern = lich.pattern + 1;
   if (e.code === 'KeyB') { G.dark = (G.dark + 1) % cave.DARK.length; cave.set_darkness(G.dark); }
 });
 addEventListener('keyup', (e) => { if (KEYMAP[e.code]) held.delete(KEYMAP[e.code]); });
@@ -219,12 +221,13 @@ function draw_hud() {
   const ink = 'rgba(8,6,5,0.85)';
   draw_text(hud, `${G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
-  draw_text(hud, `J FLOATINESS: ${lich.JUICE[lich.juice].name}`, 8, R.H - 48, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `G GLOW: ${lich.GLOWS[lich.glow].name}`, 8, R.H - 37, '#a8987c', 1, 'left', null, ink);
-  draw_text(hud, `P LICH: ${lich.MODES[lich.mode]}`, 8, R.H - 26, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `J FLOATINESS: ${lich.JUICE[lich.juice].name}`, 8, R.H - 59, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `R PRISM PATTERN: ${lich.PATTERNS[lich.pattern]}`, 8, R.H - 48, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `G OUT OF THE LIGHT: ${lich.GLOWS[lich.glow].name}`, 8, R.H - 37, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `P PRISM STRENGTH: ${lich.MODES[lich.mode]}`, 8, R.H - 26, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `B DARKNESS: ${cave.DARK[G.dark].name}`, 8, R.H - 15, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 CAMERA   J G P B   H HIDE TEXT', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 CAMERA   J R G P B   H HIDE TEXT', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
@@ -290,10 +293,12 @@ window.GAME = {
     const d = [], b = [];
     for (let i = 0; i < R.W*R.H; i++) if (f16(buf[i*4 + 2]) > 700) { d.push(f16(buf[i*4])); b.push(f16(buf[i*4 + 1])); }
     const q = (a, t) => { a.sort((x, y) => x - y); return +(a[Math.floor((a.length - 1)*t)] || 0).toFixed(4); };
-    let lum = 0, sat = 0, n = 0, hx = 0, hy = 0;
+    let lum = 0, sat = 0, n = 0, hx = 0, hy = 0, x0 = R.W, x1 = 0, y0 = R.H, y1 = 0;
     for (let i = 0; i < R.W*R.H; i++) if (f16(buf[i*4 + 2]) > 700) {
       const r = fin[i*4]/255, g = fin[i*4 + 1]/255, bb = fin[i*4 + 2]/255, mx = Math.max(r, g, bb), mn = Math.min(r, g, bb);
       const sv = mx > 0.02 ? (mx - mn)/mx : 0;
+      const px_ = i % R.W, py_ = Math.floor(i/R.W);
+      x0 = Math.min(x0, px_); x1 = Math.max(x1, px_); y0 = Math.min(y0, py_); y1 = Math.max(y1, py_);
       lum += 0.2126*r + 0.7152*g + 0.0722*bb; sat += sv; n++;
       // hue as an angle, weighted by saturation: a rainbow spreads, one tint doesn't
       if (mx - mn > 1e-3) {
@@ -301,9 +306,18 @@ window.GAME = {
         h *= Math.PI/3; hx += sv*Math.cos(h); hy += sv*Math.sin(h);
       }
     }
-    return { px: d.length, direct: [q(d, 0.5), q(d, 0.9)], bounce: [q(b, 0.5), q(b, 0.9)], screen_lum: +(lum/n).toFixed(3), screen_sat: +(sat/n).toFixed(3), hue_spread: +(1 - Math.hypot(hx, hy)/Math.max(sat, 1e-6)).toFixed(3) };
+    // what surrounds him on screen: the rest of his box, grown by a quarter of his height
+    const gpad = Math.round((y1 - y0)*0.25);
+    let al = 0, an = 0;
+    for (let y = Math.max(0, y0 - gpad); y <= Math.min(R.H - 1, y1 + gpad); y++) for (let x = Math.max(0, x0 - gpad); x <= Math.min(R.W - 1, x1 + gpad); x++) {
+      const i = y*R.W + x;
+      if (f16(buf[i*4 + 2]) > 700) continue;
+      al += (0.2126*fin[i*4] + 0.7152*fin[i*4 + 1] + 0.0722*fin[i*4 + 2])/255; an++;
+    }
+    return { around_lum: +(al/Math.max(an, 1)).toFixed(3), px: d.length, direct: [q(d, 0.5), q(d, 0.9)], bounce: [q(b, 0.5), q(b, 0.9)], screen_lum: +(lum/n).toFixed(3), screen_sat: +(sat/n).toFixed(3), hue_spread: +(1 - Math.hypot(hx, hy)/Math.max(sat, 1e-6)).toFixed(3) };
   },
   glow(i) { lich.glow = i; render(0); return lich.GLOWS[lich.glow].name; },
+  pattern(i) { lich.pattern = i; render(0); return lich.PATTERNS[lich.pattern]; },
   mode(m) { lich.mode = m; render(0); return lich.MODES[lich.mode]; },
   dark(i) { G.dark = i; const n = cave.set_darkness(i); render(0); return n; },
   snakes() { return snakes.S.map(s => [+s.x.toFixed(2), +s.z.toFixed(2), s.dying, +s.delay.toFixed(2)]); },
