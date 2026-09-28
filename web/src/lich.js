@@ -57,6 +57,7 @@ export function create_lich(R, opts = {}) {
         segs.push(parent);
         parent = node(parent, [0, -L, 0]);
       });
+      segs.tip = parent;                         // the fingertip (a beam leaves from here)
       return segs;
     });
     const thumb = [];
@@ -138,6 +139,7 @@ export function create_lich(R, opts = {}) {
   const air = (t, k, f, amp) => { const w = 6.2832*f*fq; return w*w*amp*(Math.sin(t*0.71 + k*1.37)*0.55 + Math.sin(t*1.29 + k*2.71)*0.3 + Math.sin(t*2.17 + k*0.53)*0.15); };
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
   const mix = (a, b, t) => a + (b - a)*t;
+  const INV = new THREE.Matrix4(), TV = new THREE.Vector3(), TIP = new THREE.Vector3();
   const NO_MOTION = { a: [0, 0, 0], v: [0, 0, 0], push: [0, 0], yaw_a: 0, yaw_v: 0, look: 0, gaze: 0, gaze_p: 0, gaze_w: 0 };
 
   const lich = {
@@ -214,19 +216,36 @@ export function create_lich(R, opts = {}) {
       arms.forEach((A, k) => {
         const Q = S.arms[k], s = A.s, R0 = ARM_REST[k];
         const df = k ? 1.12 : 0.9, sd = 40 + k*17, tt = t*(k ? 1.21 : 0.79);
-        const drive = az*0.85 + ay*Math.sin(-Q.p.x) + (S.cp.a + S.bp.a)*0.5 - s*(S.cy.a + ya)*0.3;
-        spring(Q.p, mix(R0.p, ARM_TRAIL.p, trail), 0.55*df, 0.34, drive*g + air(tt, sd, 0.55, 0.1*g), dt);
-        spring(Q.r, (-0.25*side + s*0.1*fwd)*gt, 0.6*df, 0.3, (-ax + (S.cr.a + S.br.a)*0.4)*g + air(tt, sd + 3, 0.6, 0.07*g), dt);
-        spring(Q.t, 0, 0.7*df, 0.4, air(tt, sd + 5, 0.7, 0.12*g), dt);
-        spring(Q.e, mix(R0.e, ARM_TRAIL.e, trail), 1.0*df, 0.3, (az*0.8 - Q.p.a*0.35)*g + air(tt, sd + 7, 1.0, 0.1*g), dt);
-        spring(Q.w, mix(R0.w, ARM_TRAIL.w, trail), 1.5*df, 0.3, (az*0.5 - Q.e.a*0.3)*g + air(tt, sd + 9, 1.5, 0.08*g), dt);
+        // pointing (round 11): the arm he casts with rises to the target, straight, the index
+        // finger out; the pose's springs carry it there, stiffer while it points
+        const pt = m.point && m.point.arm === k ? m.point.w : 0;
+        let aim_p = 0, aim_r = 0;
+        if (pt > 0) {
+          chest.updateWorldMatrix(true, false);
+          INV.copy(chest.matrixWorld).invert();
+          TV.set(m.point.x, m.point.y, m.point.z).applyMatrix4(INV).sub(A.sh.position).normalize();
+          aim_r = Math.asin(clamp(TV.x, -1, 1)); aim_p = Math.atan2(-TV.z, -TV.y);
+          aim_r = s*Math.max(-0.45, s*aim_r);                         // across the body only a little
+          aim_p = clamp(aim_p, -2.4, 0.9);
+        }
+        const base_r = (s < 0 ? 0.12 : 0.22)*s;
+        const drive = (az*0.85 + ay*Math.sin(-Q.p.x) + (S.cp.a + S.bp.a)*0.5 - s*(S.cy.a + ya)*0.3)*(1 - pt);
+        spring(Q.p, mix(mix(R0.p, ARM_TRAIL.p, trail), aim_p, pt), mix(0.55*df, 2.3, pt), mix(0.34, 0.75, pt), drive*g + air(tt, sd, 0.55, 0.1*g*(1 - pt)), dt);
+        spring(Q.r, mix((-0.25*side + s*0.1*fwd)*gt, aim_r - base_r, pt), mix(0.6*df, 2.3, pt), mix(0.3, 0.75, pt), (-ax + (S.cr.a + S.br.a)*0.4)*g*(1 - pt) + air(tt, sd + 3, 0.6, 0.07*g*(1 - pt)), dt);
+        spring(Q.t, 0, 0.7*df, 0.4, air(tt, sd + 5, 0.7, 0.12*g*(1 - pt)), dt);
+        spring(Q.e, mix(mix(R0.e, ARM_TRAIL.e, trail), -0.1, pt), mix(1.0*df, 2.6, pt), mix(0.3, 0.75, pt), (az*0.8 - Q.p.a*0.35)*g*(1 - pt) + air(tt, sd + 7, 1.0, 0.1*g*(1 - pt)), dt);
+        spring(Q.w, mix(mix(R0.w, ARM_TRAIL.w, trail), 0.05, pt), mix(1.5*df, 3.0, pt), mix(0.3, 0.75, pt), (az*0.5 - Q.e.a*0.3)*g*(1 - pt) + air(tt, sd + 9, 1.5, 0.08*g*(1 - pt)), dt);
         spring(Q.f, (ARM_TRAIL.curl - R0.curl)*trail, 2.0*df, 0.3, (az*0.6 - Q.w.a*0.2)*g + air(tt, sd + 11, 2.0, 0.06*g), dt);
-        const roll = s*Math.max(-0.08, s*Q.r.x);                      // never swings in through the ribs
-        A.sh.rotation.set(clamp(Q.p.x, -1.4, 1.0), clamp(Q.t.x, -0.35, 0.35), (s < 0 ? 0.12 : 0.22)*s + roll);
+        const roll = s*Math.max(mix(-0.08, -0.45, pt), s*Q.r.x);      // never swings in through the ribs
+        A.sh.rotation.set(clamp(Q.p.x, -2.4, 1.0), clamp(Q.t.x, -0.35, 0.35), base_r + roll);
         A.el.rotation.set(clamp(Q.e.x, -1.9, -0.05), 0, 0);
         A.wr.rotation.set(clamp(Q.w.x, -0.9, 0.7), -s*(s < 0 ? 0.9 : 1.25), 0);
         const curl = R0.curl + clamp(Q.f.x, -0.3, 0.4);
-        A.fingers.forEach((segs, i) => segs.forEach((n, j) => n.rotation.set(0, 0, -s*(curl + j*0.12 + i*0.03 + Math.sin(t*1.3 + i)*0.03))));
+        A.fingers.forEach((segs, i) => {
+          // pointing: the index finger (0) straightens, the others close
+          const c = mix(curl, i === 0 ? -0.1 : 1.05, pt);
+          segs.forEach((n, j) => n.rotation.set(0, 0, -s*(c + j*(i === 0 ? 0.12*(1 - pt) : 0.12 + 0.25*pt) + i*0.03 + Math.sin(t*1.3 + i)*0.03)));
+        });
         A.thumb[0].rotation.set(0.5, 0, -s*0.35);
         A.thumb[1].rotation.set(0, 0, -s*0.3);
       });
@@ -243,6 +262,9 @@ export function create_lich(R, opts = {}) {
     update(t) {
       GU.uGemTime.value = t;
     },
+    // where the index fingertip of an arm (0 = his right, 1 = his left) is, world
+    fingertip(k, out = new THREE.Vector3()) { const n = arms[k].fingers[0].tip; n.updateWorldMatrix(true, false); return n.getWorldPosition(out); },
+    head_pos(out = new THREE.Vector3()) { head.updateWorldMatrix(true, false); return head.getWorldPosition(out).add(TIP.set(0, 0.08, 0)); },
   };
   return lich;
 }

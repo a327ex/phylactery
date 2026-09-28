@@ -5,7 +5,7 @@
 // torso and head lag and settle, the arms swing, the jaw clacks shut when he stops.
 //
 // Keys: 1-4 camera (1 = the room camera, the game's; 2-4 follow him to judge the motion),
-// F fire colour, J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
+// 5-0 the six powers on/off, F fire colour, J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
 // H hides the text. In 4 (FREE) right-drag orbits.
 // Fixed 60 Hz step, rendering every animation frame. window.GAME is the harness API
 // (tools/shoot.mjs): ready, setManual, step(n, input), state(), cam(i), juice(i).
@@ -16,6 +16,8 @@ import { build_cave, LAYOUT } from 'game/cave.js';
 import { create_lich } from 'game/lich.js';
 import { create_snakes } from 'game/snakes.js';
 import { create_fire } from 'game/fire.js';
+import { create_fx } from 'game/fx.js';
+import { create_powers } from 'game/powers.js';
 import { build_nav } from 'game/nav.js';
 import { create_mover, MOVE } from 'game/mover.js';
 import { draw_text } from 'game/hud_font.js';
@@ -58,60 +60,14 @@ const fire = create_fire(R, cave);
 const snakes = create_snakes(R, cave, () => L, fire);
 G.mover = mover; G.snakes = snakes; G.fire = fire;
 
-// ------------------------------------------------------------------ the lich's attacks
-// FIRE (round 9; round 10, owner: "once a second is too fast, let's make him only do this to
-// nearby snakes. Make him turn his head, then the snake burns"): when it is ready and a snake
-// is within FIRE_RANGE of him, he picks one and the spot on it that will catch, turns his head
-// to that spot (following it as it crawls), and only when his head is on it does it catch; he
-// keeps looking while it catches, then lets go. Ready again FIRE_EVERY seconds after a catch.
-const FIRE_EVERY = 2.5, FIRE_RANGE = 5.5;
-const AIM_MIN = 0.35, AIM_MAX = 0.9, SETTLE = 0.12, HOLD = 0.7, RELEASE = 0.35;
-const ATK = { on: true, state: 'idle', t: 0, next: 1.0, target: null, at: 0, w: 0, on_t: 0, rng: make_rng(29) };
-const snake_dist = s => { let d = Infinity; for (let i = 0; i < s.spine.length; i += 6) d = Math.min(d, Math.hypot(s.spine[i].x - L.x, s.spine[i].z - L.z)); return d; };
-// where he looks: yaw from his facing and pitch down, toward a point on the ground
-const gaze_to = (c) => {
-  const a = Math.atan2(c.x - L.x, c.z - L.z) - mover.yaw;
-  return [Math.atan2(Math.sin(a), Math.cos(a)), Math.atan2(L.y + 0.75 - c.y, Math.max(0.3, Math.hypot(c.x - L.x, c.z - L.z)))];
-};
-function attack_tick() {
-  const m = mover.motion;
-  ATK.next -= DT;
-  ATK.t += DT;
-  if (ATK.state === 'idle') {
-    ATK.w = Math.max(0, ATK.w - DT/RELEASE);
-    if (ATK.on && ATK.next <= 0) {
-      let near = snakes.live().filter(q => snake_dist(q) < FIRE_RANGE);
-      // one he can look at if there is one (his head and chest turn ~83 deg either way)
-      const front = near.filter(q => Math.abs(gaze_to(q.spine[Math.floor(q.spine.length*0.4)])[0]) < 1.45);
-      if (front.length) near = front;
-      if (near.length) {
-        ATK.target = near[ATK.rng.int(0, near.length - 1)];
-        ATK.at = Math.round(ATK.target.spine.length*ATK.rng.float(0.15, 0.75));
-        ATK.state = 'aim'; ATK.t = 0; ATK.on_t = 0;
-      } else ATK.next = 0.1;
-    }
-  } else if (ATK.state === 'aim') {
-    ATK.w = Math.min(1, ATK.t/0.12);
-    const s = ATK.target;
-    if (!snakes.live().includes(s) || snake_dist(s) > FIRE_RANGE + 1) { ATK.state = 'idle'; ATK.next = 0.2; }
-    else {
-      // his head is on it: head + chest turn (the pose's springs) within a little of where he looks
-      const [gy] = gaze_to(s.spine[ATK.at]);
-      const S = lich.springs, reach = Math.max(-1.45, Math.min(1.45, gy));
-      const err = Math.abs(reach - (S.hy.x + S.cy.x));
-      ATK.on_t = err < 0.1 ? ATK.on_t + DT : 0;        // a beat with his head on it, then it catches
-      if ((ATK.t >= AIM_MIN && ATK.on_t >= SETTLE) || ATK.t >= AIM_MAX) {
-        snakes.ignite(s, ATK.at);
-        ATK.state = 'hold'; ATK.t = 0; ATK.next = FIRE_EVERY;
-      }
-    }
-  } else if (ATK.state === 'hold') {
-    ATK.w = 1;
-    if (ATK.t >= HOLD) { ATK.state = 'idle'; ATK.t = 0; }
-  }
-  m.gaze_w = ATK.w;
-  if (ATK.target && ATK.w > 0) [m.gaze, m.gaze_p] = gaze_to(ATK.target.spine[ATK.at]);
-}
+// ------------------------------------------------------------------ the lich's powers
+// Round 11 (owner): fire, lift and burst, wind, leakage, prismatic beam, lens, all from the
+// start; whatever is left always stops the snakes just short of the egg (powers.js). Keys 5-0
+// switch each off and on (testing the removal the ending is about).
+const fx = create_fx(R, cave);
+const powers = create_powers({ R, cave, snakes, fx, fire, lich, mover, egg: EGG, get_L: () => L, rng: make_rng(29) });
+G.powers = powers; G.fx = fx;
+const POWER_KEYS = ['5', '6', '7', '8', '9', '0'];
 
 // ------------------------------------------------------------------ cameras
 const v = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -239,6 +195,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyG') lich.glow = lich.glow + 1;
   if (e.code === 'KeyR') lich.pattern = lich.pattern + 1;
   if (e.code === 'KeyF') fire.look = fire.look + 1;
+  const pk = /^(Digit|Numpad)([0-9])$/.exec(e.code);
+  if (pk && POWER_KEYS.includes(pk[2])) powers.toggle(POWER_KEYS.indexOf(pk[2]));
   if (e.code === 'KeyB') { G.dark = (G.dark + 1) % cave.DARK.length; cave.set_darkness(G.dark); }
 });
 addEventListener('keyup', (e) => { if (KEYMAP[e.code]) held.delete(KEYMAP[e.code]); });
@@ -285,8 +243,15 @@ function draw_hud() {
   draw_text(hud, `G OUT OF THE LIGHT: ${lich.GLOWS[lich.glow].name}`, 8, R.H - 37, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `P PRISM STRENGTH: ${lich.MODES[lich.mode]}`, 8, R.H - 26, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `B DARKNESS: ${cave.DARK[G.dark].name}`, 8, R.H - 15, '#a8987c', 1, 'left', null, ink);
+  // the powers he has (5-0), how strong each is, and how many snakes got to the egg
+  powers.ALL.forEach((a, i) => {
+    const on = powers.is_on(a);
+    draw_text(hud, `${POWER_KEYS[i]} ${a.name}${on ? '' : ': REMOVED'}`, R.W - 8, 8 + i*11, on ? '#f2e3c2' : '#6a5e4e', 1, 'right', null, ink);
+  });
+  draw_text(hud, `EACH POWER X${powers.power.toFixed(1)}`, R.W - 8, 8 + 6*11 + 3, '#a8987c', 1, 'right', null, ink);
+  draw_text(hud, `REACHED THE EGG: ${snakes.reached}`, R.W - 8, 8 + 7*11 + 3, snakes.reached ? '#e0a070' : '#a8987c', 1, 'right', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 CAMERA   F J R G P B   H HIDE TEXT', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 CAMERA   5-0 POWERS   F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
@@ -294,17 +259,19 @@ function tick() {
   G.tick++;
   G.t += DT;
   mover.tick(G.t, DT, wanted_velocity());
-  attack_tick();
+  powers.tick(G.t, DT);
   lich.pose(G.t, DT, mover.motion);
   lich.update(G.t);
   cave.update(G.t, DT);
   snakes.set_ember(fire.ember_colour());
   snakes.update(G.t, DT);
   fire.update(G.t, DT);
+  fx.update(G.t, DT);
 }
 function render(dt) {
   place_camera(0);
   fire.set_camera(R.world_camera, R.H);
+  fx.set_camera(R.world_camera, R.H);
   draw_hud();
   R.render(dt);
 }
@@ -388,13 +355,17 @@ window.GAME = {
   glow(i) { lich.glow = i; render(0); return lich.GLOWS[lich.glow].name; },
   pattern(i) { lich.pattern = i; render(0); return lich.PATTERNS[lich.pattern]; },
   fire_look(i) { fire.look = i; return fire.LOOKS[fire.look].name; },
-  attacks(on) { ATK.on = !!on; return ATK.on; },
-  attack_state() { return { state: ATK.state, t: +ATK.t.toFixed(2), next: +ATK.next.toFixed(2), w: +ATK.w.toFixed(2), target: ATK.target ? snakes.S.indexOf(ATK.target) : -1, head: +(lich.springs.hy.x + lich.springs.cy.x).toFixed(3), gaze: +(mover.motion.gaze || 0).toFixed(3) }; },
+  // powers: set which are on (a list of 6 booleans), read the director, force one now
+  powers(list) { if (list) list.forEach((v, i) => powers.set(i, v)); return powers.state(); },
+  force(i, x, z) { return powers.force(i, x, z); },
+  reached() { return snakes.reached; },
+  // tests: advance (no rendering) until a condition holds, at most `max` ticks; returns ticks run
+  until(src, max = 3600) { const f = new Function('G', 'return (' + src + ');'); let n = 0; while (n < max && !f(G)) { tick(); place_camera(DT); n++; } render(n*DT); return n; },
   // set the snake nearest (x, z) alight now; returns its index
   ignite_near(x, z) {
     const live = snakes.live(); if (!live.length) return -1;
     live.sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
-    ATK.target = live[0]; ATK.at = 30; snakes.ignite(live[0], 30); ATK.state = 'hold'; ATK.t = 0;
+    snakes.ignite(live[0], 30);
     return snakes.S.indexOf(live[0]);
   },
   snake_at(i) { const s = snakes.S[i]; const c = s.spine[20]; return { x: +c.x.toFixed(2), z: +c.z.toFixed(2), burning: !!s.burn, sink: +s.sink.toFixed(2), burnt: s.burnt, fire: fire.burning }; },

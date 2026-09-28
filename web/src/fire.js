@@ -13,6 +13,7 @@
 // F cycles the fire's colour (LOOKS): natural, the lich's own prismatic fire, cold spectral fire.
 import * as THREE from 'three';
 import { make_rng, clamp, smoothstep, lerp } from 'game/util.js';
+import { sprite_pool } from 'game/fx.js';
 
 // timeline, seconds from ignition
 export const BURN = {
@@ -39,49 +40,6 @@ const LOOKS = [
 ];
 
 const spectrum = (h) => { h = ((h % 1) + 1) % 1; const c = [0, 2/3, 1/3].map(o => clamp(Math.abs(((h + o) % 1)*6 - 3) - 1, 0, 1)); return c; };
-
-// a pool of point sprites: `additive` for light (flames, sparks), otherwise alpha-blended (smoke)
-function sprite_pool(R, N, additive, shape) {
-  const pos = new Float32Array(N*3), col = new Float32Array(N*4), size = new Float32Array(N);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('aCol', new THREE.BufferAttribute(col, 4));
-  g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
-  const mat = new THREE.ShaderMaterial({
-    uniforms: { uScale: { value: 1 } },
-    vertexShader: `attribute vec4 aCol; attribute float aSize; uniform float uScale; varying vec4 vCol;
-      void main(){ vec4 mv = modelViewMatrix*vec4(position, 1.0); gl_Position = projectionMatrix*mv;
-        gl_PointSize = aSize > 0.0 ? max(1.0, aSize*uScale/max(-mv.z, 0.05)) : 0.0; vCol = aCol; }`,
-    fragmentShader: `varying vec4 vCol;
-      void main(){ vec2 q = gl_PointCoord*2.0 - 1.0; q.y = -q.y;
-        ${shape === 'flame'
-          // a tongue: round below, narrowing upward
-          ? `float w = 1.0 - 0.55*clamp(q.y, 0.0, 1.0); float d = length(vec2(q.x/w, q.y*0.8 + 0.12)); float a = smoothstep(1.0, 0.25, d);`
-          : `float d = length(q); float a = smoothstep(1.0, 0.1, d);`}
-        ${additive ? `gl_FragColor = vec4(vCol.rgb*vCol.a*a, 1.0);` : `gl_FragColor = vec4(vCol.rgb, vCol.a*a);`} }`,
-    transparent: true, depthWrite: false, depthTest: true,
-    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-  });
-  const pts = new THREE.Points(g, mat);
-  pts.frustumCulled = false;
-  pts.renderOrder = additive ? 11 : 10;
-  R.world_scene.add(pts);
-  const P = [];
-  for (let i = 0; i < N; i++) P.push({ life: 0, max: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, s0: 0, s1: 0, h: 0, kind: 0, burn: null });
-  let next = 0;
-  return {
-    mat, P,
-    spawn() { const p = P[next]; next = (next + 1) % N; return p; },
-    write(fn) {
-      for (let i = 0; i < N; i++) {
-        const p = P[i];
-        if (p.life <= 0) { size[i] = 0; col[i*4 + 3] = 0; continue; }
-        fn(p, i, pos, col, size);
-      }
-      g.attributes.position.needsUpdate = true; g.attributes.aCol.needsUpdate = true; g.attributes.aSize.needsUpdate = true;
-    },
-  };
-}
 
 export function create_fire(R, cave, seed = 13) {
   const rng = make_rng(seed);

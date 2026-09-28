@@ -37,6 +37,7 @@ function radius_at(s) {
 }
 // the corpse sinking: how far below its bed it is, eased
 const SINK_T = 1.5, SINK_D = 0.34;
+const RESPAWN = [2.0, 5.0];                  // seconds in the dark before a gone snake comes back
 const sink_depth = s => (s.sink < 0 ? 0 : SINK_D*smoothstep(0, SINK_T, s.sink));
 const flat_at = s => (s < 0.11 ? 0.62 : lerp(0.62, 0.84, smoothstep(0.11, 0.3, s)));   // head flatter than body
 
@@ -68,29 +69,31 @@ function scale_texture() {
   return t;
 }
 
-export function create_snakes(R, cave, get_lich_pos, fire, count = 9, seed = 5) {
+export function create_snakes(R, cave, get_lich_pos, fire, count = 8, seed = 5) {
   const rng = make_rng(seed);
   const mat = new THREE.MeshStandardMaterial({ map: scale_texture(), roughness: 0.3, metalness: 0.0 });
   if (cave.GU) gi_dynamic(mat, cave.GU);
   // scales are glossy: their edges catch whatever light is around (the bounce light included),
   // which draws the body's outline against the floor
-  // burning (round 9): aBurn per vertex = (how charred, how brightly its cracks glow)
-  const uEmber = { value: new THREE.Color(3.2, 0.75, 0.1) };
+  // burning (round 9): aBurn per vertex = (how charred, how brightly its cracks glow, how much
+  // prismatic light shines in it: the beam and the leakage, round 11)
+  const uEmber = { value: new THREE.Color(3.2, 0.75, 0.1) }, uSnakeT = { value: 0 };
   {
     const prev = mat.onBeforeCompile;
     mat.onBeforeCompile = (sh, r) => {
       prev(sh, r);
-      sh.uniforms.uEmber = uEmber;
+      sh.uniforms.uEmber = uEmber; sh.uniforms.uSnakeT = uSnakeT;
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', `#include <common>
-attribute vec2 aBurn;
-varying vec2 vBurn;`)
+attribute vec3 aBurn;
+varying vec3 vBurn;`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
   vBurn = aBurn;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
-varying vec2 vBurn;
-uniform vec3 uEmber;`)
+varying vec3 vBurn;
+uniform vec3 uEmber;
+uniform float uSnakeT;`)
         .replace('#include <map_fragment>', `#include <map_fragment>
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.02, 0.018, 0.016), vBurn.x);`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -103,6 +106,9 @@ uniform vec3 uEmber;`)
     float c2 = abs(sin(cu.x*12.57 + cu.y*3.1 + sin(cu.y*5.0)));
     float crack = smoothstep(0.24, 0.0, min(c1, c2));
     totalEmissiveRadiance += uEmber*vBurn.y*(0.03 + 0.8*crack);
+    // prismatic light inside it (beam, leakage): a pale shimmer running with a rainbow
+    vec3 hue = clamp(abs(fract(cu.y*0.35 + cu.x + uSnakeT*0.3 + vec3(0.0, 0.6667, 0.3333))*6.0 - 3.0) - 1.0, 0.0, 1.0);
+    totalEmissiveRadiance += mix(vec3(1.0), hue, 0.6)*vBurn.z*vBurn.z*1.6;
   }`)
         .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
   {
@@ -127,7 +133,7 @@ uniform vec3 uEmber;`)
     const uv = new Float32Array(n*2);
     for (let i = 0; i < RINGS; i++) for (let j = 0; j < SIDES; j++) { const o = (i*SIDES + j)*2; uv[o] = j/SIDES; uv[o + 1] = S_AT(i)*4; }
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    g.setAttribute('aBurn', new THREE.BufferAttribute(new Float32Array(n*2), 2));
+    g.setAttribute('aBurn', new THREE.BufferAttribute(new Float32Array(n*3), 3));
     const idx = [];
     for (let i = 0; i < RINGS - 1; i++) for (let j = 0; j < SIDES; j++) {
       const a = i*SIDES + j, b = i*SIDES + (j + 1)%SIDES, c = (i + 1)*SIDES + (j + 1)%SIDES, d = (i + 1)*SIDES + j;
@@ -158,22 +164,28 @@ uniform vec3 uEmber;`)
     for (let i = 0; i < 400; i++) s.trail.push([s.x - Math.cos(s.dir)*i*0.01, s.z - Math.sin(s.dir)*i*0.01]);
     s.dying = -1; s.delay = delay; s.scale = 1; s.dist = 0;
     s.burn = null; s.sag = 0; s.sink = -1; s.burnt = false;
+    s.fx = null; s.leak = 0; s.claim = null;
     s.m.geometry.attributes.aBurn.array.fill(0); s.m.geometry.attributes.aBurn.needsUpdate = true;
   };
-  for (let i = 0; i < count; i++) { const s = make_mesh(); spawn(s, i*0.9); S.push(s); }
+  for (let i = 0; i < count; i++) { const s = make_mesh(); spawn(s, i*1.6); S.push(s); }
+  // gone (burst, shattered, dissolved, ...): out of sight until it comes back out of the dark
+  const respawn = (s) => spawn(s, rng.float(RESPAWN[0], RESPAWN[1]));
+  let reached = 0;
 
   const P = [], T = new THREE.Vector3(), Nn = new THREE.Vector3(), Bn = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  const RK = new Float32Array(RINGS), GL = new Float32Array(RINGS), SH = [0, 0, 0];
   for (let i = 0; i < RINGS; i++) P.push(new THREE.Vector3());
 
   function update(t, dt) {
-    const L = get_lich_pos();
+    uSnakeT.value = t;
     for (const s of S) {
       if (s.delay > 0) { s.delay -= dt; s.m.visible = false; s.eyes.forEach(e => (e.visible = false)); continue; }
-      s.m.visible = true; s.eyes.forEach(e => (e.visible = true));
+      const hide = !!(s.fx && s.fx.hide);
+      s.m.visible = !hide; s.eyes.forEach(e => (e.visible = !hide));
       if (s.sink >= 0) {
         // the black corpse goes into the ground
         s.sink += dt;
-        if (s.sink > SINK_T) { spawn(s, rng.float(0.3, 1.2)); continue; }
+        if (s.sink > SINK_T) { respawn(s); continue; }
       } else if (s.burn) {
         // on fire: it stops where it is; its neck sinks to the ground as it dies
         s.sag = Math.min(1, s.sag + dt/1.6);
@@ -181,21 +193,27 @@ uniform vec3 uEmber;`)
       } else if (s.dying >= 0) {
         s.dying += dt;
         s.scale = clamp(1 - s.dying/0.5, 0, 1);
-        if (s.dying > 0.5) spawn(s, rng.float(0.2, 1.4));
+        if (s.dying > 0.5) respawn(s);
+      } else if (s.fx) {
+        // another power has it (lifted, blown, cut, pierced): that power moves it
+        const r = s.fx.tick ? s.fx.tick(dt, s) : undefined;
+        if (r === 'done') { respawn(s); continue; }
+        if (r === 'free') s.fx = null;
       } else {
-        // serpentine: steer at the egg, swinging the heading so the path is a steady S
-        s.dist += s.speed*dt;
+        // serpentine: steer at the egg, swinging the heading so the path is a steady S; a
+        // dissolving snake (leakage) slows as it goes
+        const sp = s.speed*(1 - 0.85*smoothstep(0, 0.8, s.leak));
+        s.dist += sp*dt;
         const want = Math.atan2(egg.z - s.z, egg.x - s.x) + Math.sin(s.dist/s.wave*Math.PI*2 + s.phase)*s.amp;
         let d = want - s.dir; d = Math.atan2(Math.sin(d), Math.cos(d));
         s.dir += clamp(d, -5*dt, 5*dt);
-        s.x += Math.cos(s.dir)*s.speed*dt; s.z += Math.sin(s.dir)*s.speed*dt;
+        s.x += Math.cos(s.dir)*sp*dt; s.z += Math.sin(s.dir)*sp*dt;
         const last = s.trail[0];
         if (Math.hypot(s.x - last[0], s.z - last[1]) > 0.01) s.trail.unshift([s.x, s.z]);
         if (s.trail.length > 600) s.trail.length = 600;
-        const dl = Math.hypot(s.x - L.x, s.z - L.z), de = Math.hypot(s.x - egg.x, s.z - egg.z);
-        void dl;
-        if (de < 1.1) s.dying = 0;                      // placeholder: they reach the egg, then dissolve
+        if (Math.hypot(s.x - egg.x, s.z - egg.z) < 1.1) { s.dying = 0; reached++; }   // it reached the egg (placeholder: it shrinks away)
       }
+      if (s.leak >= 1.12 && !s.burn && s.sink < 0) { respawn(s); continue; }   // dissolved into nothing
       build(s);
     }
   }
@@ -203,7 +221,15 @@ uniform vec3 uEmber;`)
   // the spine: points along the trail by arc length, the front raised into a neck curve
   function build(s) {
     let acc = 0, ti = 0;
-    const sc = s.scale;
+    const sc = s.scale, fx = s.fx;
+    // per ring: radius factor (cuts, dissolving, swelling) and prismatic glow
+    const f = s.leak*1.12;
+    for (let i = 0; i < RINGS; i++) {
+      const u = (RINGS - 1 - i)/(RINGS - 1);                     // 0 at the tail: it dissolves tail first
+      RK[i] = s.leak > 0 ? smoothstep(f, f + 0.12, u) : 1;
+      GL[i] = s.leak > 0 ? Math.max(s.leak*0.45, Math.exp(-(((u - f)/0.07)**2))) : 0;
+      if (fx) { if (fx.radk) RK[i] *= fx.radk(i); if (fx.glow) GL[i] = Math.max(GL[i], fx.glow(i)); }
+    }
     for (let i = 0; i < RINGS; i++) {
       const target = S_AT(i);
       let x = s.trail[s.trail.length - 1][0], z = s.trail[s.trail.length - 1][1];
@@ -213,23 +239,30 @@ uniform vec3 uEmber;`)
         if (acc + l >= target) { const f = (target - acc)/(l || 1); x = a[0] + (b[0] - a[0])*f; z = a[1] + (b[1] - a[1])*f; break; }
         acc += l; ti++;
       }
-      const r = R0*radius_at(target)*sc;
+      const r = R0*radius_at(target)*sc*RK[i];
       // the neck lifts the head: a smooth rise over the front RAISE_LEN metres (it sinks as a
-      // burning snake dies); a sinking corpse goes down through the floor
-      const lift = RAISE*smoothstep(RAISE_LEN, 0.05, target)*sc*(1 - smoothstep(0, 1, s.sag));
-      P[i].set(x, cave.ground_y(x, z) + r*flat_at(target) + lift - sink_depth(s), z);
+      // burning snake dies); a sinking corpse goes down through the floor; other powers lift
+      // and shift it
+      let lift = RAISE*smoothstep(RAISE_LEN, 0.05, target)*sc*(1 - smoothstep(0, 1, s.sag));
+      SH[0] = SH[1] = SH[2] = 0;
+      if (fx) { if (fx.sag !== undefined) lift *= 1 - fx.sag; if (fx.lift) lift += fx.lift(i); if (fx.shift) fx.shift(i, SH); }
+      P[i].set(x + SH[0], cave.ground_y(x, z) + R0*radius_at(target)*sc*flat_at(target) + lift + SH[1] - sink_depth(s), z + SH[2]);
       s.spine[i].copy(P[i]); s.radii[i] = r;
     }
-    // how burnt each ring is, and how its cracks glow
-    if (s.burn || s.burnt) {
+    // how burnt each ring is, how its cracks glow, how it glows with prismatic light
+    const glowing = s.leak > 0 || (fx && fx.glow);
+    const charred = s.burn || s.burnt || (fx && fx.char);
+    if (charred || glowing || s.fxw) {
       const ab = s.m.geometry.attributes.aBurn, a = ab.array;
       for (let i = 0; i < RINGS; i++) {
-        const c = s.burn ? fire.char(s.burn, i) : 1, e = s.burn ? fire.ember(s.burn, i) : 0;
-        for (let j = 0; j < SIDES; j++) { const o = (i*SIDES + j)*2; a[o] = c; a[o + 1] = e; }
+        let c = s.burn ? fire.char(s.burn, i) : s.burnt ? 1 : 0, e = s.burn ? fire.ember(s.burn, i) : 0;
+        if (fx && fx.char) { c = Math.max(c, fx.char(i)); e = Math.max(e, fx.ember ? fx.ember(i) : 0); }
+        for (let j = 0; j < SIDES; j++) { const o = (i*SIDES + j)*3; a[o] = c; a[o + 1] = e; a[o + 2] = GL[i]; }
       }
-      const tip = RINGS*SIDES*2;
-      a[tip] = a[0]; a[tip + 1] = a[1]; a[tip + 2] = a[(RINGS - 1)*SIDES*2]; a[tip + 3] = a[(RINGS - 1)*SIDES*2 + 1];
+      const tip = RINGS*SIDES*3, last = (RINGS - 1)*SIDES*3;
+      for (let k = 0; k < 3; k++) { a[tip + k] = a[k]; a[tip + 3 + k] = a[last + k]; }
       ab.needsUpdate = true;
+      s.fxw = charred || glowing;                                // wrote something: clear it once the effect ends
     }
     const pos = s.m.geometry.attributes.position.array, nor = s.m.geometry.attributes.normal.array;
     for (let i = 0; i < RINGS; i++) {
@@ -238,7 +271,7 @@ uniform vec3 uEmber;`)
       Bn.crossVectors(T, UP).normalize();                         // sideways
       Nn.crossVectors(Bn, T).normalize();                         // up, square to the body
       const target = S_AT(i);
-      const r = R0*radius_at(target)*sc, fl = flat_at(target);
+      const r = R0*radius_at(target)*sc*RK[i], fl = flat_at(target);
       for (let j = 0; j < SIDES; j++) {
         const ang = j/SIDES*Math.PI*2;                            // 0 = belly, pi = back
         const cx = Math.sin(ang), cy = -Math.cos(ang);
@@ -255,7 +288,8 @@ uniform vec3 uEmber;`)
     // snout tip and tail tip
     const tip = RINGS*SIDES*3, end = tip + 3;
     T.subVectors(P[0], P[1]).normalize();
-    pos[tip] = P[0].x + T.x*R0*0.25*sc; pos[tip + 1] = P[0].y + T.y*R0*0.25*sc; pos[tip + 2] = P[0].z + T.z*R0*0.25*sc;
+    const tr = R0*0.25*sc*RK[0];
+    pos[tip] = P[0].x + T.x*tr; pos[tip + 1] = P[0].y + T.y*tr; pos[tip + 2] = P[0].z + T.z*tr;
     nor[tip] = T.x; nor[tip + 1] = T.y; nor[tip + 2] = T.z;
     pos[end] = P[RINGS - 1].x; pos[end + 1] = P[RINGS - 1].y; pos[end + 2] = P[RINGS - 1].z;
     nor[end] = -T.x; nor[end + 1] = 0; nor[end + 2] = -T.z;
@@ -265,22 +299,25 @@ uniform vec3 uEmber;`)
     const ei = Math.round(I_AT(0.055));
     const a = P[Math.max(0, ei - 1)], b = P[ei + 1];
     T.subVectors(a, b).normalize(); Bn.crossVectors(T, UP).normalize(); Nn.crossVectors(Bn, T).normalize();
-    const rr = R0*radius_at(0.055)*sc;
+    const rr = R0*radius_at(0.055)*sc*RK[ei];
     s.eyes.forEach((e, k) => {
       const side = k ? 1 : -1;
       e.position.copy(P[ei]).addScaledVector(Bn, side*rr*0.8).addScaledVector(Nn, rr*0.18);   // set into the side of the head
-      e.scale.setScalar(R0*0.12*sc);
+      e.scale.setScalar(R0*0.12*sc*RK[ei]);
     });
   }
   // set one on fire (the lich's attack): it stops, and burns from a point along its body
   function ignite(s, at = Math.round(RINGS*rng.float(0.15, 0.75))) {
-    if (s.delay > 0 || s.dying >= 0 || s.burn || s.sink >= 0) return false;
+    if (!free(s)) return false;
     at = Math.max(0, Math.min(RINGS - 1, at));
     s.burn = fire.start(RINGS, s.spine, s.radii, at);
     return true;
   }
-  // the ones that can be targeted: out of the dark, crawling
-  const live = () => S.filter(s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0);
+  // give it to another power (lift, wind, beam, lens): `fx` drives it from now on (see build())
+  function take(s, fx) { if (!free(s)) return false; s.fx = fx; return true; }
+  // out of the dark and crawling (a dissolving one still counts)
+  const free = s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0 && !s.fx;
+  const live = () => S.filter(free);
   function set_ember(c) { uEmber.value.setRGB(c[0], c[1], c[2]); }
-  return { update, S, ignite, live, set_ember };
+  return { update, S, ignite, take, live, free, set_ember, respawn, RINGS, egg, get reached() { return reached; } };
 }
