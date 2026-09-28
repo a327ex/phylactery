@@ -134,8 +134,9 @@ export function create_lich(R, opts = {}) {
   // held a little up and bent against it and the hand trembles; when it lets go the arm springs
   // back. The wrist's share is applied after the finger is aimed, so the aim doesn't cancel it.
   const RC = [0, 1].map(() => ({ p: SP(), e: SP(), w: SP(), kick: 0, press: 0 }));
-  // X: how hard (MEDIUM: the hand thrown ~15 cm up at firing, the finger ~20 deg)
-  const RECOILS = [{ name: 'MEDIUM', gain: 1 }, { name: 'HEAVY', gain: 1.7 }, { name: 'LIGHT', gain: 0.5 }, { name: 'OFF', gain: 0 }];
+  // X: how hard (MEDIUM: the hand thrown ~15 cm up at firing, the finger ~20 deg; HEAVY 1.7x)
+  // round 18 verdict (owner): HEAVY
+  const RECOILS = [{ name: 'HEAVY', gain: 1.7 }, { name: 'MEDIUM', gain: 1 }, { name: 'LIGHT', gain: 0.5 }, { name: 'OFF', gain: 0 }];
   let recoil = 0;
   let fq = 1, dz = 1;
   // one step of a damped spring toward `target` (radians), `f` Hz, damping ratio `z`, plus a
@@ -332,6 +333,8 @@ export function create_lich(R, opts = {}) {
     },
     // where the index fingertip of an arm (0 = his right, 1 = his left) is, world
     fingertip(k, out = new THREE.Vector3()) { const n = arms[k].fingers[0].tip; n.updateWorldMatrix(true, false); return n.getWorldPosition(out); },
+    // how fast the arm is still swinging (rad/s, its shoulder and elbow springs, without recoil)
+    arm_speed(k) { const Q = S.arms[k]; return Math.abs(Q.p.v) + Math.abs(Q.r.v) + Math.abs(Q.e.v); },
     // the way the index finger points (from its first joint to its tip), world
     finger_dir(k, out = new THREE.Vector3()) {
       const f = arms[k].fingers[0], n = f.tip;

@@ -12,7 +12,7 @@
 //   get close), wherever the lich is: no power has a range limit, except leakage, which is
 //   about what is near him.
 // - He casts one gestured power at a time: head turns to the spot, the arm rises and points,
-//   the power goes off when both are on it, he holds a moment, lowers. Among the powers that
+//   the power goes off a beat after both are on it (round 19), he holds a moment, lowers. Among the powers that
 //   are ready he uses the one he has used least recently, so all of them show.
 // - With fewer powers, each one left grows by power = 6 / (powers left): cooldowns divide by
 //   it, and what one cast takes multiplies (fire lights several, lift raises several, wind
@@ -28,7 +28,13 @@ import { create_lens } from 'game/lens.js';
 import { create_leak } from 'game/leak.js';
 
 export const ENGAGE = 3.4, URGENT = 2.6, LENS_ENGAGE = 6.0;             // the lens takes ~1.5 s from forming to cutting
-const AIM_MIN = 0.3, AIM_MAX = 0.55, QUICK_MIN = 0.12, QUICK_MAX = 0.28, ON_T = 0.08, HOLD = 0.45, LOWER = 0.3;
+const ON_T = 0.08, HOLD = 0.45, LOWER = 0.3;
+// round 19 (owner: "He should point, wait a beat, then attack, currently he's attacking before he
+// finishes pointing"; it went off with the arm still swinging up at ~3 rad/s): it goes off only
+// once his head is on the spot and his arm has arrived (its swing below ARRIVE rad/s), after a
+// beat of stillness; at most AIM_MAX after the aim starts. Something about to reach the egg: a
+// looser arrival and a shorter beat.
+const ARRIVE = 0.7, BEAT = 0.2, AIM_MAX = 1.2, QUICK_ARRIVE = 1.6, QUICK_BEAT = 0.08, QUICK_MAX = 0.45;
 
 export function create_powers(ctx) {
   const { snakes, fire, lich, mover, egg, get_L, rng } = ctx;
@@ -75,7 +81,7 @@ export function create_powers(ctx) {
 
   function start_gesture(ab, targets, quick) {
     for (const s of targets) claim(s, ab.name, 2.0);
-    G.phase = 'aim'; G.ab = ab; G.targets = targets; G.t = 0; G.on_t = 0; G.quick = quick;
+    G.phase = 'aim'; G.ab = ab; G.targets = targets; G.t = 0; G.on_t = 0; G.still = 0; G.quick = quick;
     G.primary = targets[0]; G.ring = ab.aim_ring();
     G.point.copy(G.primary.spine[G.ring]);
     G.arm = pick_arm(G.point);
@@ -124,8 +130,9 @@ export function create_powers(ctx) {
         const [gy] = gaze_to(G.point);
         const S = lich.springs, reach = Math.max(-1.45, Math.min(1.45, gy));
         G.on_t = Math.abs(reach - (S.hy.x + S.cy.x)) < 0.12 ? G.on_t + dt : 0;
-        const mn = G.quick ? QUICK_MIN : AIM_MIN, mx = G.quick ? QUICK_MAX : AIM_MAX;
-        if ((G.t >= mn && G.on_t >= ON_T) || G.t >= mx) {
+        const arrived = G.pw >= 1 && G.on_t >= ON_T && lich.arm_speed(G.arm) < (G.quick ? QUICK_ARRIVE : ARRIVE);
+        G.still = arrived ? G.still + dt : 0;
+        if (G.still >= (G.quick ? QUICK_BEAT : BEAT) || G.t >= (G.quick ? QUICK_MAX : AIM_MAX)) {
           const targets = G.targets.filter(q => snakes.free(q));
           lich.fingertip(G.arm, TIP);
           G.ab.cast(targets, TIP, G.ring, G.arm);

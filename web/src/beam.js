@@ -1,17 +1,19 @@
 // beam.js -- PRISMATIC BEAM (round 11, owner: "a beam of prismatic light that is shot from his
 // finger and pierces a snake, chaining if more need to be killed").
 // Round 13 (owner's references: Diablo 3's Disintegrate for the animation and vibe): a channelled
-// beam. Its head shoots out to the first snake, burns into it a beat, then goes on to the next:
-// SWEEP (Disintegrate: the beam stays on his finger and its end sweeps across to the next snake)
-// or BOUNCE (it goes on from the snake it pierced). After the last it thins out and is gone. A
-// pierced snake fills with the light from the wound and shatters into prismatic shards.
+// beam. Its head shoots out to the first snake, burns into it a beat, then goes on to the next.
+// After the last it thins out and is gone. A pierced snake fills with the light from the wound
+// and shatters into prismatic shards. Round 19 (owner: "He should also not change targets while
+// the beam is live. If he needs to kill multiple targets quickly, the beam should bounce
+// instead"): it only BOUNCES, from the snake it pierced on to the next; his finger stays on the
+// first (round 13's SWEEP, the end swept across to the next snake with his hand, is gone).
 // Round 18 (owner: "just like the lens beam, except prismatic instead of red"; the round 13
 // prism light "is wrong, it should be more like a rainbow sort of thing, inspired by the
 // skeleton himself"; thinner; "come out of the lich's finger exactly"; "the lich's hand + arm
 // should have some force thrown back on them"):
 //   - the lens beam's build (fx.js ribbon style 4): white-hot core, a sheath in the colours of
-//     his bones (K: streaming out along it / held in the room like the field on his bones / a
-//     full rainbow), noise eating the edges, flicker, a pop wider as it starts and as it bites,
+//     his bones (K: held in the room like the field on his bones (round 18 verdict) / streaming
+//     out along it / a full rainbow), noise eating the edges, flicker, a pop wider as it starts and as it bites,
 //     sparks shed along it, a white-hot point where it burns; 6.5 cm (the lens beam: 16-22 cm)
 //   - it leaves the index fingertip at the finger's own thickness, read after he is posed (it
 //     was a tick behind his hand), the finger laid along it (lich.js), and always along the
@@ -19,18 +21,17 @@
 //     the finger points at it, whipping when the recoil throws the hand up; the white ball that sat
 //     on his fingertip is gone: the tip glows at its own size, and the beam's light, in its
 //     colours, falls on his hand and arm, which turn prismatic in it like the rest of him
-//   - recoil (lich.kick / lich.press): firing throws his arm up and back, each bite a smaller
-//     kick, the pressure holds it braced and trembling while it channels, and it springs back
+//   - recoil (lich.kick / lich.press; HEAVY, round 18 verdict): firing throws his arm up and
+//     back, its first bite a smaller kick (the later ones are away from him), the pressure holds it braced and trembling while it channels, and it springs back
 //     when the beam lets go
 //   - no flash discs or rings where it hits (the lens's round 16 ruling): a spit of sparks
 import * as THREE from 'three';
 import { smoothstep } from 'game/util.js';
 import { spectrum } from 'game/fx.js';
 
-const SHOOT_V = 45, DWELL = 0.16, MOVE_V = 30, END = 0.22, FILL = 0.22, SHATTER_AT = 0.36;
+const SHOOT_V = 45, DWELL = 0.16, END = 0.22, FILL = 0.22, SHATTER_AT = 0.36;
 const W0 = 0.012, W1 = 0.065;                         // metres: the fingertip's thickness, and the beam
 const PIECES = 10;                                    // a beam leaving his finger is a curve in this many straight pieces
-export const CHAIN_MODES = ['SWEEP (DISINTEGRATE)', 'BOUNCE (SNAKE TO SNAKE)'];
 export const BEAM_LOOKS = ['HIS COLOURS, STREAMING', 'HIS COLOURS, HELD', 'FULL RAINBOW, STREAMING'];
 
 // his bones' colours on the CPU (fx.js opal(), gem.js): for the lights and the sparks
@@ -48,7 +49,7 @@ export function create_beam(ctx) {
   const light = new THREE.PointLight(0xffffff, 0, 5, 2);        // where it burns
   const hand = new THREE.PointLight(0xffffff, 0, 1.8, 2);       // on his hand and arm
   R.world_scene.add(light); R.world_scene.add(hand);
-  let mode = 0, look = 0, ch = null, clock = 0;
+  let look = 1, ch = null, clock = 0;                            // round 18 verdict: HIS COLOURS, HELD
   const TIP = new THREE.Vector3(), FD = new THREE.Vector3(), V = new THREE.Vector3(), P = new THREE.Vector3(), C3 = [1, 1, 1];
 
   // the hue the ribbon shows at a point (fx.js style 4), for what shares its light
@@ -102,8 +103,10 @@ export function create_beam(ctx) {
     const x = ch ? ch.head.distanceTo(TIP) : 0;
     for (let k = 0; k < (big ? 14 : 6); k++) spark(p, x + rng.spread(0.6), { vx: rng.spread(1.8), vy: rng.float(0.8, 2.8), vz: rng.spread(1.8), grav: 8, drag: 0.5,
       life: rng.float(0.3, 0.6), s0: 0.03, s1: 0.012, fin: 0.01 });
-    if (ch) { ch.pop = 1; lich.kick(ch.arm, big ? 0.45 : 0.2); }
+    if (ch) { ch.pop = 1; if (ch.i === 0) lich.kick(ch.arm, 0.45); }
   }
+  // where the beam meets a target: fixed once it has burnt in (the snake then shatters and goes)
+  const at = (q) => q.at || q.s.spine[q.ring];
 
   // a segment of the beam: from his finger (a curve leaving along the finger) or snake to snake
   function new_seg(from) {
@@ -144,18 +147,14 @@ export function create_beam(ctx) {
     if (!ch) { light.intensity = 0; hand.intensity = 0; return; }
     ch.t += dt;
     const cur = ch.targets[ch.i];
-    // the point on the current snake it goes to (the snake is held still by the pierce)
-    const goal = cur ? cur.s.spine[cur.ring] : ch.head;
-    if (ch.phase === 'shoot' || ch.phase === 'move') {
-      const d = V.subVectors(goal, ch.head).length(), step = (ch.phase === 'shoot' ? SHOOT_V : MOVE_V)*dt;
+    // the point on the current snake it goes to (the snake is held still while the beam comes)
+    const goal = cur ? at(cur) : ch.head;
+    if (ch.phase === 'shoot') {
+      const d = V.subVectors(goal, ch.head).length(), step = SHOOT_V*dt;
       if (d <= step) ch.head.copy(goal); else ch.head.addScaledVector(V, step/d);
-      // SWEEP: whatever else it crosses on the way burns too
-      if (ch.phase === 'move') for (const s of snakes.S) {
-        if (!snakes.free(s) || ch.targets.some(q => q.s === s)) continue;
-        for (let j = 4; j < N; j += 6) if (s.spine[j].distanceTo(ch.head) < 0.14) { snakes.take(s, pierce_fx(s, j)); bite(s.spine[j], false); break; }
-      }
       if (d <= step) {
         // it burns in
+        cur.at = goal.clone();
         if (!cur.s.fx || cur.s.fx.placeholder) cur.s.fx = pierce_fx(cur.s, cur.ring);
         bite(goal, true);
         ch.phase = 'dwell'; ch.pt = 0;
@@ -165,10 +164,7 @@ export function create_beam(ctx) {
       if (ch.pt >= DWELL) {
         ch.i++;
         if (ch.i >= ch.targets.length) { ch.phase = 'end'; ch.pt = 0; }
-        else {
-          ch.phase = mode === 0 ? 'move' : 'shoot';
-          if (mode === 1) { ch.segs.push(new_seg(ch.head)); }
-        }
+        else { ch.phase = 'shoot'; ch.segs.push(new_seg(ch.head)); }
       }
     } else if (ch.phase === 'end') {
       ch.pt += dt;
@@ -217,12 +213,12 @@ export function create_beam(ctx) {
     const pop = 1 + 0.6*Math.exp(-ch.t*18) + 0.35*ch.pop;
     const ph0 = (TIP.x*0.45 + TIP.y*0.9 + TIP.z*0.3)*0.55 - t*0.04;      // his bones' field where it leaves him
     ch.segs.forEach((sg, j) => {
-      const from_finger = mode === 0 || j === 0;
+      const from_finger = j === 0;
       if (from_finger) sg.p0.copy(TIP);
-      else sg.p0.copy(ch.targets[j - 1].s.spine[ch.targets[j - 1].ring]);
+      else sg.p0.copy(at(ch.targets[j - 1]));
       const last = j === ch.segs.length - 1;
       if (last) sg.p1.copy(ch.head);
-      else sg.p1.copy(ch.targets[j].s.spine[ch.targets[j].ring]);
+      else sg.p1.copy(at(ch.targets[j]));
       const w = W1*ch.k_on*ch.k_end*flick*pop;
       lay(sg, from_finger, from_finger ? Math.min(W0, w) : w, w, ch.k_end, ph0);
     });
@@ -244,8 +240,6 @@ export function create_beam(ctx) {
     // the first target, then as many more as the chain can take
     capacity: p => 1 + Math.round((p - 1)*1.3),
     aim_ring: () => Math.round(N*0.3),
-    get mode() { return mode; },
-    set mode(m) { mode = ((m % CHAIN_MODES.length) + CHAIN_MODES.length) % CHAIN_MODES.length; },
     get look() { return look; },
     set look(m) { look = ((m % BEAM_LOOKS.length) + BEAM_LOOKS.length) % BEAM_LOOKS.length; },
     // targets[0] is where he points; the rest in the order it reaches them (each time the nearest)
@@ -273,6 +267,7 @@ export function create_beam(ctx) {
     },
     update, after_pose,
     lights: { light, hand },
+    chain: () => (ch ? ch.targets.length : 0),         // tests: how many the live beam is taking
     // take on more while it channels (a snake about to reach the egg): they join the end of the chain
     extend(more) {
       if (!ch) return;
@@ -280,18 +275,11 @@ export function create_beam(ctx) {
         if (!snakes.free(s) || ch.targets.some(q => q.s === s)) continue;
         snakes.take(s, { placeholder: true, tick() { } });
         ch.targets.push({ s, ring: hit_ring() });
-        if (ch.phase === 'end') { ch.phase = mode === 0 ? 'move' : 'shoot'; ch.pt = 0; if (mode === 1) ch.segs.push(new_seg(ch.head)); }
+        if (ch.phase === 'end') { ch.phase = 'shoot'; ch.pt = 0; ch.segs.push(new_seg(ch.head)); }
       }
     },
-    // while it channels, his hand follows the beam leaving it: SWEEP, its head (or where the head
-    // is going while it is still close to his finger: from there the way to it is noise); BOUNCE,
-    // the first snake, where the segment from his finger goes
+    // while it channels his finger stays on the first snake, where the segment from it goes
     busy: () => !!ch,
-    aim_point: () => {
-      if (!ch) return null;
-      if (mode === 1) return ch.targets[0].s.spine[ch.targets[0].ring];
-      const cur = ch.targets[Math.min(ch.i, ch.targets.length - 1)];
-      return ch.head.distanceTo(TIP) < 0.8 && cur ? cur.s.spine[cur.ring] : ch.head;
-    },
+    aim_point: () => (ch ? at(ch.targets[0]) : null),
   };
 }
