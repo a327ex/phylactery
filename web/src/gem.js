@@ -10,10 +10,12 @@
 //          the angle between eye and surface
 //   INNER  whatever light arrives (sun + bounce) comes back out as a soft rainbow, as if carried
 //          through the mineral; in the dark there is nothing to carry
+// Round 5 adds one that does emit, off by default in the material: GLOW, the same inner rainbow
+// shining faintly on its own, so the bones still read in the dark while he is steered there.
 import * as THREE from 'three';
 
 const DECL = /* glsl */`
-uniform float uGemTime, uFire, uInner;
+uniform float uGemTime, uFire, uInner, uGlow;
 varying vec3 vGemW;
 vec3 gem_spectrum(float h){
   vec3 c = clamp(abs(fract(h + vec3(0.0, 0.6667, 0.3333))*6.0 - 3.0) - 1.0, 0.0, 1.0);
@@ -34,7 +36,7 @@ export function gem_material(opts = {}) {
     iridescence: 0.35, iridescenceIOR: 1.45, iridescenceThicknessRange: [220, 820],
     flatShading: opts.flat ?? true,
   });
-  const U = { uGemTime: { value: 0 }, uFire: { value: 1.6 }, uInner: { value: 0.16 } };
+  const U = { uGemTime: { value: 0 }, uFire: { value: 1.6 }, uInner: { value: 0.16 }, uGlow: { value: 0 } };
   m.userData.gemU = U;
   m.userData.set_level = (l) => { U.uFire.value = l.fire; U.uInner.value = l.inner; m.iridescence = l.irid; };
   const prev = m.onBeforeCompile;
@@ -58,6 +60,8 @@ export function gem_material(opts = {}) {
     float lit = gem_luma(reflectedLight.directDiffuse + reflectedLight.indirectDiffuse);
     vec3 inner = gem_spectrum(dot(vGemW, vec3(0.45, 0.9, 0.3)) - uGemTime*0.04 + facet*0.18);
     reflectedLight.indirectDiffuse += inner*lit*uInner;
+    // glow: brightest where the bone faces the eye, a pale core with the rainbow through it
+    totalEmissiveRadiance += mix(vec3(1.0, 0.94, 0.84), inner, 0.3)*uGlow*(0.55 + 0.45*abs(nv));
   }`);
   };
   const key = () => 'gem';
