@@ -453,8 +453,13 @@ export function create_gore(R, cave, snakes, fx, rng) {
 
   // ---------------------------------------------------------------- the burst
   const MEAT_C = [[0.2, 0.012, 0.009], [0.3, 0.03, 0.022], [0.13, 0.007, 0.006], [0.4, 0.1, 0.075], [0.26, 0.06, 0.04]];
-  function burst(s, mid) {
+  // `toward`: round 21 (owner: the pieces and blood "should slightly come in his direction"):
+  // part of what bursts is thrown toward that point (his chest), the rest all round
+  const TW = new THREE.Vector3();
+  function burst(s, mid, toward = null) {
     const arc = snakes.arc, c = s.spine[mid].clone(), cm = arc(mid);
+    if (toward) { TW.subVectors(toward, c); TW.y = Math.max(TW.y, -0.2*TW.length()); TW.normalize(); } else TW.set(0, 0, 0);
+    const pull = (o, lo, hi) => { const k = rng.float(lo, hi); o.x += TW.x*k; o.y += TW.y*k; o.z += TW.z*k; return o; };
     // where it tears apart: ~30 cm either side of the middle is torn to meat
     let a = mid, b = mid;
     while (a > 1 && cm - arc(a) < 0.28) a--;
@@ -466,6 +471,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
       out.normalize();
       const sp = rng.float(2.2, 4.2);
       P.v.set(out.x*sp + rng.spread(0.8), rng.float(1.2, 3.0) + out.y*sp*0.3, out.z*sp + rng.spread(0.8));
+      pull(P.v, 0.9, 2.2);
       P.w.set(rng.spread(1), rng.spread(1), rng.spread(1)).normalize().multiplyScalar(rng.float(4, 11));
       pieces.push(P);
     };
@@ -499,6 +505,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
     };
     for (let k = 0; k < 46; k++) {
       const i = rng.int(a, b), o = burst_at(i, s.radii[i]*0.6, { v0: 1.5, v1: 5.0 });
+      const pv = pull({ x: o.vx, y: o.vy, z: o.vz }, 0.6, 2.0); o.vx = pv.x; o.vy = pv.y; o.vz = pv.z;
       meat.spawn(Object.assign(o, { s: rng.float(0.012, 0.035), sx: rng.float(0.7, 1.4), sy: rng.float(0.5, 1.0), sz: rng.float(0.7, 1.5), c: MEAT_C[rng.int(0, MEAT_C.length - 1)], bleed: 0.25 }));
     }
     for (let k = 0; k < 14; k++) {
@@ -516,10 +523,12 @@ export function create_gore(R, cave, snakes, fx, rng) {
     // guts hanging out of the pieces either side of the tear, and a loop thrown free
     const near = [...pieces].sort((p, q) => p.m.position.distanceTo(c) - q.m.position.distanceTo(c)).slice(0, 2);
     near.forEach(P => { if (P.ends.length) { const e = P.ends[P.ends.length > 1 ? (P.ends[0].local.clone().add(P.m.position).distanceTo(c) < P.ends[1].local.clone().add(P.m.position).distanceTo(c) ? 0 : 1) : 0]; V2.copy(e.local).add(P.m.position); gut(V2.clone(), P.v.clone().multiplyScalar(0.8), P, P.ends.indexOf(e)); } });
-    gut(c.clone(), V.set(rng.spread(2), rng.float(1, 2.5), rng.spread(2)).clone(), null, 0);
+    gut(c.clone(), pull(V.set(rng.spread(2), rng.float(1, 2.5), rng.spread(2)), 1.0, 2.0).clone(), null, 0);
     // blood: a few jets, a spray all round, a rain from where it was, a pool spreading below
     for (let j = 0; j < 5; j++) {
+      // two of the jets come at him
       const d = V2.set(rng.spread(1), rng.float(-0.3, 0.9), rng.spread(1)).normalize().clone();
+      if (j < 2 && toward) d.copy(TW).add(V.set(rng.spread(0.5), rng.float(0, 0.4), rng.spread(0.5))).normalize();
       const sp0 = rng.float(3, 6);
       for (let k = 0; k < 26; k++) {
         const sp = sp0*rng.float(0.5, 1.1);
@@ -529,7 +538,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
     for (let k = 0; k < 80; k++) {
       const i = rng.int(a, b), p = s.spine[i], d = V2.set(rng.spread(1), rng.spread(1), rng.spread(1)).normalize();
       const sp = rng.float(0.8, 4.0);
-      drop(p.x, p.y, p.z, d.x*sp, d.y*sp + 0.8, d.z*sp, rng.float(0.01, 0.022), 0.4);
+      drop(p.x, p.y, p.z, d.x*sp + TW.x*0.9, d.y*sp + 0.8, d.z*sp + TW.z*0.9, rng.float(0.01, 0.022), 0.4);
     }
     for (let k = 0; k < 40; k++) {
       const i = rng.int(Math.max(0, a - 6), Math.min(N - 1, b + 6)), p = s.spine[i];
@@ -547,6 +556,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
 
   return {
     burst,
+    pieces: () => PIECES.map((p, i) => (p.on ? { i, t: p.t, p: p.m.position.clone() } : null)).filter(Boolean),     // tests
     update(t, dt) { update_pieces(dt); meat.update(dt); ribs.update(dt); verts.update(dt); scraps.update(dt); update_guts(dt); update_blood(dt); update_decals(dt); },
     set_camera(cam, H) { bmat.uniforms.uScale.value = cam.projectionMatrix.elements[5]*H*0.5; },
   };

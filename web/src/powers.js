@@ -118,7 +118,7 @@ export function create_powers(ctx) {
     // about to reach the egg with nothing on it yet (claimed or not: a claim can be too slow)
     const urgent = new Set(snakes.S.filter(s => snakes.free(s) && d_egg(s) < URGENT));
     const gestured = actives.filter(a => a.gesture);
-    lift.update();
+    lift.update(dt);
     // whose turn: the fewest uses among the powers that are ready or nearly
     const acting = actives.filter(a => a !== leak);
     let low = Infinity;
@@ -150,8 +150,8 @@ export function create_powers(ctx) {
     } else if (G.phase === 'aim') {
       G.t += dt;
       const s = G.primary;
-      if (!snakes.free(s)) {
-        // it's gone (another power took it): let go, try again
+      if (!on.get(G.ab) || !snakes.free(s)) {
+        // it's gone (another power took it), or the power was taken from him: let go, try again
         for (const q of G.targets) q.claim = null;
         G.phase = 'lower'; G.t = 0;
       } else {
@@ -178,7 +178,7 @@ export function create_powers(ctx) {
       if (channel) { G.t = 0; const p = G.ab.aim_point(); if (p) G.point.copy(p); }
       // something about to reach the egg: a channel takes it on; any other hold gives way at once
       if (urgent.size) {
-        if (channel && G.ab.extend) G.ab.extend([...urgent]);
+        if (channel && G.ab.extend) G.ab.extend([...urgent], G.arm);
         else if (!channel) { G.phase = 'idle'; G.t = 0; G.ab = null; }
       }
       // the next one waiting: straight on to it, the arm never lowered
