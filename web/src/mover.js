@@ -12,7 +12,7 @@ export const MOVE = {
   dec: 5.0, tau_dec: 0.38,  // letting go: a softer stop, he drifts ~0.6 m
   jerk: 11,              // how fast the push itself changes (1/s): no instant jolts
   radius: 0.34,          // his body, for rock
-  turn_f: 1.0, turn_z: 0.85, turn_amax: 22, turn_vmax: 5.5,   // facing spring (Hz, damping, limits)
+  turn_f: 0.8, turn_z: 0.85, turn_amax: 22, turn_vmax: 5.5,   // facing spring (Hz, damping, limits)
   bob: 0.05,             // the breathing float, metres
 };
 
@@ -24,7 +24,7 @@ export function create_mover(nav, lich, start, yaw0) {
   const push = new THREE.Vector2();            // the applied horizontal acceleration
   let vy = 0, yaw = yaw0, yaw_v = 0, yaw_a = 0, want_yaw = yaw0;
   const prev_p = p.clone(), prev_vel = new THREE.Vector3(), vel = new THREE.Vector3(), acc = new THREE.Vector3();
-  const motion = { a: [0, 0, 0], v: [0, 0, 0], yaw_a: 0, yaw_v: 0, look: 0 };
+  const motion = { a: [0, 0, 0], v: [0, 0, 0], push: [0, 0], yaw_a: 0, yaw_v: 0, look: 0 };
   const height_at = (t) => nav.floor(p.x, p.z) + lich.hover_h + MOVE.bob*Math.sin(t*1.1) + 0.015*Math.sin(t*0.63 + 1.0);
   p.y = height_at(0);
   prev_p.copy(p);
@@ -65,6 +65,11 @@ export function create_mover(nav, lich, start, yaw0) {
     const sy = Math.sin(yaw), cy = Math.cos(yaw);
     motion.a[0] = acc.x*cy - acc.z*sy; motion.a[1] = acc.y; motion.a[2] = acc.x*sy + acc.z*cy;
     motion.v[0] = vel.x*cy - vel.z*sy; motion.v[1] = vel.y; motion.v[2] = vel.x*sy + vel.z*cy;
+    // the push: where he is sent minus how he moves, in his frame, as a fraction of full speed
+    let qx = ((want.x - vel.x)*cy - (want.z - vel.z)*sy)/MOVE.speed, qz = ((want.x - vel.x)*sy + (want.z - vel.z)*cy)/MOVE.speed;
+    const ql = Math.hypot(qx, qz);
+    if (ql > 1) { qx /= ql; qz /= ql; }
+    motion.push[0] = qx; motion.push[1] = qz;
     motion.yaw_a = yaw_a; motion.yaw_v = yaw_v;
     motion.look = pushing ? wrap(want_yaw - yaw) : 0;
     lich.root.position.copy(p);

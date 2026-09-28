@@ -88,16 +88,22 @@ export function create_lich(R, opts = {}) {
   let mode = 0;                               // round 4: SOLID (STRONG was right for the look; the owner asked for more solid)
   mat.userData.set_level(GEM_LEVELS[mode]);
 
-  // ---------------------------------------------------------------- the float (round 5)
-  // Every part is a floating object held to the 07 pose by a soft spring and pushed around by
-  // the body's motion: m.a = the pelvis' acceleration in the body frame (x = his left, y = up,
-  // z = forward), m.v its velocity, m.yaw_a / m.yaw_v the turn, m.look where he wants to go
-  // relative to where he faces. Hanging parts (legs, arms, jaw) lag like pendulums (a push
-  // forward swings them back, a stop swings them forward past rest and they settle); upright
-  // parts (chest, head) lag the other way; the body itself leans into its push and banks into
-  // turns; the hips twist behind the chest when he turns; the head looks where he is going
-  // first. The two legs are one pair: each has its own spring, but their difference is kept
-  // small, so they stay together and only part a little in a sudden change.
+  // ---------------------------------------------------------------- the float (rounds 5-6)
+  // Every part is a floating object on a soft spring, pushed around by the body's motion: m.a =
+  // the pelvis' acceleration in the body frame (x = his left, y = up, z = forward), m.v its
+  // velocity, m.push = where he is sent minus how he moves (big when a move starts or turns,
+  // gone once he is under way), m.yaw_a the turn, m.look where he is sent relative to his facing.
+  // Round 6 (owner: "arms and legs need to actually move and be independent"; arms "very light
+  // and go with the flow, mostly staying down and behind as he moves, but also moving around
+  // lightly"; legs "prefer the relative position they have to each other now" with "a bit more
+  // freedom"; head and torso "lean towards movement direction first and then the rest of the
+  // body follows"):
+  // - the head leads, then the chest: both lean and turn toward the push; then the whole body
+  //   leans into its speed, the hips turn, the legs trail;
+  // - arms are slow, soft pendulums: moving, they settle down and behind with the hands
+  //   trailing; the torso swinging above them swings them; each drifts on its own when still;
+  // - each leg has its own springs (thigh, knee, ankle, twist) and its own drift, plus a pull
+  //   toward the other leg, so the pair keeps its shape but never moves as one rigid piece.
   const JUICE = [
     { name: 'FLOATY', gain: 1.0, freq: 1.0, damp: 1.0 },
     { name: 'LOOSE', gain: 1.6, freq: 0.8, damp: 0.72 },
@@ -105,11 +111,15 @@ export function create_lich(R, opts = {}) {
     { name: 'OFF: ROUND 4, RIGID', gain: 0, freq: 1.0, damp: 1.0 },
   ];
   let juice = 0;
-  const SP = () => ({ x: 0, v: 0, a: 0 });
+  // arms in rig order (s = -1 hanging, s = +1 reaching): where each rests, and where both go moving
+  const ARM_REST = [{ p: -0.12, e: -1.25, w: -0.25, curl: 0.55 }, { p: -0.72, e: -0.42, w: -0.35, curl: 0.32 }];
+  const ARM_TRAIL = { p: 0.36, e: -0.3, w: 0.3, curl: 0.2 };
+  let trail = 0;                              // how far into the trailing pose the arms are: eases in, drifts out
+  const SP = (x = 0) => ({ x, v: 0, a: 0 });
   const S = {
-    bp: SP(), br: SP(), py: SP(), cp: SP(), cr: SP(), hp: SP(), hr: SP(), hy: SP(), jw: SP(),
-    legs: [0, 1].map(() => ({ p: SP(), r: SP(), k: SP(), an: SP() })),
-    arms: [0, 1].map(() => ({ p: SP(), r: SP(), e: SP(), w: SP(), f: SP() })),
+    bp: SP(), br: SP(), py: SP(), cp: SP(), cr: SP(), cy: SP(), hp: SP(), hr: SP(), hy: SP(), jw: SP(),
+    legs: [0, 1].map(() => ({ p: SP(), r: SP(), k: SP(), an: SP(), tw: SP() })),
+    arms: ARM_REST.map(r => ({ p: SP(r.p), r: SP(), t: SP(), e: SP(r.e), w: SP(r.w), f: SP() })),
   };
   let fq = 1, dz = 1;
   // one step of a damped spring toward `target` (radians), `f` Hz, damping ratio `z`, plus a
@@ -122,7 +132,8 @@ export function create_lich(R, opts = {}) {
   // air: slow, never-repeating pushes (a force that deflects a spring by about `amp` radians)
   const air = (t, k, f, amp) => { const w = 6.2832*f*fq; return w*w*amp*(Math.sin(t*0.71 + k*1.37)*0.55 + Math.sin(t*1.29 + k*2.71)*0.3 + Math.sin(t*2.17 + k*0.53)*0.15); };
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
-  const NO_MOTION = { a: [0, 0, 0], v: [0, 0, 0], yaw_a: 0, yaw_v: 0, look: 0 };
+  const mix = (a, b, t) => a + (b - a)*t;
+  const NO_MOTION = { a: [0, 0, 0], v: [0, 0, 0], push: [0, 0], yaw_a: 0, yaw_v: 0, look: 0 };
 
   const lich = {
     root, body, mat, light, MODES, build_ms, tris, nodes: { pelvis, spine, chest, neck, head, jaw, arms, legs },
@@ -135,78 +146,75 @@ export function create_lich(R, opts = {}) {
     set juice(j) { juice = ((j % JUICE.length) + JUICE.length) % JUICE.length; },
     hover_h: 1.28,          // pelvis height above the ground; the pointed toes hang ~0.3 m above it
     pose(t, dt = 1/60, m = NO_MOTION) {
-      const J = JUICE[juice], g = J.gain;
+      const J = JUICE[juice], g = J.gain, gt = Math.min(1, g);
       fq = J.freq; dz = J.damp;
-      const [ax, ay, az] = m.a, [vx, , vz] = m.v;
-      const ya = m.yaw_a, still = 1 - clamp(Math.hypot(vx, vz)/0.6, 0, 1);
+      const [ax, ay, az] = m.a, [vx, , vz] = m.v, [px, pz] = m.push;
+      const ya = m.yaw_a, speed = Math.hypot(vx, vz), still = 1 - clamp(speed/0.6, 0, 1);
+      const fwd = clamp(vz/2.6, 0, 1), side = clamp(vx/2.6, -1, 1);
 
-      // body: leans into its push and a little into its speed, banks into turns
-      spring(S.bp, clamp((0.03*vz + 0.02*az)*g, -0.2, 0.24), 1.0, 0.75, air(t, 1, 1.0, 0.012*g), dt);
-      spring(S.br, clamp(-0.035*ax*g, -0.24, 0.24), 1.0, 0.75, air(t, 2, 1.0, 0.012*g), dt);
-      // hips twist behind the chest when he starts a turn
-      spring(S.py, 0, 1.1, 0.45, -ya*0.05*g, dt);
-      // chest: an upright mass on the spine, it lags the push
-      spring(S.cp, 0, 1.4, 0.42, -az*0.9*g + air(t, 3, 1.4, 0.015*g), dt);
-      spring(S.cr, 0, 1.4, 0.42, ax*0.9*g + air(t, 4, 1.4, 0.012*g), dt);
-      // head: lags too, keeps its gaze level against the lean, looks where he is going first
+      // the upper body leads: the head first (fastest), then the chest, lean and turn toward
+      // the push; leaning back a little when he brakes
       const idle_glance = Math.sin(t*0.33)*0.1*still;
-      spring(S.hp, clamp(-(S.bp.x + S.cp.x)*0.45, -0.2, 0.2), 1.7, 0.5, -az*0.7*g + air(t, 5, 1.7, 0.02*g), dt);
-      spring(S.hr, clamp(-(S.br.x + S.cr.x)*0.4, -0.2, 0.2), 1.7, 0.5, ax*0.7*g + air(t, 6, 1.7, 0.015*g), dt);
-      spring(S.hy, clamp(m.look*0.8, -0.75, 0.75)*g + idle_glance, 1.4, 0.8, -ya*0.02*g, dt);
+      spring(S.hp, clamp((0.26*pz - 0.2*(S.bp.x + S.cp.x))*g, -0.12, 0.3), 2.4, 0.6, air(t, 5, 2.4, 0.03*g), dt);
+      spring(S.hr, clamp((-0.22*px - 0.2*(S.br.x + S.cr.x))*g, -0.25, 0.25), 2.4, 0.6, air(t, 6, 2.4, 0.025*g), dt);
+      spring(S.hy, clamp(m.look*0.5, -0.5, 0.5)*g + idle_glance, 2.2, 0.75, air(t, 8, 2.2, 0.025*g), dt);
+      spring(S.cp, clamp((0.24*pz + 0.05*fwd)*g, -0.1, 0.3), 1.6, 0.6, air(t, 3, 1.6, 0.02*g), dt);
+      spring(S.cr, clamp(-0.2*px*g, -0.22, 0.22), 1.6, 0.6, air(t, 4, 1.6, 0.018*g), dt);
+      spring(S.cy, clamp(m.look*0.4*g, -0.45, 0.45), 1.6, 0.7, air(t, 9, 1.6, 0.02*g), dt);
+      // then the whole body leans into its speed and banks into turns; the hips turn last
+      spring(S.bp, clamp((0.03*vz + 0.02*az)*g, -0.2, 0.24), 0.9, 0.75, air(t, 1, 0.9, 0.012*g), dt);
+      spring(S.br, clamp(-0.035*ax*g, -0.24, 0.24), 0.9, 0.75, air(t, 2, 0.9, 0.012*g), dt);
+      spring(S.py, 0, 1.1, 0.45, -ya*0.05*g, dt);
       // jaw: a hinged weight under the skull; a push up or forward drops it, a stop clacks it shut
       spring(S.jw, 0, 2.3, 0.22, (ay*8 + az*3.5)*g + air(t, 7, 2.3, 0.015*g), dt);
       const JAW0 = 0.07 + Math.max(0, Math.sin(t*0.45))*0.04;
       if (JAW0 + S.jw.x < 0.0) { S.jw.x = -JAW0; if (S.jw.v < 0) S.jw.v = -S.jw.v*0.3; }
       if (JAW0 + S.jw.x > 0.42) { S.jw.x = 0.42 - JAW0; if (S.jw.v > 0) S.jw.v = 0; }
 
-      // legs: a pendulum pair hanging from the hips. + pitch = feet back, + roll = feet to his left.
-      // A push forward swings them back, speed trails them back, a stop swings them under him;
-      // a push sideways or the start of a turn swings the trailing feet out.
+      // legs: + pitch = feet back, + roll = feet to his left. A push forward swings them back,
+      // speed trails them, a stop swings them under him; each leg drifts on its own time and is
+      // pulled toward the other, so the pair keeps its shape without moving as one piece.
+      const pull = 14*fq*fq;
       S.legs.forEach((L, k) => {
-        const df = k ? 1.06 : 0.95, dd = k ? 0.92 : 1.08;          // the two differ a little
-        spring(L.p, clamp(0.045*vz*g, -0.1, 0.18), 0.8*df, 0.3*dd, (az*0.75 - ay*0.4)*g + air(t, 10 + k*0.35, 0.8, 0.035*g), dt);
-        spring(L.r, clamp(-0.04*vx*g, -0.16, 0.16), 0.75*df, 0.3*dd, (-ax*0.8 + ya*0.08)*g + air(t, 12 + k*0.35, 0.75, 0.025*g), dt);
-        // the shin hangs from the knee: it lags the thigh's swing (the whip) and the push
-        spring(L.k, 0, 1.25*df, 0.32, (az*0.7 - L.p.a*0.4)*g + air(t, 14 + k, 1.25, 0.02*g), dt);
-        // the foot from the ankle, a smaller whip again
-        spring(L.an, 0, 1.9*df, 0.3, (az*0.4 - L.k.a*0.3)*g, dt);
+        const O = S.legs[1 - k];
+        const df = k ? 1.08 : 0.93, dd = k ? 0.9 : 1.1, sd = k ? 31 : 10, tt = t*(k ? 1.14 : 0.87);
+        spring(L.p, clamp(0.045*vz*g, -0.1, 0.18), 0.75*df, 0.3*dd, (az*0.75 - ay*0.4)*g + (O.p.x - L.p.x)*pull + air(tt, sd, 0.75, 0.07*g), dt);
+        spring(L.r, clamp(-0.04*vx*g, -0.16, 0.16), 0.7*df, 0.3*dd, (-ax*0.8 + ya*0.08)*g + (O.r.x - L.r.x)*pull + air(tt, sd + 2, 0.7, 0.05*g), dt);
+        // the shin hangs from the knee: it lags the thigh's swing (the whip), and drifts
+        spring(L.k, 0, 1.2*df, 0.3, (az*0.7 - L.p.a*0.4)*g + air(tt, sd + 4, 1.2, 0.08*g), dt);
+        // the foot from the ankle, a smaller whip again; the thigh turns a little on its axis
+        spring(L.an, 0, 1.7*df, 0.3, (az*0.4 - L.k.a*0.3)*g + air(tt, sd + 6, 1.7, 0.09*g), dt);
+        spring(L.tw, 0, 0.9*df, 0.4, air(tt, sd + 8, 0.9, 0.1*g) - ya*0.03*g, dt);
       });
-      // together: each leg keeps only a part of its difference from the pair's mean
-      const SPREAD = 0.4;
-      const lp = (S.legs[0].p.x + S.legs[1].p.x)/2, lr = (S.legs[0].r.x + S.legs[1].r.x)/2, lk = (S.legs[0].k.x + S.legs[1].k.x)/2;
+      let r0 = S.legs[0].r.x, r1 = S.legs[1].r.x;
+      if (r0 - r1 > 0.03) { const c = (r0 + r1)/2; r0 = c + 0.015; r1 = c - 0.015; }   // the knees never pass through each other
       for (const l of legs) {
-        const L = S.legs[l.s > 0 ? 1 : 0];
-        const p = lp + (L.p.x - lp)*SPREAD, r = lr + (L.r.x - lr)*SPREAD, k = lk + (L.k.x - lk)*SPREAD;
+        const k = l.s > 0 ? 1 : 0, L = S.legs[k];
         const stagger = l.s > 0 ? 0.07 : 0;
-        l.hip.rotation.set(clamp(0.1 + stagger + p, -0.35, 0.9), 0, -0.02*l.s + clamp(r, -0.4, 0.4));   // thighs ~12-16 deg back at rest
-        l.kn.rotation.set(clamp(0.2 + stagger*0.5 + k, 0.03, 0.9), 0, 0.015*l.s);                       // shins a little further back; knees never bend forward
-        l.an.rotation.set(clamp(1.0 + L.an.x, 0.6, 1.4), 0, 0);                                           // toes pointed down
+        l.hip.rotation.set(clamp(0.1 + stagger + L.p.x, -0.35, 0.9), clamp(L.tw.x, -0.2, 0.2), -0.02*l.s + clamp(k ? r1 : r0, -0.4, 0.4));   // thighs ~12-16 deg back at rest
+        l.kn.rotation.set(clamp(0.2 + stagger*0.5 + L.k.x, 0.03, 0.9), 0, 0.015*l.s);                    // shins a little further back; knees never bend forward
+        l.an.rotation.set(clamp(1.0 + L.an.x, 0.55, 1.45), 0, 0);                                        // toes pointed down
       }
 
-      // arms: pendulums from the shoulders, each on its own (a little out of step with the other).
-      // + pitch = hand back, + roll = hand to his left; the elbow, wrist and fingers whip after.
+      // arms: light, slow pendulums (+ pitch = hand back, + roll = hand to his left). Moving,
+      // both settle down and behind with the hands trailing; the body's push and the torso
+      // swinging above them swing them; each drifts on its own, out of step with the other.
+      trail += (fwd*gt - trail)*(1 - Math.exp(-dt/(fwd*gt > trail ? 0.35 : 0.9)));
       arms.forEach((A, k) => {
-        const Q = S.arms[k], s = A.s;
-        const rest_p = s < 0 ? -0.12 : -0.72;
-        const df = k ? 1.07 : 0.93;
-        spring(Q.p, clamp(0.07*vz*g, -0.16, 0.32), 0.9*df, 0.28, (az*1.0 + ay*Math.sin(-rest_p)*1.2)*g + air(t, 20 + k*3, 0.9, 0.045*g), dt);
-        spring(Q.r, clamp(-0.05*vx*g, -0.2, 0.2), 0.95*df, 0.3, -ax*1.0*g + air(t, 21 + k*3, 0.95, 0.03*g), dt);
-        spring(Q.e, 0, 1.5*df, 0.3, (az*0.8 - Q.p.a*0.4)*g + air(t, 22 + k*3, 1.5, 0.03*g), dt);
-        spring(Q.w, 0, 2.1*df, 0.3, (az*0.5 - Q.e.a*0.3)*g + air(t, 23 + k*3, 2.1, 0.03*g), dt);
-        spring(Q.f, 0, 2.6*df, 0.3, (az*0.6 - Q.w.a*0.2)*g + air(t, 24 + k*3, 2.6, 0.04*g), dt);
+        const Q = S.arms[k], s = A.s, R0 = ARM_REST[k];
+        const df = k ? 1.12 : 0.9, sd = 40 + k*17, tt = t*(k ? 1.21 : 0.79);
+        const drive = az*0.85 + ay*Math.sin(-Q.p.x) + (S.cp.a + S.bp.a)*0.5 - s*(S.cy.a + ya)*0.3;
+        spring(Q.p, mix(R0.p, ARM_TRAIL.p, trail), 0.55*df, 0.34, drive*g + air(tt, sd, 0.55, 0.1*g), dt);
+        spring(Q.r, (-0.25*side + s*0.1*fwd)*gt, 0.6*df, 0.3, (-ax + (S.cr.a + S.br.a)*0.4)*g + air(tt, sd + 3, 0.6, 0.07*g), dt);
+        spring(Q.t, 0, 0.7*df, 0.4, air(tt, sd + 5, 0.7, 0.12*g), dt);
+        spring(Q.e, mix(R0.e, ARM_TRAIL.e, trail), 1.0*df, 0.3, (az*0.8 - Q.p.a*0.35)*g + air(tt, sd + 7, 1.0, 0.1*g), dt);
+        spring(Q.w, mix(R0.w, ARM_TRAIL.w, trail), 1.5*df, 0.3, (az*0.5 - Q.e.a*0.3)*g + air(tt, sd + 9, 1.5, 0.08*g), dt);
+        spring(Q.f, (ARM_TRAIL.curl - R0.curl)*trail, 2.0*df, 0.3, (az*0.6 - Q.w.a*0.2)*g + air(tt, sd + 11, 2.0, 0.06*g), dt);
         const roll = s*Math.max(-0.08, s*Q.r.x);                      // never swings in through the ribs
-        if (s < 0) {
-          // hanging, bent at the elbow, the hand curled before the pelvis
-          A.sh.rotation.set(rest_p + Q.p.x, 0, 0.12*s + roll);
-          A.el.rotation.set(Math.min(-0.2, -1.25 + Q.e.x), 0, 0);
-          A.wr.rotation.set(-0.25 + Q.w.x, -s*0.9, 0);
-        } else {
-          // reaching forward and down, toward the light
-          A.sh.rotation.set(rest_p + Q.p.x, 0, 0.22*s + roll);
-          A.el.rotation.set(Math.min(-0.05, -0.42 + Q.e.x), 0, 0);
-          A.wr.rotation.set(-0.35 + Q.w.x, -s*1.25, 0);
-        }
-        const curl = (s < 0 ? 0.55 : 0.32) + clamp(Q.f.x, -0.3, 0.4);
+        A.sh.rotation.set(clamp(Q.p.x, -1.4, 1.0), clamp(Q.t.x, -0.35, 0.35), (s < 0 ? 0.12 : 0.22)*s + roll);
+        A.el.rotation.set(clamp(Q.e.x, -1.9, -0.05), 0, 0);
+        A.wr.rotation.set(clamp(Q.w.x, -0.9, 0.7), -s*(s < 0 ? 0.9 : 1.25), 0);
+        const curl = R0.curl + clamp(Q.f.x, -0.3, 0.4);
         A.fingers.forEach((segs, i) => segs.forEach((n, j) => n.rotation.set(0, 0, -s*(curl + j*0.12 + i*0.03 + Math.sin(t*1.3 + i)*0.03))));
         A.thumb[0].rotation.set(0.5, 0, -s*0.35);
         A.thumb[1].rotation.set(0, 0, -s*0.3);
@@ -215,10 +223,10 @@ export function create_lich(R, opts = {}) {
       body.position.y = 0;
       body.rotation.set(0.1 + S.bp.x, 0, S.br.x);
       pelvis.rotation.set(0, S.py.x, 0);
-      spine.rotation.set(0.04 + S.cp.x*0.5, -S.py.x*0.75, S.cr.x*0.5);
-      chest.rotation.set(0.03 + S.cp.x*0.5, 0, S.cr.x*0.5);
-      neck.rotation.set(0.04 + S.hp.x*0.3, S.hy.x*0.3, 0);
-      head.rotation.set(-0.02 + S.hp.x*0.7, S.hy.x*0.7, S.hr.x);                  // ~15 deg down in all, as in 07
+      spine.rotation.set(0.04 + S.cp.x*0.5, -S.py.x*0.75 + S.cy.x*0.45, S.cr.x*0.5);
+      chest.rotation.set(0.03 + S.cp.x*0.5, S.cy.x*0.55, S.cr.x*0.5);
+      neck.rotation.set(0.04 + S.hp.x*0.3, S.hy.x*0.3, S.hr.x*0.3);
+      head.rotation.set(-0.02 + S.hp.x*0.7, S.hy.x*0.7, S.hr.x*0.7);                  // ~15 deg down in all, as in 07
       jaw.rotation.x = JAW0 + S.jw.x;
     },
     update(t) {
