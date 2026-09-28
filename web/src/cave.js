@@ -360,10 +360,8 @@ export function build_cave(R, seed = 7, opts = {}) {
     const s = i < 22 ? lerp(0.12, 0.36, rng.next()) : lerp(0.04, 0.22, Math.pow(rng.next(), 1.8));
     add_block(Math.cos(th)*r, Math.sin(th)*r, s*rng.float(0.9, 1.6), s*rng.float(0.4, 0.9), s*rng.float(0.8, 1.3), { tilt: 0.9, sink: 0.35, n: 8 });
   }
-  {
-    const g = world_uv(mergeGeometries(rocks, false), TILE);
-    add_static(g, M.rock);
-  }
+  const rock_geo = world_uv(mergeGeometries(rocks, false), TILE);   // world space; nav.js reads it
+  add_static(rock_geo, M.rock);
 
   // ---------------------------------------------------------------- the egg (0.8 m tall)
   const EGG_S = 0.8;
@@ -504,7 +502,7 @@ export function build_cave(R, seed = 7, opts = {}) {
 
   const dome_mats = [M.dome];
   return {
-    group, ground_y, egg, sun, LAYOUT, GU, bake_ms, tris: baked.tris, gi_cached: baked.cached,
+    group, ground_y, egg, sun, LAYOUT, GU, rock_geo, bake_ms, tris: baked.tris, gi_cached: baked.cached,
     export_gi: () => export_gi(baked.data),
     set_dome_visible(on) { for (const m of dome_mats) { m.colorWrite = on; m.depthWrite = on; } },
     DARK,

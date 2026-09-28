@@ -1,0 +1,15 @@
+```json
+{
+ "best": {
+  "start": "0:45",
+  "end": "0:52"
+ },
+ "alt": {
+  "start": "1:10",
+  "end": "1:16"
+ },
+ "duration": "2:22",
+ "notes": "The sunlight is concentrated into a sharp, bright white cone by the magnifying lens. The beam is highly focused at its tip, causing the dry material to smoke and eventually ignite.",
+ "quality": 4
+}
+```

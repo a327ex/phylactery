@@ -7,3 +7,6 @@ dist/
 tools/__pycache__/
 scratch/
 node_modules/
+# reference clips: raw yt-dlp downloads and the 720p cuts stay local (the boards embed small copies)
+reference/*/raw/
+reference/*/clips/*.mp4

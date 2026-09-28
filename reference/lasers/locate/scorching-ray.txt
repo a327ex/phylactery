@@ -1,0 +1,15 @@
+```json
+{
+  "best": {
+    "start": "0:11",
+    "end": "0:19"
+  },
+  "alt": {
+    "start": "3:14",
+    "end": "3:21"
+  },
+  "duration": "7:21",
+  "notes": "The Scorching Ray beam features a brilliant white-yellow core encased in a fiery golden aura. Heat distortion effects and wisps of flame move rapidly along its length towards a high-intensity impact point that emits bright sparks and a dense orange glow.",
+  "quality": 5
+}
+```

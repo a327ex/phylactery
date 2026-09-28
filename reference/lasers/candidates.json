@@ -1,0 +1,98 @@
+[
+ {
+  "id": "last-prism",
+  "url": "https://www.youtube.com/watch?v=ovWxzlEKMjw",
+  "beam": "A",
+  "title": "Terraria: Last Prism"
+ },
+ {
+  "id": "disintegrate",
+  "url": "https://www.youtube.com/watch?v=agknSbF9tAE",
+  "beam": "A",
+  "title": "Diablo 3: Disintegrate"
+ },
+ {
+  "id": "divinity",
+  "url": "https://www.youtube.com/watch?v=L3c9rXdUN-Y",
+  "beam": "A",
+  "title": "Destiny 2: Divinity"
+ },
+ {
+  "id": "zarya",
+  "url": "https://www.youtube.com/watch?v=x4Wd9KMD9J4",
+  "beam": "A",
+  "title": "Overwatch: Zarya's particle beam"
+ },
+ {
+  "id": "prism-real",
+  "url": "https://www.youtube.com/watch?v=9eEyTw4wylk",
+  "beam": "A",
+  "title": "Real: white light through a prism"
+ },
+ {
+  "id": "returnal-phrike",
+  "url": "https://www.youtube.com/watch?v=RmRxaIjsSjk",
+  "beam": "AB",
+  "title": "Returnal: Phrike's lasers"
+ },
+ {
+  "id": "prometheus",
+  "url": "https://www.youtube.com/watch?v=rxnNdAai7PU",
+  "beam": "B",
+  "title": "Destiny 2: Prometheus Lens"
+ },
+ {
+  "id": "stone-titan",
+  "url": "https://www.youtube.com/watch?v=d5oPQamOt6g",
+  "beam": "B",
+  "title": "Risk of Rain 2: Stone Titan's laser"
+ },
+ {
+  "id": "incinerate",
+  "url": "https://www.youtube.com/watch?v=eKJXTKz1x7s",
+  "beam": "B",
+  "title": "Diablo 4: Incinerate"
+ },
+ {
+  "id": "scorching-ray",
+  "url": "https://www.youtube.com/watch?v=au45-m4fzxg",
+  "beam": "B",
+  "title": "Path of Exile: Scorching Ray"
+ },
+ {
+  "id": "magnified-fire",
+  "url": "https://www.youtube.com/watch?v=Ko_2BFGuudk",
+  "beam": "B",
+  "title": "Real: sunlight through a lens, burning wood"
+ },
+ {
+  "id": "ramiel",
+  "url": "https://www.youtube.com/watch?v=GCe-D6sTLoc",
+  "beam": "B",
+  "title": "Evangelion: Ramiel's beam"
+ },
+ {
+  "id": "sleeper",
+  "url": "https://www.youtube.com/watch?v=LeXf7h3fBhw",
+  "beam": "B",
+  "title": "Destiny 2: Sleeper Simulant"
+ },
+ {
+  "id": "vfx-stylized",
+  "url": "https://www.youtube.com/watch?v=_SaBXY-Ejqo",
+  "beam": "AB",
+  "title": "Tutorial: stylized laser beam (Unity VFX Graph)"
+ },
+ {
+  "id": "vfx-vertical",
+  "url": "https://www.youtube.com/watch?v=NbbFytz-JDk",
+  "beam": "B",
+  "title": "Tutorial: vertical beam from the sky (Unreal Niagara)"
+ },
+ {
+  "id": "laser-fog",
+  "url": "https://www.youtube.com/watch?v=nxc_ZuiaMSU",
+  "beam": "AB",
+  "title": "Real: laser beams in fog"
+ }
+]
