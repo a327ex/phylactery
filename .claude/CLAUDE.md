@@ -4,6 +4,10 @@ Guidelines for Claude Code instances working in this project.
 
 **Read `RECORD.md` first** (purpose, owner's settled decisions, rounds, pending choices).
 
+**Porting to Anchor** (planned once the attacks and this part of the cave are done, owner
+2026-09-28): read `ANCHOR_PORT.md` first -- what Anchor lacks for this game (testing and
+rendering), in the order to build it, and the port order.
+
 **three.js first (owner, 2026-09-27)**, like Brutal Behavior: the game lives in `web/`
 (`index.html` + `src/*.js`, three.js 0.170 from jsdelivr, local modules import each other only
 as `game/<file>.js`), reusing the Sun Court renderer (`web/src/render.js`, from
