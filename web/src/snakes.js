@@ -273,9 +273,9 @@ uniform vec3 uEmber;`)
     });
   }
   // set one on fire (the lich's attack): it stops, and burns from a point along its body
-  function ignite(s) {
+  function ignite(s, at = Math.round(RINGS*rng.float(0.15, 0.75))) {
     if (s.delay > 0 || s.dying >= 0 || s.burn || s.sink >= 0) return false;
-    const at = Math.round(RINGS*rng.float(0.15, 0.75));
+    at = Math.max(0, Math.min(RINGS - 1, at));
     s.burn = fire.start(RINGS, s.spine, s.radii, at);
     return true;
   }

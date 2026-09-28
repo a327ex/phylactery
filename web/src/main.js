@@ -59,29 +59,58 @@ const snakes = create_snakes(R, cave, () => L, fire);
 G.mover = mover; G.snakes = snakes; G.fire = fire;
 
 // ------------------------------------------------------------------ the lich's attacks
-// Round 9, one at a time (owner): FIRE sets a random snake alight every FIRE_EVERY seconds. He
-// glances at it as it catches.
-const FIRE_EVERY = 1.1;
-const ATK = { on: true, next: 1.0, gaze: null, gaze_t: 9, rng: make_rng(29) };
+// FIRE (round 9; round 10, owner: "once a second is too fast, let's make him only do this to
+// nearby snakes. Make him turn his head, then the snake burns"): when it is ready and a snake
+// is within FIRE_RANGE of him, he picks one and the spot on it that will catch, turns his head
+// to that spot (following it as it crawls), and only when his head is on it does it catch; he
+// keeps looking while it catches, then lets go. Ready again FIRE_EVERY seconds after a catch.
+const FIRE_EVERY = 2.5, FIRE_RANGE = 5.5;
+const AIM_MIN = 0.35, AIM_MAX = 0.9, SETTLE = 0.12, HOLD = 0.7, RELEASE = 0.35;
+const ATK = { on: true, state: 'idle', t: 0, next: 1.0, target: null, at: 0, w: 0, on_t: 0, rng: make_rng(29) };
+const snake_dist = s => { let d = Infinity; for (let i = 0; i < s.spine.length; i += 6) d = Math.min(d, Math.hypot(s.spine[i].x - L.x, s.spine[i].z - L.z)); return d; };
+// where he looks: yaw from his facing and pitch down, toward a point on the ground
+const gaze_to = (c) => {
+  const a = Math.atan2(c.x - L.x, c.z - L.z) - mover.yaw;
+  return [Math.atan2(Math.sin(a), Math.cos(a)), Math.atan2(L.y + 0.75 - c.y, Math.max(0.3, Math.hypot(c.x - L.x, c.z - L.z)))];
+};
 function attack_tick() {
-  if (!ATK.on) return;
-  ATK.next -= DT;
-  if (ATK.next > 0) return;
-  const live = snakes.live();
-  if (!live.length) { ATK.next = 0.2; return; }
-  const s = live[ATK.rng.int(0, live.length - 1)];
-  if (snakes.ignite(s)) { ATK.gaze = s; ATK.gaze_t = 0; }
-  ATK.next = FIRE_EVERY;
-}
-function gaze_tick() {
   const m = mover.motion;
-  ATK.gaze_t += DT;
-  m.gaze_w = ATK.gaze ? Math.max(0, 1 - ATK.gaze_t/0.9)*Math.min(1, ATK.gaze_t/0.08) : 0;
-  if (ATK.gaze && m.gaze_w > 0) {
-    const c = ATK.gaze.spine[Math.floor(ATK.gaze.spine.length*0.3)];
-    const a = Math.atan2(c.x - L.x, c.z - L.z) - mover.yaw;
-    m.gaze = Math.atan2(Math.sin(a), Math.cos(a));
+  ATK.next -= DT;
+  ATK.t += DT;
+  if (ATK.state === 'idle') {
+    ATK.w = Math.max(0, ATK.w - DT/RELEASE);
+    if (ATK.on && ATK.next <= 0) {
+      let near = snakes.live().filter(q => snake_dist(q) < FIRE_RANGE);
+      // one he can look at if there is one (his head and chest turn ~83 deg either way)
+      const front = near.filter(q => Math.abs(gaze_to(q.spine[Math.floor(q.spine.length*0.4)])[0]) < 1.45);
+      if (front.length) near = front;
+      if (near.length) {
+        ATK.target = near[ATK.rng.int(0, near.length - 1)];
+        ATK.at = Math.round(ATK.target.spine.length*ATK.rng.float(0.15, 0.75));
+        ATK.state = 'aim'; ATK.t = 0; ATK.on_t = 0;
+      } else ATK.next = 0.1;
+    }
+  } else if (ATK.state === 'aim') {
+    ATK.w = Math.min(1, ATK.t/0.12);
+    const s = ATK.target;
+    if (!snakes.live().includes(s) || snake_dist(s) > FIRE_RANGE + 1) { ATK.state = 'idle'; ATK.next = 0.2; }
+    else {
+      // his head is on it: head + chest turn (the pose's springs) within a little of where he looks
+      const [gy] = gaze_to(s.spine[ATK.at]);
+      const S = lich.springs, reach = Math.max(-1.45, Math.min(1.45, gy));
+      const err = Math.abs(reach - (S.hy.x + S.cy.x));
+      ATK.on_t = err < 0.1 ? ATK.on_t + DT : 0;        // a beat with his head on it, then it catches
+      if ((ATK.t >= AIM_MIN && ATK.on_t >= SETTLE) || ATK.t >= AIM_MAX) {
+        snakes.ignite(s, ATK.at);
+        ATK.state = 'hold'; ATK.t = 0; ATK.next = FIRE_EVERY;
+      }
+    }
+  } else if (ATK.state === 'hold') {
+    ATK.w = 1;
+    if (ATK.t >= HOLD) { ATK.state = 'idle'; ATK.t = 0; }
   }
+  m.gaze_w = ATK.w;
+  if (ATK.target && ATK.w > 0) [m.gaze, m.gaze_p] = gaze_to(ATK.target.spine[ATK.at]);
 }
 
 // ------------------------------------------------------------------ cameras
@@ -266,7 +295,6 @@ function tick() {
   G.t += DT;
   mover.tick(G.t, DT, wanted_velocity());
   attack_tick();
-  gaze_tick();
   lich.pose(G.t, DT, mover.motion);
   lich.update(G.t);
   cave.update(G.t, DT);
@@ -361,11 +389,12 @@ window.GAME = {
   pattern(i) { lich.pattern = i; render(0); return lich.PATTERNS[lich.pattern]; },
   fire_look(i) { fire.look = i; return fire.LOOKS[fire.look].name; },
   attacks(on) { ATK.on = !!on; return ATK.on; },
+  attack_state() { return { state: ATK.state, t: +ATK.t.toFixed(2), next: +ATK.next.toFixed(2), w: +ATK.w.toFixed(2), target: ATK.target ? snakes.S.indexOf(ATK.target) : -1, head: +(lich.springs.hy.x + lich.springs.cy.x).toFixed(3), gaze: +(mover.motion.gaze || 0).toFixed(3) }; },
   // set the snake nearest (x, z) alight now; returns its index
   ignite_near(x, z) {
     const live = snakes.live(); if (!live.length) return -1;
     live.sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
-    snakes.ignite(live[0]); ATK.gaze = live[0]; ATK.gaze_t = 0;
+    ATK.target = live[0]; ATK.at = 30; snakes.ignite(live[0], 30); ATK.state = 'hold'; ATK.t = 0;
     return snakes.S.indexOf(live[0]);
   },
   snake_at(i) { const s = snakes.S[i]; const c = s.spine[20]; return { x: +c.x.toFixed(2), z: +c.z.toFixed(2), burning: !!s.burn, sink: +s.sink.toFixed(2), burnt: s.burnt, fire: fire.burning }; },

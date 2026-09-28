@@ -138,7 +138,7 @@ export function create_lich(R, opts = {}) {
   const air = (t, k, f, amp) => { const w = 6.2832*f*fq; return w*w*amp*(Math.sin(t*0.71 + k*1.37)*0.55 + Math.sin(t*1.29 + k*2.71)*0.3 + Math.sin(t*2.17 + k*0.53)*0.15); };
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
   const mix = (a, b, t) => a + (b - a)*t;
-  const NO_MOTION = { a: [0, 0, 0], v: [0, 0, 0], push: [0, 0], yaw_a: 0, yaw_v: 0, look: 0, gaze: 0, gaze_w: 0 };
+  const NO_MOTION = { a: [0, 0, 0], v: [0, 0, 0], push: [0, 0], yaw_a: 0, yaw_v: 0, look: 0, gaze: 0, gaze_p: 0, gaze_w: 0 };
 
   const lich = {
     root, body, mat, light, MODES, build_ms, tris, nodes: { pelvis, spine, chest, neck, head, jaw, arms, legs },
@@ -162,14 +162,16 @@ export function create_lich(R, opts = {}) {
       // the upper body leads: the head first (fastest), then the chest, lean and turn toward
       // the push; leaning back a little when he brakes
       const idle_glance = Math.sin(t*0.33)*0.1*still;
-      spring(S.hp, clamp((0.26*pz - 0.2*(S.bp.x + S.cp.x))*g, -0.12, 0.3), 2.4, 0.6, air(t, 5, 2.4, 0.03*g), dt);
-      spring(S.hr, clamp((-0.22*px - 0.2*(S.br.x + S.cr.x))*g, -0.25, 0.25), 2.4, 0.6, air(t, 6, 2.4, 0.025*g), dt);
-      // ... unless he glances at what he just set alight (round 9)
       const gz = m.gaze_w || 0;
-      spring(S.hy, mix(clamp(m.look*0.5, -0.5, 0.5)*g + idle_glance, clamp(m.gaze || 0, -0.8, 0.8), gz), 2.2, 0.75, air(t, 8, 2.2, 0.025*g), dt);
+      // ... unless he is looking at a snake he means to burn (rounds 9-10): the head turns and
+      // tilts down to the spot first, the chest follows a little
+      spring(S.hp, mix(clamp((0.26*pz - 0.2*(S.bp.x + S.cp.x))*g, -0.12, 0.3), clamp((m.gaze_p || 0) - 0.27, -0.1, 0.55), gz), 2.4, 0.6, air(t, 5, 2.4, 0.03*g), dt);
+      spring(S.hr, clamp((-0.22*px - 0.2*(S.br.x + S.cr.x))*g, -0.25, 0.25), 2.4, 0.6, air(t, 6, 2.4, 0.025*g), dt);
+      const gc = clamp((m.gaze || 0)*0.3, -0.35, 0.35);
+      spring(S.hy, mix(clamp(m.look*0.5, -0.5, 0.5)*g + idle_glance, clamp((m.gaze || 0) - gc, -1.1, 1.1), gz), 2.2, 0.75, air(t, 8, 2.2, 0.025*g), dt);
       spring(S.cp, clamp((0.24*pz + 0.05*fwd)*g, -0.1, 0.3), 1.6, 0.6, air(t, 3, 1.6, 0.02*g), dt);
       spring(S.cr, clamp(-0.2*px*g, -0.22, 0.22), 1.6, 0.6, air(t, 4, 1.6, 0.018*g), dt);
-      spring(S.cy, mix(clamp(m.look*0.4*g, -0.45, 0.45), clamp((m.gaze || 0)*0.3, -0.3, 0.3), gz*0.6), 1.6, 0.7, air(t, 9, 1.6, 0.02*g), dt);
+      spring(S.cy, mix(clamp(m.look*0.4*g, -0.45, 0.45), gc, gz), 1.6, 0.7, air(t, 9, 1.6, 0.02*g), dt);
       // then the whole body leans into its speed and banks into turns; the hips turn last
       spring(S.bp, clamp((0.03*vz + 0.02*az)*g, -0.2, 0.24), 0.9, 0.75, air(t, 1, 0.9, 0.012*g), dt);
       spring(S.br, clamp(-0.035*ax*g, -0.24, 0.24), 0.9, 0.75, air(t, 2, 0.9, 0.012*g), dt);
