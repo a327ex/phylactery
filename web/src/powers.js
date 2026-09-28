@@ -27,7 +27,7 @@ import { create_beam } from 'game/beam.js';
 import { create_lens } from 'game/lens.js';
 import { create_leak } from 'game/leak.js';
 
-export const ENGAGE = 3.4, URGENT = 2.2, LENS_ENGAGE = 4.6;
+export const ENGAGE = 3.4, URGENT = 2.2, LENS_ENGAGE = 6.0;             // the lens takes ~1.5 s from forming to cutting
 const AIM_MIN = 0.3, AIM_MAX = 0.55, QUICK_MIN = 0.12, QUICK_MAX = 0.28, ON_T = 0.08, HOLD = 0.45, LOWER = 0.3;
 
 export function create_powers(ctx) {
@@ -88,13 +88,14 @@ export function create_powers(ctx) {
     // fire's second and later catches
     for (let i = later.length - 1; i >= 0; i--) if (clock >= later[i].at) { snakes.ignite(later[i].s); later.splice(i, 1); }
 
-    const urgent = new Set(threats(URGENT));
+    // about to reach the egg with nothing on it yet (claimed or not: a claim can be too slow)
+    const urgent = new Set(snakes.S.filter(s => snakes.free(s) && d_egg(s) < URGENT));
     const gestured = actives.filter(a => a.gesture);
 
     // --- the gestured powers, one at a time
     if (G.phase === 'idle') {
       const th = threats(ENGAGE);
-      if (th.length && gestured.length) {
+      if ((th.length || urgent.size) && gestured.length) {
         let ready = gestured.filter(a => next.get(a) <= 0);
         const quick = urgent.size > 0;
         if (!ready.length && quick) {
@@ -104,7 +105,9 @@ export function create_powers(ctx) {
         }
         if (ready.length) {
           const ab = ready.reduce((x, y) => (last.get(x) <= last.get(y) ? x : y));
-          start_gesture(ab, th.slice(0, Math.max(1, ab.capacity(power))), quick);
+          const first = quick ? [...urgent].sort((a, b) => d_egg(a) - d_egg(b)) : [];
+          const pick = [...first, ...th.filter(s => !urgent.has(s))];
+          start_gesture(ab, pick.slice(0, Math.max(1, ab.capacity(power))), quick);
         }
       }
     } else if (G.phase === 'aim') {
@@ -123,17 +126,20 @@ export function create_powers(ctx) {
         if ((G.t >= mn && G.on_t >= ON_T) || G.t >= mx) {
           const targets = G.targets.filter(q => snakes.free(q));
           lich.fingertip(G.arm, TIP);
-          G.ab.cast(targets, TIP, G.ring);
+          G.ab.cast(targets, TIP, G.ring, G.arm);
           next.set(G.ab, G.ab.cooldown/power); last.set(G.ab, clock);
           G.phase = 'hold'; G.t = 0;
         }
       }
     } else if (G.phase === 'hold') {
       G.t += dt;
+      // a channelled power (the beam) keeps his hand up, following its head, until it ends
+      if (G.ab.busy && G.ab.busy()) { G.t = 0; const p = G.ab.aim_point(); if (p) G.point.copy(p); }
       if (G.t >= HOLD) { G.phase = 'lower'; G.t = 0; }
     } else if (G.phase === 'lower') {
       G.t += dt;
-      if (G.t >= LOWER) { G.phase = 'idle'; G.t = 0; G.ab = null; }
+      // lowering his arm gives way at once to something about to reach the egg
+      if (G.t >= LOWER || urgent.size) { G.phase = 'idle'; G.t = 0; G.ab = null; }
     }
     // head and hand
     if (G.phase === 'aim') { G.w = Math.min(1, G.w + dt/0.12); G.pw = Math.min(1, G.pw + dt/(G.quick ? 0.12 : 0.22)); }
@@ -147,7 +153,13 @@ export function create_powers(ctx) {
     // --- the lens: no gesture; it forms when a snake comes close
     if (on.get(lens)) {
       const lone = !gestured.length;
-      if (next.get(lens) <= 0 || (lone && urgent.size)) {
+      const rush = lone && [...urgent].filter(s => !(s.claim === 'LENS-QUICK' && s.claim_until > clock));
+      if (rush && rush.length) {
+        // alone and something is about to reach the egg: a lens that fires at once
+        const targets = rush.slice(0, lens.free_lenses());
+        for (const s of targets) claim(s, 'LENS-QUICK', 1.2);
+        lens.cast(targets, true);
+      } else if (next.get(lens) <= 0) {
         const th = threats(LENS_ENGAGE);
         const n = Math.min(lens.capacity(power), lens.free_lenses(), th.length);
         if (n > 0) {
@@ -165,7 +177,7 @@ export function create_powers(ctx) {
   }
 
   return {
-    ALL, tick,
+    ALL, tick, beam, lens,
     get power() { return power; },
     is_on: a => on.get(a),
     toggle(i) { const a = ALL[i]; if (a) on.set(a, !on.get(a)); return a && on.get(a); },

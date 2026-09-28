@@ -18,6 +18,8 @@ import { create_snakes } from 'game/snakes.js';
 import { create_fire } from 'game/fire.js';
 import { create_fx } from 'game/fx.js';
 import { create_powers } from 'game/powers.js';
+import { CHAIN_MODES } from 'game/beam.js';
+import { LENS_LOOKS } from 'game/lens.js';
 import { build_nav } from 'game/nav.js';
 import { create_mover, MOVE } from 'game/mover.js';
 import { draw_text } from 'game/hud_font.js';
@@ -195,6 +197,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyG') lich.glow = lich.glow + 1;
   if (e.code === 'KeyR') lich.pattern = lich.pattern + 1;
   if (e.code === 'KeyF') fire.look = fire.look + 1;
+  if (e.code === 'KeyC') powers.beam.mode = powers.beam.mode + 1;
+  if (e.code === 'KeyL') powers.lens.look = powers.lens.look + 1;
   const pk = /^(Digit|Numpad)([0-9])$/.exec(e.code);
   if (pk && POWER_KEYS.includes(pk[2])) powers.toggle(POWER_KEYS.indexOf(pk[2]));
   if (e.code === 'KeyB') { G.dark = (G.dark + 1) % cave.DARK.length; cave.set_darkness(G.dark); }
@@ -237,7 +241,9 @@ function draw_hud() {
   const ink = 'rgba(8,6,5,0.85)';
   draw_text(hud, `${G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
-  draw_text(hud, `F FIRE: ${fire.LOOKS[fire.look].name}`, 8, R.H - 70, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `C BEAM CHAIN: ${CHAIN_MODES[powers.beam.mode]}`, 8, R.H - 92, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `L LENS BEAM: ${LENS_LOOKS[powers.lens.look]}`, 8, R.H - 81, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `F FIRE: ${fire.LOOKS[fire.look].name}`, 8, R.H - 70, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `J FLOATINESS: ${lich.JUICE[lich.juice].name}`, 8, R.H - 59, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `R PRISM PATTERN: ${lich.PATTERNS[lich.pattern]}`, 8, R.H - 48, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `G OUT OF THE LIGHT: ${lich.GLOWS[lich.glow].name}`, 8, R.H - 37, '#a8987c', 1, 'left', null, ink);
@@ -251,7 +257,7 @@ function draw_hud() {
   draw_text(hud, `EACH POWER X${powers.power.toFixed(1)}`, R.W - 8, 8 + 6*11 + 3, '#a8987c', 1, 'right', null, ink);
   draw_text(hud, `REACHED THE EGG: ${snakes.reached}`, R.W - 8, 8 + 7*11 + 3, snakes.reached ? '#e0a070' : '#a8987c', 1, 'right', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 CAMERA   5-0 POWERS   F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 CAMERA   5-0 POWERS   C L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
@@ -358,6 +364,8 @@ window.GAME = {
   // powers: set which are on (a list of 6 booleans), read the director, force one now
   powers(list) { if (list) list.forEach((v, i) => powers.set(i, v)); return powers.state(); },
   force(i, x, z) { return powers.force(i, x, z); },
+  beam_mode(m) { powers.beam.mode = m; return CHAIN_MODES[powers.beam.mode]; },
+  lens_look(m) { powers.lens.look = m; return LENS_LOOKS[powers.lens.look]; },
   reached() { return snakes.reached; },
   // tests: advance (no rendering) until a condition holds, at most `max` ticks; returns ticks run
   until(src, max = 3600) { const f = new Function('G', 'return (' + src + ');'); let n = 0; while (n < max && !f(G)) { tick(); place_camera(DT); n++; } render(n*DT); return n; },

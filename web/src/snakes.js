@@ -171,6 +171,7 @@ uniform float uSnakeT;`)
   // gone (burst, shattered, dissolved, ...): out of sight until it comes back out of the dark
   const respawn = (s) => spawn(s, rng.float(RESPAWN[0], RESPAWN[1]));
   let reached = 0;
+  const reach_log = [];               // tests: what each one that got through was doing
 
   const P = [], T = new THREE.Vector3(), Nn = new THREE.Vector3(), Bn = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
   const RK = new Float32Array(RINGS), GL = new Float32Array(RINGS), SH = [0, 0, 0];
@@ -211,7 +212,7 @@ uniform float uSnakeT;`)
         const last = s.trail[0];
         if (Math.hypot(s.x - last[0], s.z - last[1]) > 0.01) s.trail.unshift([s.x, s.z]);
         if (s.trail.length > 600) s.trail.length = 600;
-        if (Math.hypot(s.x - egg.x, s.z - egg.z) < 1.1) { s.dying = 0; reached++; }   // it reached the egg (placeholder: it shrinks away)
+        if (Math.hypot(s.x - egg.x, s.z - egg.z) < 1.1) { s.dying = 0; reached++; reach_log.push({ t: +t.toFixed(2), claim: s.claim, until: s.claim_until, leak: +s.leak.toFixed(2), speed: s.speed }); }   // it reached the egg (placeholder: it shrinks away)
       }
       if (s.leak >= 1.12 && !s.burn && s.sink < 0) { respawn(s); continue; }   // dissolved into nothing
       build(s);
@@ -319,5 +320,5 @@ uniform float uSnakeT;`)
   const free = s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0 && !s.fx;
   const live = () => S.filter(free);
   function set_ember(c) { uEmber.value.setRGB(c[0], c[1], c[2]); }
-  return { update, S, ignite, take, live, free, set_ember, respawn, RINGS, egg, get reached() { return reached; } };
+  return { update, S, ignite, take, live, free, set_ember, respawn, RINGS, egg, reach_log, get reached() { return reached; } };
 }
