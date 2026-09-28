@@ -106,9 +106,12 @@ uniform float uSnakeT;`)
     float c2 = abs(sin(cu.x*12.57 + cu.y*3.1 + sin(cu.y*5.0)));
     float crack = smoothstep(0.24, 0.0, min(c1, c2));
     totalEmissiveRadiance += uEmber*vBurn.y*(0.03 + 0.8*crack);
-    // prismatic light inside it (beam, leakage): a pale shimmer running with a rainbow
+    // prismatic light inside it (beam, leakage): a shimmer running with a rainbow. Round 18: in
+    // the lich's colours (the beam's: smooth spectrum, a little grey, normalised) and dim enough
+    // not to roll off to white on screen (it was a white snake beside a rainbow beam)
     vec3 hue = clamp(abs(fract(cu.y*0.35 + cu.x + uSnakeT*0.3 + vec3(0.0, 0.6667, 0.3333))*6.0 - 3.0) - 1.0, 0.0, 1.0);
-    totalEmissiveRadiance += mix(vec3(1.0), hue, 0.6)*vBurn.z*vBurn.z*1.6;
+    hue = mix(hue*hue*(3.0 - 2.0*hue), vec3(0.5), 0.16); hue /= max((hue.r + hue.g + hue.b)/3.0, 0.2);
+    totalEmissiveRadiance += mix(vec3(1.0), hue, 0.8)*vBurn.z*vBurn.z*0.8;
   }`)
         .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
   {

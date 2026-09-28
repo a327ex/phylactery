@@ -192,6 +192,8 @@ export function create_powers(ctx) {
 
   return {
     ALL, tick, beam, lens,
+    // after he is posed each tick: what leaves his hand follows it (round 18: the beam was a tick behind)
+    after_pose(t) { beam.after_pose(t); },
     get power() { return power; },
     is_on: a => on.get(a),
     toggle(i) { const a = ALL[i]; if (a) on.set(a, !on.get(a)); return a && on.get(a); },
