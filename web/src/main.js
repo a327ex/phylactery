@@ -275,6 +275,34 @@ window.GAME = {
   hud(on) { G.hud = !!on; render(0); return G.hud; },
   place(x, z, yaw) { mover.place(x, z, yaw); F.copy(L); render(0); return [x, z]; },
   juice(i) { lich.juice = i; return lich.JUICE[lich.juice].name; },
+  // the light arriving on his bones (per unit albedo), read back from the linear world target:
+  // [direct, bounce] medians and 90th percentiles over his visible pixels
+  gem_probe() {
+    const U = lich.mat.userData.gemU;
+    U.uGemDebug.value = 1; render(0);
+    const rt = R.targets.rt_world, buf = new Uint16Array(R.W*R.H*4);
+    R.renderer.readRenderTargetPixels(rt, 0, 0, R.W, R.H, buf);
+    U.uGemDebug.value = 0; render(0);
+    // and what the screen shows there (the final 8-bit image): mean brightness and colourfulness
+    const fin = new Uint8Array(R.W*R.H*4);
+    R.renderer.readRenderTargetPixels(R.targets.rt_final, 0, 0, R.W, R.H, fin);
+    const f16 = h => { const s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 31, m = h & 1023; return e === 0 ? s*m*Math.pow(2, -24) : e === 31 ? NaN : s*(1 + m/1024)*Math.pow(2, e - 15); };
+    const d = [], b = [];
+    for (let i = 0; i < R.W*R.H; i++) if (f16(buf[i*4 + 2]) > 700) { d.push(f16(buf[i*4])); b.push(f16(buf[i*4 + 1])); }
+    const q = (a, t) => { a.sort((x, y) => x - y); return +(a[Math.floor((a.length - 1)*t)] || 0).toFixed(4); };
+    let lum = 0, sat = 0, n = 0, hx = 0, hy = 0;
+    for (let i = 0; i < R.W*R.H; i++) if (f16(buf[i*4 + 2]) > 700) {
+      const r = fin[i*4]/255, g = fin[i*4 + 1]/255, bb = fin[i*4 + 2]/255, mx = Math.max(r, g, bb), mn = Math.min(r, g, bb);
+      const sv = mx > 0.02 ? (mx - mn)/mx : 0;
+      lum += 0.2126*r + 0.7152*g + 0.0722*bb; sat += sv; n++;
+      // hue as an angle, weighted by saturation: a rainbow spreads, one tint doesn't
+      if (mx - mn > 1e-3) {
+        let h = mx === r ? (g - bb)/(mx - mn) : mx === g ? 2 + (bb - r)/(mx - mn) : 4 + (r - g)/(mx - mn);
+        h *= Math.PI/3; hx += sv*Math.cos(h); hy += sv*Math.sin(h);
+      }
+    }
+    return { px: d.length, direct: [q(d, 0.5), q(d, 0.9)], bounce: [q(b, 0.5), q(b, 0.9)], screen_lum: +(lum/n).toFixed(3), screen_sat: +(sat/n).toFixed(3), hue_spread: +(1 - Math.hypot(hx, hy)/Math.max(sat, 1e-6)).toFixed(3) };
+  },
   glow(i) { lich.glow = i; render(0); return lich.GLOWS[lich.glow].name; },
   mode(m) { lich.mode = m; render(0); return lich.MODES[lich.mode]; },
   dark(i) { G.dark = i; const n = cave.set_darkness(i); render(0); return n; },
