@@ -4,20 +4,20 @@
 //
 // Round 14 (owner: the effect is right, but the lens "looks like a slab of concrete instead of
 // glass. It should look transparent like glass but still visible. The way the light converges
-// on it should also feel a bit more realistic. The glass forms from the Lich's mind, light
-// converges on it, then the attack starts charging." And it hit tails: "It should aim for
-// either cutting the head off or middle"):
-//   FORM      glints stream from his skull up into the shaft and the glass crystallizes where
-//             they end: real transmissive glass (it bends what is behind it, a little spectral
-//             spread, glints where the sun catches it, a faint rim so it reads in the dark; it
-//             casts its shadow into the shaft like a real lens would)
-//   CONVERGE  as a magnifying glass does: the sunlight it gathers comes down as a cone to a
-//             wide soft patch on the floor beside the snake, and the patch tightens to a blinding
-//             point, brighter as it shrinks (the same light on less floor), and starts to smoke;
-//             the focus follows the snake while it crawls
-//   FIRE      the focus becomes the laser (round 13's beam: L = fire laser / prism in fire) and
-//             sweeps across the snake from right beside it, at its neck (the head comes off) or
-//             its middle; tails are never cut
+// on it should also feel a bit more realistic." And it hit tails: "It should aim for either
+// cutting the head off or middle"). Round 15 (owner: no glints leading into it; the light from
+// above and the converging light together, then the beam fires "as both lights disappear"):
+//   FORM      the glass crystallizes in the shaft: real transmissive glass (it bends what is
+//             behind it, a little spectral spread, glints where the sun catches it, a faint rim
+//             so it reads in the dark; it casts its shadow into the shaft like a real lens)
+//   CONVERGE  both lights at once: the sunlight coming down the shaft into it from above, and,
+//             as a magnifying glass does, the light it gathers coming out as a cone to a wide
+//             soft patch on the floor beside the snake that tightens to a blinding point,
+//             brighter as it shrinks (the same light on less floor), and starts to smoke; the
+//             focus follows the snake while it crawls
+//   FIRE      both lights go out as the focus becomes the laser (round 13's beam: L = fire laser
+//             / prism in fire), sweeping across the snake from right beside it, at its neck (the
+//             head comes off) or its middle; tails are never cut
 //   END       the beam thins out, the glass dissolves into glints
 // Cut halves part charred and smoking, twitch, and sink into the ground. With fewer powers
 // left, several lenses form at once.
@@ -25,19 +25,19 @@ import * as THREE from 'three';
 import { smoothstep } from 'game/util.js';
 import { LAYOUT } from 'game/cave.js';
 
-const FORM = 0.55, CONVERGE = 0.8, SPEED = 3.0, SWEEP = 2.6, LEAD = 0.35, OFF = 0.2, FADE = 0.45, CUT_R = 0.13;
+const FORM = 0.4, CONVERGE = 0.8, SPEED = 3.0, SWEEP = 2.6, LEAD = 0.35, OFF = 0.2, FADE = 0.45, CUT_R = 0.13;
 const LENS_R = 0.38;
+const LIGHTS_OFF = 0.15;             // the cone and the light from above go out this fast as it fires
 // where a cut may fall: from just behind the snout back to here (metres along the body); past
 // it, the tail
 const CUT_MAX = 2.6;
 export const LENS_LOOKS = ['FIRE LASER (TITAN, PHRIKE)', 'THE PRISMATIC BEAM, IN FIRE'];
 
 export function create_lens(ctx) {
-  const { R, snakes, fx, cave, rng, lich } = ctx;
+  const { R, snakes, fx, cave, rng } = ctx;
   const N = snakes.RINGS;
   const S = LAYOUT.sun_dir, sxz = new THREE.Vector2(S.x/S.y, S.z/S.y);
   const axis_at = h => new THREE.Vector3(sxz.x*h, h, sxz.y*h);
-  const H = new THREE.Vector3();
 
   // ---------------------------------------------------------------- the glass
   const geo = new THREE.SphereGeometry(1, 40, 16);
@@ -189,8 +189,7 @@ export function create_lens(ctx) {
     const ring = Math.max(1, Math.round(snakes.ring_at(Math.max(0.05, cut_at - 0.18))));
     const h = rng.float(3.8, 6.0) + k*0.4;
     const pos = axis_at(h).add(new THREE.Vector3(rng.spread(0.8), 0, rng.spread(0.8)));
-    lich.head_pos(H);
-    const q = { L, s, ring, t: quick ? FORM + CONVERGE - 0.12 : 0, pos, from: H.clone(), side: rng.sign(),
+    const q = { L, s, ring, t: quick ? FORM + CONVERGE - 0.12 : 0, pos, side: rng.sign(),
       spot: new THREE.Vector3(), a: new THREE.Vector3(), b: new THREE.Vector3(), fired: false, core: null, sky: null,
       light: LIGHTS.find(x => !x.lens), dur: SWEEP/SPEED };
     if (q.light) q.light.lens = q;
@@ -214,27 +213,8 @@ export function create_lens(ctx) {
       const L = q.L, m = L.m, U = m.material.userData.U;
       const t_form = q.t/FORM, t_conv = (q.t - FORM)/CONVERGE, sweep_t = q.t - FORM - CONVERGE;
       const gone = smoothstep(q.dur + OFF, q.dur + OFF + FADE, sweep_t);
-      // FORM: glints stream from his skull to the spot, and the glass crystallizes there
-      if (q.t < FORM) {
-        lich.head_pos(H); q.from.copy(H);
-        const u = Math.min(1, q.t/(FORM*0.65));
-        const mid = q.from.clone().lerp(q.pos, 0.5).add(new THREE.Vector3(0, 1.2, 0));
-        const bez = (w) => q.from.clone().multiplyScalar((1 - w)*(1 - w)).addScaledVector(mid, 2*w*(1 - w)).addScaledVector(q.pos, w*w);
-        for (let k = 0; k < 6; k++) {
-          const w = Math.max(0, u - rng.next()*0.3), p = bez(w);
-          fx.mote({ x: p.x + rng.spread(0.04), y: p.y + rng.spread(0.04), z: p.z + rng.spread(0.04), vx: rng.spread(0.15), vy: rng.spread(0.15), vz: rng.spread(0.15),
-            life: rng.float(0.25, 0.5), s0: 0.045, s1: 0.012, r: 2.6, g: 2.6, b: 2.8, hue: rng.next(), hr: 1, fin: 0.05 });
-        }
-        // a thin thread of his thought along the way, just behind the glints
-        const a0 = bez(Math.max(0, u - 0.35)), a1 = bez(u);
-        fx.ribbon(a0, a1, { c: [1.6, 1.6, 1.8], w: 1.2, hue: rng.next(), life: 0.08, a: 0.8 });
-        if (u >= 1 && !q.formed) {
-          q.formed = true;
-          for (let k = 0; k < 24; k++) fx.mote({ x: q.pos.x, y: q.pos.y, z: q.pos.z, vx: rng.spread(1.2), vy: rng.spread(0.6), vz: rng.spread(1.2), drag: 3,
-            life: rng.float(0.2, 0.45), s0: 0.03, s1: 0.01, r: 2.4, g: 2.4, b: 2.6, hue: rng.next(), hr: 1 });
-        }
-      }
-      const grow = smoothstep(FORM*0.55, FORM, q.t);
+      // FORM: the glass crystallizes in the shaft
+      const grow = smoothstep(0, FORM, q.t);
       const size = LENS_R*grow*(1 - 0.4*gone);
       m.scale.set(size, size, size);
       m.visible = size > 0.004 && gone < 0.999;
@@ -261,14 +241,22 @@ export function create_lens(ctx) {
       }
       // it faces the focus
       m.lookAt(q.spot); m.rotateX(Math.PI/2);
+      // the sunlight it gathers, coming down the shaft into it from above: it appears with the
+      // cone (round 15, owner: the two lights together while it converges, both gone as it fires)
+      if (t_conv >= 0 && sweep_t < LIGHTS_OFF) {
+        const top = lp.clone().addScaledVector(S, 2.5);
+        if (!q.sky) q.sky = fx.ribbon(top, lp, { held: true, style: 0, c: [1.2, 1.1, 0.8], w: 16, a: 0 });
+        q.sky.p0.copy(top); q.sky.p1.copy(lp);
+        q.sky.a = 0.16*smoothstep(0, 0.4, t_conv)*(sweep_t > 0 ? 1 - sweep_t/LIGHTS_OFF : 1);
+      } else if (q.sky) { fx.release(q.sky); q.sky = null; }
       // CONVERGE: the cone of gathered light and its patch on the floor, tightening
       const conv = t_conv < 0 ? 0 : t_conv >= 1 ? 1 : t_conv;
-      const on_c = t_conv >= 0 && sweep_t < 0.08;
+      const on_c = t_conv >= 0 && sweep_t < LIGHTS_OFF;
       L.cone.visible = on_c; L.patch.visible = on_c;
       if (on_c) {
         const rf = 0.03 + 0.9*Math.pow(1 - conv, 1.6);                         // the patch: wide and soft to a point
         const bright = Math.min(60, (LENS_R*LENS_R)/(rf*rf));                   // the same light on less floor
-        const fadec = smoothstep(0, 0.2, t_conv)*(sweep_t > 0 ? 1 - sweep_t/0.08 : 1);
+        const fadec = smoothstep(0, 0.2, t_conv)*(sweep_t > 0 ? 1 - sweep_t/LIGHTS_OFF : 1);
         // the lens's rim in its own plane, and the patch's rim on the floor
         const nrm = new THREE.Vector3().subVectors(q.spot, lp).normalize();
         const e1 = new THREE.Vector3().crossVectors(nrm, new THREE.Vector3(0, 1, 0)); if (e1.lengthSq() < 1e-6) e1.set(1, 0, 0); e1.normalize();
@@ -301,10 +289,8 @@ export function create_lens(ctx) {
         const k_off = sweep_t <= q.dur ? 1 : 1 - (sweep_t - q.dur)/OFF;
         const pop = 1 + 0.6*Math.exp(-sweep_t*18);
         const flick = 1 + 0.12*Math.sin(t*57 + i) + 0.07*Math.sin(t*83 + i*3);
-        const top = lp.clone().addScaledVector(S, 2.5);
         if (!q.core) {
           q.core = fx.ribbon(lp, q.spot, { held: true, style: look === 0 ? 2 : 3, w: 2, w0: 0.1, w1: 0.1 });
-          q.sky = fx.ribbon(top, lp, { held: true, style: 0, c: [1.2, 1.1, 0.8], w: 16, a: 0.12 });
           fx.mote({ x: lp.x, y: lp.y, z: lp.z, life: 0.12, s0: 0.9, s1: 0.4, r: 4, g: 3.2, b: 1.8, fin: 0.01 });
           fx.mote({ x: q.spot.x, y: q.spot.y + 0.05, z: q.spot.z, life: 0.14, s0: 1.0, s1: 0.5, r: 4, g: 2.4, b: 0.8, fin: 0.01 });
           for (let k = 0; k < 24; k++) {
@@ -316,7 +302,6 @@ export function create_lens(ctx) {
         q.core.p0.copy(lp); q.core.p1.copy(q.spot);
         if (look === 0) { q.core.w0 = 0.22*w; q.core.w1 = 0.16*w; } else { q.core.w0 = 0.03*w; q.core.w1 = 0.24*w; }
         q.core.a = k_off; q.core.c = look === 0 ? [1, 1, 1] : [1.1, 1.0, 0.9];
-        q.sky.p0.copy(top); q.sky.p1.copy(lp); q.sky.a = 0.12*k_off;
         // sparks shed along its length
         for (let k = 0; k < 2; k++) {
           const e = rng.next(), p = lp.clone().lerp(q.spot, e);

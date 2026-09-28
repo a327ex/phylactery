@@ -27,7 +27,7 @@ import { create_beam } from 'game/beam.js';
 import { create_lens } from 'game/lens.js';
 import { create_leak } from 'game/leak.js';
 
-export const ENGAGE = 3.4, URGENT = 2.2, LENS_ENGAGE = 6.0;             // the lens takes ~1.5 s from forming to cutting
+export const ENGAGE = 3.4, URGENT = 2.6, LENS_ENGAGE = 6.0;             // the lens takes ~1.5 s from forming to cutting
 const AIM_MIN = 0.3, AIM_MAX = 0.55, QUICK_MIN = 0.12, QUICK_MAX = 0.28, ON_T = 0.08, HOLD = 0.45, LOWER = 0.3;
 
 export function create_powers(ctx) {
@@ -136,8 +136,14 @@ export function create_powers(ctx) {
     } else if (G.phase === 'hold') {
       G.t += dt;
       // a channelled power (the beam) keeps his hand up, following its head, until it ends
-      if (G.ab.busy && G.ab.busy()) { G.t = 0; const p = G.ab.aim_point(); if (p) G.point.copy(p); }
-      if (G.t >= HOLD) { G.phase = 'lower'; G.t = 0; }
+      const channel = G.ab.busy && G.ab.busy();
+      if (channel) { G.t = 0; const p = G.ab.aim_point(); if (p) G.point.copy(p); }
+      // something about to reach the egg: a channel takes it on; any other hold gives way at once
+      if (urgent.size) {
+        if (channel && G.ab.extend) G.ab.extend([...urgent]);
+        else if (!channel) { G.phase = 'idle'; G.t = 0; G.ab = null; }
+      }
+      if (G.phase === 'hold' && G.t >= HOLD) { G.phase = 'lower'; G.t = 0; }
     } else if (G.phase === 'lower') {
       G.t += dt;
       // lowering his arm gives way at once to something about to reach the egg

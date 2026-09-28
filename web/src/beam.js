@@ -160,6 +160,16 @@ export function create_beam(ctx) {
       ch.segs.push(new_seg(TIP));
     },
     update,
+    // take on more while it channels (a snake about to reach the egg): they join the end of the chain
+    extend(more) {
+      if (!ch) return;
+      for (const s of more) {
+        if (!snakes.free(s) || ch.targets.some(q => q.s === s)) continue;
+        snakes.take(s, { placeholder: true, tick() { } });
+        ch.targets.push({ s, ring: hit_ring() });
+        if (ch.phase === 'end') { ch.phase = mode === 0 ? 'move' : 'shoot'; ch.pt = 0; if (mode === 1) ch.segs.push(new_seg(ch.head)); }
+      }
+    },
     // while it channels, his hand follows the head of the beam
     busy: () => !!ch,
     aim_point: () => (ch ? ch.head : null),
