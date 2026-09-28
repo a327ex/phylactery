@@ -20,6 +20,12 @@
 //   further and works faster).
 // - A snake that gets within URGENT of the egg with nothing on it forces a cast now (cooldown
 //   ignored, a quicker aim), whichever power is left. With no powers left, they reach the egg.
+// - Round 20 (owner: "When you have N attacks active they should keep the snakes away but be used
+//   roughly equally"; with the beam and the lens the lens took 31 casts of 31, because it forms
+//   at 6 m, in parallel, before the gestured powers engage at 3.4 m): one rotation for every
+//   power that acts (all but leakage, which is always on): a power goes only when no other power
+//   that is ready, or nearly (under SOON s of cooldown left), has been used fewer times since
+//   the set of powers last changed. Something about to reach the egg skips the rotation.
 import * as THREE from 'three';
 import { create_lift } from 'game/lift.js';
 import { create_wind } from 'game/wind.js';
@@ -34,13 +40,19 @@ const ON_T = 0.08, HOLD = 0.45, LOWER = 0.3;
 // once his head is on the spot and his arm has arrived (its swing below ARRIVE rad/s), after a
 // beat of stillness; at most AIM_MAX after the aim starts. Something about to reach the egg: a
 // looser arrival and a shorter beat.
-const ARRIVE = 0.7, BEAT = 0.2, AIM_MAX = 1.2, QUICK_ARRIVE = 1.6, QUICK_BEAT = 0.08, QUICK_MAX = 0.45;
+// Round 20 (owner): the beat 0.15 s ("a tad too long"); fire's own 0.05 s ("that one should be quick").
+const ARRIVE = 0.7, BEAT = 0.15, AIM_MAX = 1.2, QUICK_ARRIVE = 1.6, QUICK_BEAT = 0.08, QUICK_MAX = 0.45;
+const SOON = 1.5;
+// round 20: with a snake waiting, he goes from one gesture to the next without lowering his arm,
+// after holding this long (the hand, shared by the gestured powers, was the bottleneck: with
+// five powers the lens made up for it and was used twice as much)
+const HOLD_CHAIN = 0.2;
 
 export function create_powers(ctx) {
   const { snakes, fire, lich, mover, egg, get_L, rng } = ctx;
   const N = snakes.RINGS;
   const FIRE = {
-    name: 'FIRE', gesture: true, cooldown: 5.0,
+    name: 'FIRE', gesture: true, cooldown: 5.0, beat: 0.05,
     capacity: p => Math.ceil(p/2),
     aim_ring: () => Math.round(N*rng.float(0.15, 0.75)),
     cast(targets, from, ring) {
@@ -55,6 +67,13 @@ export function create_powers(ctx) {
   const on = new Map(ALL.map(a => [a, true]));
   const next = new Map(ALL.map(a => [a, 1.0])), last = new Map(ALL.map((a, i) => [a, -10 + i]));
   let clock = 0, power = 1;
+  // tests: how many times each power was used, and how many snakes each took (leakage: dissolved)
+  const uses = new Map(ALL.map(a => [a, 0])), took = new Map(ALL.map(a => [a, 0]));
+  // the rotation: uses since the set of powers last changed
+  const fair = new Map(ALL.map(a => [a, 0]));
+  const count = (a, n) => { uses.set(a, uses.get(a) + 1); took.set(a, took.get(a) + n); fair.set(a, fair.get(a) + 1); };
+  const reset_fair = () => { for (const a of ALL) fair.set(a, 0); };
+  let quick_lens = 0;                 // tests: lenses fired at once, for something about to reach the egg
   const G = { phase: 'idle', ab: null, targets: [], t: 0, on_t: 0, arm: 1, ring: 0, primary: null, quick: false, w: 0, pw: 0, point: new THREE.Vector3() };
   const TIP = new THREE.Vector3();
   // a lens forms from his mind: when his hands are free he glances up at it while it forms
@@ -99,25 +118,35 @@ export function create_powers(ctx) {
     // about to reach the egg with nothing on it yet (claimed or not: a claim can be too slow)
     const urgent = new Set(snakes.S.filter(s => snakes.free(s) && d_egg(s) < URGENT));
     const gestured = actives.filter(a => a.gesture);
+    lift.update();
+    // whose turn: the fewest uses among the powers that are ready or nearly
+    const acting = actives.filter(a => a !== leak);
+    let low = Infinity;
+    for (const a of acting) if (next.get(a) < SOON && (a !== lens || lens.free_lenses() > 0)) low = Math.min(low, fair.get(a));
+    const turn = a => fair.get(a) <= low;
 
     // --- the gestured powers, one at a time
-    if (G.phase === 'idle') {
+    // the next gesture, if there is something to take and a power whose turn it is
+    const try_gesture = () => {
       const th = threats(ENGAGE);
-      if ((th.length || urgent.size) && gestured.length) {
-        let ready = gestured.filter(a => next.get(a) <= 0);
-        const quick = urgent.size > 0;
-        if (!ready.length && quick) {
-          // something is about to reach the egg: whichever power is soonest goes now
-          const a = gestured.reduce((x, y) => (next.get(x) <= next.get(y) ? x : y));
-          next.set(a, 0); ready = [a];
-        }
-        if (ready.length) {
-          const ab = ready.reduce((x, y) => (last.get(x) <= last.get(y) ? x : y));
-          const first = quick ? [...urgent].sort((a, b) => d_egg(a) - d_egg(b)) : [];
-          const pick = [...first, ...th.filter(s => !urgent.has(s))];
-          start_gesture(ab, pick.slice(0, Math.max(1, ab.capacity(power))), quick);
-        }
+      if (!(th.length || urgent.size) || !gestured.length) return false;
+      const quick = urgent.size > 0;
+      let ready = gestured.filter(a => next.get(a) <= 0 && (quick || turn(a)));
+      if (!ready.length && quick) {
+        // something is about to reach the egg: whichever power is soonest goes now
+        const a = gestured.reduce((x, y) => (next.get(x) <= next.get(y) ? x : y));
+        next.set(a, 0); ready = [a];
       }
+      if (!ready.length) return false;
+      // the least used, then the least recently used
+      const ab = ready.reduce((x, y) => (fair.get(x) < fair.get(y) || (fair.get(x) === fair.get(y) && last.get(x) <= last.get(y)) ? x : y));
+      const first = quick ? [...urgent].sort((a, b) => d_egg(a) - d_egg(b)) : [];
+      const pick = [...first, ...th.filter(s => !urgent.has(s))];
+      start_gesture(ab, pick.slice(0, Math.max(1, ab.capacity(power))), quick);
+      return true;
+    };
+    if (G.phase === 'idle') {
+      try_gesture();
     } else if (G.phase === 'aim') {
       G.t += dt;
       const s = G.primary;
@@ -132,17 +161,19 @@ export function create_powers(ctx) {
         G.on_t = Math.abs(reach - (S.hy.x + S.cy.x)) < 0.12 ? G.on_t + dt : 0;
         const arrived = G.pw >= 1 && G.on_t >= ON_T && lich.arm_speed(G.arm) < (G.quick ? QUICK_ARRIVE : ARRIVE);
         G.still = arrived ? G.still + dt : 0;
-        if (G.still >= (G.quick ? QUICK_BEAT : BEAT) || G.t >= (G.quick ? QUICK_MAX : AIM_MAX)) {
+        const beat = Math.min(G.ab.beat ?? BEAT, G.quick ? QUICK_BEAT : 9);
+        if (G.still >= beat || G.t >= (G.quick ? QUICK_MAX : AIM_MAX)) {
           const targets = G.targets.filter(q => snakes.free(q));
           lich.fingertip(G.arm, TIP);
           G.ab.cast(targets, TIP, G.ring, G.arm);
+          count(G.ab, targets.length);
           next.set(G.ab, G.ab.cooldown/power); last.set(G.ab, clock);
           G.phase = 'hold'; G.t = 0;
         }
       }
     } else if (G.phase === 'hold') {
       G.t += dt;
-      // a channelled power (the beam) keeps his hand up, following its head, until it ends
+      // a channelled power (the beam; the lift, round 20) keeps his hand up, following it, until it ends
       const channel = G.ab.busy && G.ab.busy();
       if (channel) { G.t = 0; const p = G.ab.aim_point(); if (p) G.point.copy(p); }
       // something about to reach the egg: a channel takes it on; any other hold gives way at once
@@ -150,11 +181,14 @@ export function create_powers(ctx) {
         if (channel && G.ab.extend) G.ab.extend([...urgent]);
         else if (!channel) { G.phase = 'idle'; G.t = 0; G.ab = null; }
       }
-      if (G.phase === 'hold' && G.t >= HOLD) { G.phase = 'lower'; G.t = 0; }
+      // the next one waiting: straight on to it, the arm never lowered
+      if (G.phase === 'hold' && !channel && G.t >= HOLD_CHAIN && try_gesture()) { }
+      else if (G.phase === 'hold' && G.t >= HOLD) { G.phase = 'lower'; G.t = 0; }
     } else if (G.phase === 'lower') {
       G.t += dt;
-      // lowering his arm gives way at once to something about to reach the egg
-      if (G.t >= LOWER || urgent.size) { G.phase = 'idle'; G.t = 0; G.ab = null; }
+      // lowering his arm gives way at once to the next gesture, or to something about to reach the egg
+      if (try_gesture()) { }
+      else if (G.t >= LOWER || urgent.size) { G.phase = 'idle'; G.t = 0; G.ab = null; }
     }
     // head and hand
     if (G.phase === 'aim') { G.w = Math.min(1, G.w + dt/0.12); G.pw = Math.min(1, G.pw + dt/(G.quick ? 0.12 : 0.22)); }
@@ -173,19 +207,24 @@ export function create_powers(ctx) {
     // --- the lens: no gesture; it forms when a snake comes close
     if (on.get(lens)) {
       const lone = !gestured.length;
-      const rush = lone && [...urgent].filter(s => !(s.claim === 'LENS-QUICK' && s.claim_until > clock));
+      // something about to reach the egg that his hand can't take now (he has no gestured power,
+      // or he is already aiming at another; a hold or a lowering gives way to it, a channel
+      // takes it on): a lens that fires at once
+      const busy_hand = G.phase === 'aim';
+      const rush = (lone || busy_hand) && [...urgent].filter(s => !(s.claim === 'LENS-QUICK' && s.claim_until > clock) && !(busy_hand && G.targets.includes(s)));
       if (rush && rush.length) {
-        // alone and something is about to reach the egg: a lens that fires at once
         const targets = rush.slice(0, lens.free_lenses());
         for (const s of targets) claim(s, 'LENS-QUICK', 1.2);
         lens.cast(targets, true);
-      } else if (next.get(lens) <= 0) {
+        if (targets.length) { count(lens, targets.length); quick_lens++; }
+      } else if (next.get(lens) <= 0 && turn(lens)) {
         const th = threats(LENS_ENGAGE);
         const n = Math.min(lens.capacity(power), lens.free_lenses(), th.length);
         if (n > 0) {
           const targets = th.slice(0, n);
           for (const s of targets) claim(s, 'LENS', 2.6);
           const at = lens.cast(targets);
+          count(lens, targets.length);
           if (at.length) { LOOK.p.copy(at[0]); LOOK.t = 0; }
           next.set(lens, lens.cooldown/power); last.set(lens, clock);
         }
@@ -203,9 +242,12 @@ export function create_powers(ctx) {
     after_pose(t) { beam.after_pose(t); },
     get power() { return power; },
     is_on: a => on.get(a),
-    toggle(i) { const a = ALL[i]; if (a) on.set(a, !on.get(a)); return a && on.get(a); },
-    set(i, v) { const a = ALL[i]; if (a) on.set(a, !!v); },
-    state: () => ({ phase: G.phase, ab: G.ab && G.ab.name, t: +G.t.toFixed(2), power: +power.toFixed(2), on: ALL.filter(a => on.get(a)).map(a => a.name), next: ALL.map(a => +next.get(a).toFixed(2)), leak_reach: +leak.reach.toFixed(1) }),
+    toggle(i) { const a = ALL[i]; if (a) { on.set(a, !on.get(a)); reset_fair(); } return a && on.get(a); },
+    set(i, v) { const a = ALL[i]; if (a && on.get(a) !== !!v) { on.set(a, !!v); reset_fair(); } },
+    state: () => ({ phase: G.phase, ab: G.ab && G.ab.name, t: +G.t.toFixed(2), power: +power.toFixed(2), on: ALL.filter(a => on.get(a)).map(a => a.name), next: ALL.map(a => +next.get(a).toFixed(2)), leak_reach: +leak.reach.toFixed(1),
+      uses: Object.fromEntries(ALL.map(a => [a.name, a === leak ? snakes.dissolved : uses.get(a)])), took: Object.fromEntries(ALL.map(a => [a.name, a === leak ? snakes.dissolved : took.get(a)])) }),
+    get quick_lens() { return quick_lens; },
+    reset_uses() { for (const a of ALL) { uses.set(a, 0); took.set(a, 0); } },
     // tests: cast one power now at the snake nearest a point, skipping cooldowns
     force(i, x, z) {
       const a = ALL[i];
