@@ -51,6 +51,8 @@ export function create_powers(ctx) {
   let clock = 0, power = 1;
   const G = { phase: 'idle', ab: null, targets: [], t: 0, on_t: 0, arm: 1, ring: 0, primary: null, quick: false, w: 0, pw: 0, point: new THREE.Vector3() };
   const TIP = new THREE.Vector3();
+  // a lens forms from his mind: when his hands are free he glances up at it while it forms
+  const LOOK = { p: new THREE.Vector3(), t: 9 };
 
   const d_egg = s => Math.hypot(s.x - egg.x, s.z - egg.z);
   const unclaimed = s => snakes.free(s) && !(s.claim && s.claim_until > clock);
@@ -148,6 +150,11 @@ export function create_powers(ctx) {
     const m = mover.motion;
     m.gaze_w = G.w;
     if (G.w > 0) [m.gaze, m.gaze_p] = gaze_to(G.point);
+    LOOK.t += dt;
+    if (G.w < 0.05 && LOOK.t < 1.1) {
+      m.gaze_w = 0.85*Math.min(1, LOOK.t/0.15)*(1 - Math.max(0, (LOOK.t - 0.8)/0.3));
+      [m.gaze, m.gaze_p] = gaze_to(LOOK.p);
+    }
     m.point = G.pw > 0 ? { w: G.pw*G.pw*(3 - 2*G.pw), arm: G.arm, x: G.point.x, y: G.point.y, z: G.point.z } : null;
 
     // --- the lens: no gesture; it forms when a snake comes close
@@ -165,7 +172,8 @@ export function create_powers(ctx) {
         if (n > 0) {
           const targets = th.slice(0, n);
           for (const s of targets) claim(s, 'LENS', 2.6);
-          lens.cast(targets);
+          const at = lens.cast(targets);
+          if (at.length) { LOOK.p.copy(at[0]); LOOK.t = 0; }
           next.set(lens, lens.cooldown/power); last.set(lens, clock);
         }
       }

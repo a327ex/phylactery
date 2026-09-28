@@ -320,5 +320,5 @@ uniform float uSnakeT;`)
   const free = s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0 && !s.fx;
   const live = () => S.filter(free);
   function set_ember(c) { uEmber.value.setRGB(c[0], c[1], c[2]); }
-  return { update, S, ignite, take, live, free, set_ember, respawn, RINGS, egg, reach_log, get reached() { return reached; } };
+  return { update, S, ignite, take, live, free, set_ember, respawn, RINGS, egg, reach_log, arc: S_AT, ring_at: I_AT, get reached() { return reached; } };
 }

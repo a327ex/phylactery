@@ -167,7 +167,7 @@ export function create_lich(R, opts = {}) {
       const gz = m.gaze_w || 0;
       // ... unless he is looking at a snake he means to burn (rounds 9-10): the head turns and
       // tilts down to the spot first, the chest follows a little
-      spring(S.hp, mix(clamp((0.26*pz - 0.2*(S.bp.x + S.cp.x))*g, -0.12, 0.3), clamp((m.gaze_p || 0) - 0.27, -0.1, 0.55), gz), 2.4, 0.6, air(t, 5, 2.4, 0.03*g), dt);
+      spring(S.hp, mix(clamp((0.26*pz - 0.2*(S.bp.x + S.cp.x))*g, -0.12, 0.3), clamp((m.gaze_p || 0) - 0.27, -0.7, 0.55), gz), 2.4, 0.6, air(t, 5, 2.4, 0.03*g), dt);
       spring(S.hr, clamp((-0.22*px - 0.2*(S.br.x + S.cr.x))*g, -0.25, 0.25), 2.4, 0.6, air(t, 6, 2.4, 0.025*g), dt);
       const gc = clamp((m.gaze || 0)*0.3, -0.35, 0.35);
       spring(S.hy, mix(clamp(m.look*0.5, -0.5, 0.5)*g + idle_glance, clamp((m.gaze || 0) - gc, -1.1, 1.1), gz), 2.2, 0.75, air(t, 8, 2.2, 0.025*g), dt);
