@@ -9,8 +9,10 @@
 // off the ground; the head is part of the same tube, shaped by the radius profile and a
 // flatter section. Glossy scales, a paler belly, dark glassy eyes.
 //
-// Behaviour is still a placeholder: they come out of the dark toward the egg; within reach of
-// the lich they shrink away and another comes (no attacks drawn yet).
+// Behaviour: they come out of the dark toward the egg (reaching it they shrink away: a
+// placeholder). Round 9: set on fire (fire.js) a snake stops where it is, its lifted neck sinks
+// as it dies, its scales char black with glowing cracks that cool; then the black corpse sinks
+// into the ground in a puff of ash, and another comes.
 import * as THREE from 'three';
 import { make_rng, clamp, smoothstep, lerp } from 'game/util.js';
 import { gi_dynamic } from 'game/gi.js';
@@ -33,6 +35,9 @@ function radius_at(s) {
   if (s < tail0) return 1.0;
   return lerp(1.0, 0.07, Math.pow((s - tail0)/(LEN - tail0), 0.85));
 }
+// the corpse sinking: how far below its bed it is, eased
+const SINK_T = 1.5, SINK_D = 0.34;
+const sink_depth = s => (s.sink < 0 ? 0 : SINK_D*smoothstep(0, SINK_T, s.sink));
 const flat_at = s => (s < 0.11 ? 0.62 : lerp(0.62, 0.84, smoothstep(0.11, 0.3, s)));   // head flatter than body
 
 // scale texture: dark olive-bronze back with overlapping scale rows, pale belly
@@ -63,24 +68,50 @@ function scale_texture() {
   return t;
 }
 
-export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
+export function create_snakes(R, cave, get_lich_pos, fire, count = 9, seed = 5) {
   const rng = make_rng(seed);
   const mat = new THREE.MeshStandardMaterial({ map: scale_texture(), roughness: 0.3, metalness: 0.0 });
   if (cave.GU) gi_dynamic(mat, cave.GU);
   // scales are glossy: their edges catch whatever light is around (the bounce light included),
   // which draws the body's outline against the floor
+  // burning (round 9): aBurn per vertex = (how charred, how brightly its cracks glow)
+  const uEmber = { value: new THREE.Color(3.2, 0.75, 0.1) };
   {
     const prev = mat.onBeforeCompile;
     mat.onBeforeCompile = (sh, r) => {
       prev(sh, r);
-      sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+      sh.uniforms.uEmber = uEmber;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', `#include <common>
+attribute vec2 aBurn;
+varying vec2 vBurn;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+  vBurn = aBurn;`);
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `#include <common>
+varying vec2 vBurn;
+uniform vec3 uEmber;`)
+        .replace('#include <map_fragment>', `#include <map_fragment>
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.02, 0.018, 0.016), vBurn.x);`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+  roughnessFactor = mix(roughnessFactor, 0.85, vBurn.x);`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  {
+    // cracks between the charred scales, glowing while the body is hot
+    vec2 cu = vMapUv;
+    float c1 = abs(sin(cu.y*9.0 + sin(cu.x*18.85)*1.3));
+    float c2 = abs(sin(cu.x*12.57 + cu.y*3.1 + sin(cu.y*5.0)));
+    float crack = smoothstep(0.24, 0.0, min(c1, c2));
+    totalEmissiveRadiance += uEmber*vBurn.y*(0.03 + 0.8*crack);
+  }`)
+        .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
   {
     float rim = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.6);
     vec3 amb = reflectedLight.indirectDiffuse/max(diffuseColor.rgb, vec3(0.05)) + reflectedLight.directDiffuse/max(diffuseColor.rgb, vec3(0.05));
-    reflectedLight.indirectSpecular += rim*amb*0.55;
+    reflectedLight.indirectSpecular += rim*amb*0.55*(1.0 - 0.85*vBurn.x);
   }`);
     };
-    mat.customProgramCacheKey = () => 'snake_gi_rim';
+    mat.customProgramCacheKey = () => 'snake_gi_rim_burn';
   }
   const eye_mat = new THREE.MeshStandardMaterial({ color: 0x0b0a08, roughness: 0.08, metalness: 0.0 });
   const eye_geo = new THREE.SphereGeometry(1, 8, 6);
@@ -96,6 +127,7 @@ export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
     const uv = new Float32Array(n*2);
     for (let i = 0; i < RINGS; i++) for (let j = 0; j < SIDES; j++) { const o = (i*SIDES + j)*2; uv[o] = j/SIDES; uv[o + 1] = S_AT(i)*4; }
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setAttribute('aBurn', new THREE.BufferAttribute(new Float32Array(n*2), 2));
     const idx = [];
     for (let i = 0; i < RINGS - 1; i++) for (let j = 0; j < SIDES; j++) {
       const a = i*SIDES + j, b = i*SIDES + (j + 1)%SIDES, c = (i + 1)*SIDES + (j + 1)%SIDES, d = (i + 1)*SIDES + j;
@@ -108,7 +140,9 @@ export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
     m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
     R.world_scene.add(m);
     const eyes = [0, 1].map(() => { const e = new THREE.Mesh(eye_geo, eye_mat); e.castShadow = false; R.world_scene.add(e); return e; });
-    return { m, eyes };
+    const spine = [], radii = new Float32Array(RINGS);
+    for (let i = 0; i < RINGS; i++) spine.push(new THREE.Vector3());
+    return { m, eyes, spine, radii };
   };
 
   const spawn = (s, delay) => {
@@ -123,6 +157,8 @@ export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
     s.trail = [];
     for (let i = 0; i < 400; i++) s.trail.push([s.x - Math.cos(s.dir)*i*0.01, s.z - Math.sin(s.dir)*i*0.01]);
     s.dying = -1; s.delay = delay; s.scale = 1; s.dist = 0;
+    s.burn = null; s.sag = 0; s.sink = -1; s.burnt = false;
+    s.m.geometry.attributes.aBurn.array.fill(0); s.m.geometry.attributes.aBurn.needsUpdate = true;
   };
   for (let i = 0; i < count; i++) { const s = make_mesh(); spawn(s, i*0.9); S.push(s); }
 
@@ -134,7 +170,15 @@ export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
     for (const s of S) {
       if (s.delay > 0) { s.delay -= dt; s.m.visible = false; s.eyes.forEach(e => (e.visible = false)); continue; }
       s.m.visible = true; s.eyes.forEach(e => (e.visible = true));
-      if (s.dying >= 0) {
+      if (s.sink >= 0) {
+        // the black corpse goes into the ground
+        s.sink += dt;
+        if (s.sink > SINK_T) { spawn(s, rng.float(0.3, 1.2)); continue; }
+      } else if (s.burn) {
+        // on fire: it stops where it is; its neck sinks to the ground as it dies
+        s.sag = Math.min(1, s.sag + dt/1.6);
+        if (s.burn.done) { s.burn = null; s.burnt = true; s.sink = 0; build(s); fire.ash(s.spine, RINGS); }
+      } else if (s.dying >= 0) {
         s.dying += dt;
         s.scale = clamp(1 - s.dying/0.5, 0, 1);
         if (s.dying > 0.5) spawn(s, rng.float(0.2, 1.4));
@@ -149,7 +193,8 @@ export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
         if (Math.hypot(s.x - last[0], s.z - last[1]) > 0.01) s.trail.unshift([s.x, s.z]);
         if (s.trail.length > 600) s.trail.length = 600;
         const dl = Math.hypot(s.x - L.x, s.z - L.z), de = Math.hypot(s.x - egg.x, s.z - egg.z);
-        if (dl < 1.5 || de < 1.1) s.dying = 0;          // placeholder: they reach the light, then dissolve
+        void dl;
+        if (de < 1.1) s.dying = 0;                      // placeholder: they reach the egg, then dissolve
       }
       build(s);
     }
@@ -169,9 +214,22 @@ export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
         acc += l; ti++;
       }
       const r = R0*radius_at(target)*sc;
-      // the neck lifts the head: a smooth rise over the front RAISE_LEN metres
-      const lift = RAISE*smoothstep(RAISE_LEN, 0.05, target)*sc;
-      P[i].set(x, cave.ground_y(x, z) + r*flat_at(target) + lift, z);
+      // the neck lifts the head: a smooth rise over the front RAISE_LEN metres (it sinks as a
+      // burning snake dies); a sinking corpse goes down through the floor
+      const lift = RAISE*smoothstep(RAISE_LEN, 0.05, target)*sc*(1 - smoothstep(0, 1, s.sag));
+      P[i].set(x, cave.ground_y(x, z) + r*flat_at(target) + lift - sink_depth(s), z);
+      s.spine[i].copy(P[i]); s.radii[i] = r;
+    }
+    // how burnt each ring is, and how its cracks glow
+    if (s.burn || s.burnt) {
+      const ab = s.m.geometry.attributes.aBurn, a = ab.array;
+      for (let i = 0; i < RINGS; i++) {
+        const c = s.burn ? fire.char(s.burn, i) : 1, e = s.burn ? fire.ember(s.burn, i) : 0;
+        for (let j = 0; j < SIDES; j++) { const o = (i*SIDES + j)*2; a[o] = c; a[o + 1] = e; }
+      }
+      const tip = RINGS*SIDES*2;
+      a[tip] = a[0]; a[tip + 1] = a[1]; a[tip + 2] = a[(RINGS - 1)*SIDES*2]; a[tip + 3] = a[(RINGS - 1)*SIDES*2 + 1];
+      ab.needsUpdate = true;
     }
     const pos = s.m.geometry.attributes.position.array, nor = s.m.geometry.attributes.normal.array;
     for (let i = 0; i < RINGS; i++) {
@@ -214,5 +272,15 @@ export function create_snakes(R, cave, get_lich_pos, count = 9, seed = 5) {
       e.scale.setScalar(R0*0.12*sc);
     });
   }
-  return { update, S };
+  // set one on fire (the lich's attack): it stops, and burns from a point along its body
+  function ignite(s) {
+    if (s.delay > 0 || s.dying >= 0 || s.burn || s.sink >= 0) return false;
+    const at = Math.round(RINGS*rng.float(0.15, 0.75));
+    s.burn = fire.start(RINGS, s.spine, s.radii, at);
+    return true;
+  }
+  // the ones that can be targeted: out of the dark, crawling
+  const live = () => S.filter(s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0);
+  function set_ember(c) { uEmber.value.setRGB(c[0], c[1], c[2]); }
+  return { update, S, ignite, live, set_ember };
 }

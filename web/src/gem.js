@@ -46,7 +46,7 @@ export function gem_material(opts = {}) {
     flatShading: opts.flat ?? true,
   });
   const U = { uGemTime: { value: 0 }, uFire: { value: 1.6 }, uInner: { value: 0.16 }, uGlow: { value: 0 }, uGemDebug: { value: 0 },
-    uPrismLo: { value: 0.02 }, uPrismHi: { value: 1.0 }, uLitDim: { value: 0.36 }, uPattern: { value: 1 }, uLift: { value: 0 } };
+    uPrismLo: { value: 0.02 }, uPrismHi: { value: 1.0 }, uLitDim: { value: 0.36 }, uPattern: { value: 1 /* SOFT: owner, round 8 */ }, uLift: { value: 0 } };
   m.userData.gemU = U;
   m.userData.set_level = (l) => { U.uFire.value = l.fire; U.uInner.value = l.inner; m.iridescence = l.irid; };
   const prev = m.onBeforeCompile;

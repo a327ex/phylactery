@@ -5,16 +5,17 @@
 // torso and head lag and settle, the arms swing, the jaw clacks shut when he stops.
 //
 // Keys: 1-4 camera (1 = the room camera, the game's; 2-4 follow him to judge the motion),
-// J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
+// F fire colour, J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
 // H hides the text. In 4 (FREE) right-drag orbits.
 // Fixed 60 Hz step, rendering every animation frame. window.GAME is the harness API
 // (tools/shoot.mjs): ready, setManual, step(n, input), state(), cam(i), juice(i).
 import * as THREE from 'three';
-import { DT, clamp } from 'game/util.js';
+import { DT, clamp, make_rng } from 'game/util.js';
 import { create_render } from 'game/render.js';
 import { build_cave, LAYOUT } from 'game/cave.js';
 import { create_lich } from 'game/lich.js';
 import { create_snakes } from 'game/snakes.js';
+import { create_fire } from 'game/fire.js';
 import { build_nav } from 'game/nav.js';
 import { create_mover, MOVE } from 'game/mover.js';
 import { draw_text } from 'game/hud_font.js';
@@ -53,8 +54,35 @@ G.nav = nav;
 const START = new THREE.Vector3(LAYOUT.hover.x, 0, LAYOUT.hover.z);
 const mover = create_mover(nav, lich, START, Math.atan2(EGG.x - START.x, EGG.z - START.z));
 const L = mover.p;                               // the lich's pelvis, world
-const snakes = create_snakes(R, cave, () => L);
-G.mover = mover; G.snakes = snakes;
+const fire = create_fire(R, cave);
+const snakes = create_snakes(R, cave, () => L, fire);
+G.mover = mover; G.snakes = snakes; G.fire = fire;
+
+// ------------------------------------------------------------------ the lich's attacks
+// Round 9, one at a time (owner): FIRE sets a random snake alight every FIRE_EVERY seconds. He
+// glances at it as it catches.
+const FIRE_EVERY = 1.1;
+const ATK = { on: true, next: 1.0, gaze: null, gaze_t: 9, rng: make_rng(29) };
+function attack_tick() {
+  if (!ATK.on) return;
+  ATK.next -= DT;
+  if (ATK.next > 0) return;
+  const live = snakes.live();
+  if (!live.length) { ATK.next = 0.2; return; }
+  const s = live[ATK.rng.int(0, live.length - 1)];
+  if (snakes.ignite(s)) { ATK.gaze = s; ATK.gaze_t = 0; }
+  ATK.next = FIRE_EVERY;
+}
+function gaze_tick() {
+  const m = mover.motion;
+  ATK.gaze_t += DT;
+  m.gaze_w = ATK.gaze ? Math.max(0, 1 - ATK.gaze_t/0.9)*Math.min(1, ATK.gaze_t/0.08) : 0;
+  if (ATK.gaze && m.gaze_w > 0) {
+    const c = ATK.gaze.spine[Math.floor(ATK.gaze.spine.length*0.3)];
+    const a = Math.atan2(c.x - L.x, c.z - L.z) - mover.yaw;
+    m.gaze = Math.atan2(Math.sin(a), Math.cos(a));
+  }
+}
 
 // ------------------------------------------------------------------ cameras
 const v = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -181,6 +209,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ') lich.juice = lich.juice + 1;
   if (e.code === 'KeyG') lich.glow = lich.glow + 1;
   if (e.code === 'KeyR') lich.pattern = lich.pattern + 1;
+  if (e.code === 'KeyF') fire.look = fire.look + 1;
   if (e.code === 'KeyB') { G.dark = (G.dark + 1) % cave.DARK.length; cave.set_darkness(G.dark); }
 });
 addEventListener('keyup', (e) => { if (KEYMAP[e.code]) held.delete(KEYMAP[e.code]); });
@@ -221,13 +250,14 @@ function draw_hud() {
   const ink = 'rgba(8,6,5,0.85)';
   draw_text(hud, `${G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `F FIRE: ${fire.LOOKS[fire.look].name}`, 8, R.H - 70, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `J FLOATINESS: ${lich.JUICE[lich.juice].name}`, 8, R.H - 59, '#a8987c', 1, 'left', null, ink);
-  draw_text(hud, `R PRISM PATTERN: ${lich.PATTERNS[lich.pattern]}`, 8, R.H - 48, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `G OUT OF THE LIGHT: ${lich.GLOWS[lich.glow].name}`, 8, R.H - 37, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `P PRISM STRENGTH: ${lich.MODES[lich.mode]}`, 8, R.H - 26, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `R PRISM PATTERN: ${lich.PATTERNS[lich.pattern]}`, 8, R.H - 48, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `G OUT OF THE LIGHT: ${lich.GLOWS[lich.glow].name}`, 8, R.H - 37, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `P PRISM STRENGTH: ${lich.MODES[lich.mode]}`, 8, R.H - 26, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `B DARKNESS: ${cave.DARK[G.dark].name}`, 8, R.H - 15, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 CAMERA   J R G P B   H HIDE TEXT', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 CAMERA   F J R G P B   H HIDE TEXT', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
@@ -235,13 +265,18 @@ function tick() {
   G.tick++;
   G.t += DT;
   mover.tick(G.t, DT, wanted_velocity());
+  attack_tick();
+  gaze_tick();
   lich.pose(G.t, DT, mover.motion);
   lich.update(G.t);
   cave.update(G.t, DT);
+  snakes.set_ember(fire.ember_colour());
   snakes.update(G.t, DT);
+  fire.update(G.t, DT);
 }
 function render(dt) {
   place_camera(0);
+  fire.set_camera(R.world_camera, R.H);
   draw_hud();
   R.render(dt);
 }
@@ -276,6 +311,12 @@ window.GAME = {
   },
   cam(i, free) { set_cam(i); if (free) Object.assign(G.free, free); render(0); return CAMS[G.cam].name; },
   hud(on) { G.hud = !!on; render(0); return G.hud; },
+  // inspection: camera 4 looks at a fixed point from a direction (degrees) and distance
+  view_at(x, y, z, yaw, pitch, dist, fov = 45) {
+    const p = v(x, y, z), a = yaw*Math.PI/180, b = pitch*Math.PI/180;
+    CAMS[CAM_FREE].rig = () => [p.clone().add(v(Math.sin(a)*Math.cos(b)*dist, Math.sin(b)*dist, Math.cos(a)*Math.cos(b)*dist)), p.clone()];
+    CAMS[CAM_FREE].fov = fov; G.cam = CAM_FREE; render(0); return [x, y, z];
+  },
   place(x, z, yaw) { mover.place(x, z, yaw); F.copy(L); render(0); return [x, z]; },
   juice(i) { lich.juice = i; return lich.JUICE[lich.juice].name; },
   // the light arriving on his bones (per unit albedo), read back from the linear world target:
@@ -318,6 +359,16 @@ window.GAME = {
   },
   glow(i) { lich.glow = i; render(0); return lich.GLOWS[lich.glow].name; },
   pattern(i) { lich.pattern = i; render(0); return lich.PATTERNS[lich.pattern]; },
+  fire_look(i) { fire.look = i; return fire.LOOKS[fire.look].name; },
+  attacks(on) { ATK.on = !!on; return ATK.on; },
+  // set the snake nearest (x, z) alight now; returns its index
+  ignite_near(x, z) {
+    const live = snakes.live(); if (!live.length) return -1;
+    live.sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+    snakes.ignite(live[0]); ATK.gaze = live[0]; ATK.gaze_t = 0;
+    return snakes.S.indexOf(live[0]);
+  },
+  snake_at(i) { const s = snakes.S[i]; const c = s.spine[20]; return { x: +c.x.toFixed(2), z: +c.z.toFixed(2), burning: !!s.burn, sink: +s.sink.toFixed(2), burnt: s.burnt, fire: fire.burning }; },
   mode(m) { lich.mode = m; render(0); return lich.MODES[lich.mode]; },
   dark(i) { G.dark = i; const n = cave.set_darkness(i); render(0); return n; },
   snakes() { return snakes.S.map(s => [+s.x.toFixed(2), +s.z.toFixed(2), s.dying, +s.delay.toFixed(2)]); },
