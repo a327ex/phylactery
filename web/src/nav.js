@@ -91,6 +91,13 @@ export function build_nav({ geo, ground_y, x0 = -16, x1 = 16, z0 = -16, z1 = 16,
     },
     floor: (x, z) => sample(lift, x, z),
     dist: (x, z) => sample(dist, x, z),
+    // the top of any rock (low stones too) in the cell at a point, or -1e9 (round 29: the
+    // objects' places avoid stones)
+    rock_top(x, z) {
+      const i = Math.floor((x - x0)/cell), j = Math.floor((z - z0)/cell);
+      if (i < 0 || j < 0 || i >= nx || j >= nz) return 1e9;
+      return top[j*nx + i];
+    },
     // rock at a point, and how high it rises there (for cameras to stop short of it)
     rock_at(x, z) {
       const i = Math.floor((x - x0)/cell), j = Math.floor((z - z0)/cell);
