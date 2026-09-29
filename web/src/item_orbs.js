@@ -58,7 +58,7 @@ void main(){
   vec3 inside;
   for (int ch = 0; ch < 3; ch++) { float n = uIor[ch]; inside[ch] = through(P, refract(V, P, 1.0/n), n, ch); }
   col += (1.0 - F)*inside;
-  gl_FragColor = vec4(min(col, vec3(5.0)), 1.0);
+  gl_FragColor = vec4(min(col, vec3(2.4)), 1.0);
 }`;
 
 function orb_material(ctx) {
@@ -68,7 +68,7 @@ function orb_material(ctx) {
     uGlintPow: { value: ctx.glint_pow ?? 1400 }, uLit: { value: 1 },
     uIor: { value: new THREE.Vector3(1.505, 1.52, 1.54) },
     uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3(30, 27, 22) },
-    uAbsorb: { value: new THREE.Vector3(0.55, 0.14, 0.45) },      // per unit radius: green glass
+    uAbsorb: { value: new THREE.Vector3(0.16, 0.15, 0.15) },      // per unit radius: neutral, a little grey (round 29, owner: not green)
   };
   const m = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VS, fragmentShader: FS });
   m.userData.U = U;

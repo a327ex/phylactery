@@ -12,7 +12,6 @@ import * as THREE from 'three';
 import { clamp, smoothstep, damp } from 'game/util.js';
 import { draw_text } from 'game/hud_font.js';
 
-export const BACKDROPS = ['THE CAVE, DARKENED', 'BLACK'];
 
 // an environment for reflections and refraction: dark warm rock all round, the shaft's bright
 // opening above, the warm pool below (radiance, linear)
@@ -35,8 +34,8 @@ function env_scene() {
         c += vec3(0.08, 0.055, 0.03)*smoothstep(0.1, -0.6, d.y);
         // the shaft's opening, a little off the top, and the column's glow around it
         float a = dot(d, normalize(vec3(0.25, 1.0, 0.35)));
-        c += vec3(9.0, 8.2, 6.8)*smoothstep(0.994, 0.997, a);
-        c += vec3(0.9, 0.72, 0.45)*pow(max(a, 0.0), 24.0);
+        c += vec3(2.2, 2.0, 1.7)*smoothstep(0.9993, 0.9997, a);
+        c += vec3(0.35, 0.28, 0.18)*pow(max(a, 0.0), 60.0);
         // a lit wall to one side: a broad soft panel, and a thin bright crack of light on the
         // other (glass shows its edges by what it reflects)
         float b = dot(d, normalize(vec3(-1.0, 0.25, 0.5)));
@@ -48,7 +47,7 @@ function env_scene() {
         for (int i = 0; i < 7; i++) {
           float fi = float(i);
           vec3 p = normalize(vec3(sin(fi*2.4 + 0.3), 0.35 + 0.5*sin(fi*1.7), cos(fi*2.4 + 0.3)));
-          c += vec3(5.0, 4.4, 3.6)*smoothstep(0.9993, 0.9998, dot(d, p));
+          c += vec3(3.0, 2.7, 2.2)*smoothstep(0.99985, 0.99996, dot(d, p));
         }
         gl_FragColor = vec4(c, 1.0);
       }`,
@@ -79,7 +78,7 @@ export function create_inspect(ctx) {
   const fill = new THREE.DirectionalLight(0xc98a52, 0.55); fill.position.set(0, -1.5, 0.8);
   const rim = new THREE.DirectionalLight(0xfff0dc, 1.6); rim.position.set(-1.2, 0.8, -1.5);
   scene.add(key, fill, rim, new THREE.AmbientLight(0x3a2a1c, 0.25));
-  const sun = { dir: key.position.clone().normalize(), col: new THREE.Vector3(1, 0.9, 0.72).multiplyScalar(45) };
+  const sun = { dir: key.position.clone().normalize(), col: new THREE.Vector3(1, 0.9, 0.72).multiplyScalar(22) };
 
   // the frozen frame behind: darkened, softened (display values back to linear, before the
   // exposure the final pass applies again)
@@ -115,7 +114,9 @@ export function create_inspect(ctx) {
   // the object: a holder (the view's turning) around the model (centred on its bounds)
   const holder = new THREE.Group();
   scene.add(holder);
-  const inspect_ctx = { lit: m => m, env: cube_rt.texture, env_k: 1, env_i: 1, sun };
+  // the traced stones see the key as a small hard light (a facet shows its image: a wide lobe
+  // made a white disc on a whole face)
+  const inspect_ctx = { lit: m => m, env: cube_rt.texture, env_k: 1, env_i: 1, sun, glint_pow: 9000 };
 
   const S = {
     active: false, t: 0, idx: 5, model: null, radius: 0.2, backdrop: 0,
@@ -212,7 +213,6 @@ export function create_inspect(ctx) {
     back_mat.uniforms.uDim.value = 1 - 0.78*smoothstep(0, 0.3, S.t)*(S.closing >= 0 ? 1 - smoothstep(0, 0.28, S.closing) : 1);
     back_mat.uniforms.uBlur.value = 1.6*(1 - back_mat.uniforms.uDim.value)/0.78;
     back_mat.uniforms.uExposure.value = R.params.exposure;
-    back_mat.uniforms.uBlack.value = S.backdrop === 1 ? smoothstep(0, 0.3, S.t) : 0;
     back_mat.uniforms.uGlow.value = a;
     R.params.world_override = { scene, camera };
     return true;
@@ -228,13 +228,12 @@ export function create_inspect(ctx) {
     draw_text(hud, it.name, R.W/2, R.H - 64, '#f2e3c2', 2, 'center', null, ink);
     draw_text(hud, `THE ${it.power} POWER`, R.W/2, R.H - 44, '#a8987c', 1, 'center', null, ink);
     draw_text(hud, it.build ? '[ YOUR TEXT ]' : `NOT MODELLED YET: ${it.pending}`, R.W/2, R.H - 30, '#6f6252', 1, 'center', null, ink);
-    draw_text(hud, 'DRAG: TURN   WHEEL: CLOSER   A D: NEXT   I: PUT AWAY', R.W/2, R.H - 12, '#6a5e4e', 1, 'center', null, ink);
+    draw_text(hud, 'DRAG: TURN   WHEEL: CLOSER   A D: NEXT   C M: VARIANTS   I: PUT AWAY', R.W/2, R.H - 12, '#6a5e4e', 1, 'center', null, ink);
     hud.globalAlpha = 1;
   }
 
   return {
     S, open, close, next, tick, render_setup, draw_hud, scene, camera, holder, env: cube_rt.texture,
-    set_backdrop(i) { S.backdrop = ((i % BACKDROPS.length) + BACKDROPS.length) % BACKDROPS.length; return BACKDROPS[S.backdrop]; },
     rebuild() { if (S.active) { const q = S.q.clone(); build(S.idx); S.q.copy(q); } },
     // tests: turn to a view (radians), zoom
     pose(yaw, pitch, roll = 0, zoom = 1) { S.q.setFromEuler(new THREE.Euler(pitch, yaw, roll, 'YXZ')); S.zoom = S.zoom_t = zoom; S.wv.set(0, 0); S.idle = -1e9; },

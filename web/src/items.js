@@ -13,18 +13,21 @@ import { create_body, contact_points, box_inertia } from 'game/body.js';
 import { build_lens } from 'game/item_lens.js';
 import { build_gem, GEM_CUTS } from 'game/item_gem.js';
 import { build_orbs } from 'game/item_orbs.js';
+import { build_mask } from 'game/item_mask.js';
+import { build_hand, HAND_MATS } from 'game/item_hand.js';
+import { build_lodestone } from 'game/item_lodestone.js';
 import { LAYOUT } from 'game/cave.js';
 
 // in powers.ALL's order (keys 5-0): FIRE, LIFT, ROCK, LEAKAGE, PRISMATIC BEAM, LENS
 export const ITEMS = [
-  { power: 'FIRE', name: 'A BURNED DOLL', pending: 'WHICH DOLL: ON THE BOARD' },
-  { power: 'LIFT AND BURST', name: '?', pending: 'WHICH OBJECT: ON THE BOARD' },
-  { power: 'ROCK', name: '?', pending: 'WHICH OBJECT: ON THE BOARD' },
+  { power: 'FIRE', name: 'A BURNED MASK', build: (ctx) => build_mask(ctx), mass: 0.4, rest: 0.12, fric: 0.6, view: [0.12, 0.35, 0.05], face_up: true },
+  { power: 'LIFT AND BURST', name: 'A HAND', build: (ctx, o) => build_hand(ctx, o), mass: 1.5, rest: 0.1, fric: 0.55, view: [-0.1, 0.5, 0.0] },
+  { power: 'ROCK', name: 'A LODESTONE', build: (ctx) => build_lodestone(ctx), mass: 1.2, rest: 0.1, fric: 0.7, view: [0.35, 0.45, 0.0] },
   { power: 'LEAKAGE', name: 'THE ORBS', build: (ctx) => build_orbs(ctx), mass: 0.3, rest: 0.35, fric: 0.4, balls: true },
-  { power: 'PRISMATIC BEAM', name: 'A PRISMATIC GEM', build: (ctx, o) => build_gem(ctx, o.gem_cut), mass: 0.4, rest: 0.2, fric: 0.5, view: [0.5, 0.4, 0.1] },
+  { power: 'PRISMATIC BEAM', name: 'A PRISMATIC CRYSTAL', build: (ctx, o) => build_gem(ctx, o.gem_cut), mass: 0.4, rest: 0.12, fric: 0.7, rolling: 3, view: [0.5, 0.4, 0.1] },
   { power: 'LENS', name: 'A LENS', build: (ctx) => build_lens(ctx), mass: 3, rest: 0.15, fric: 0.45, view: [0.85, 0.65, 0.2] },
 ];
-export { GEM_CUTS };
+export { GEM_CUTS, HAND_MATS };
 // how big they lie on the floor (the snakes are dream-sized, 4.4 m, so they read from the room
 // camera; the objects as made are the size you'd hold)
 export const SIZES = [{ name: 'AS MADE', k: 1 }, { name: 'DREAM-SIZED (X1.8)', k: 1.8 }];
@@ -36,9 +39,27 @@ const SLOTS = [0, 60, 120, 180, 240, 300].map((deg, i) => {
 });
 
 export function create_items(ctx) {
-  const { R, cave, fx, warp, env_world } = ctx;
+  const { R, cave, fx, warp, env_world, nav } = ctx;
   const rng = make_rng(71);
-  const opts = { gem_cut: 0, size: 0 };
+  // round 29: each place moved to clear floor near it (they only land on the floor's height
+  // field; one that fell onto a stone sank into it)
+  if (nav) SLOTS.forEach((s0, i) => {
+    const a0 = Math.atan2(s0.y, s0.x), r0 = s0.length();
+    let best = null, bs = Infinity;
+    for (let da = -24; da <= 24; da += 4) for (let r = 1.05; r <= 1.75; r += 0.05) {
+      const a = a0 + da*Math.PI/180, x = Math.cos(a)*r, z = Math.sin(a)*r;
+      let rock = 0;
+      for (let dz = -0.6; dz <= 0.6; dz += 0.1) for (let dx = -0.6; dx <= 0.6; dx += 0.1) {
+        if (dx*dx + dz*dz > 0.36) continue;
+        const t = nav.rock_top(x + dx, z + dz);
+        if (t > cave.ground_y(x + dx, z + dz) + 0.02) rock++;
+      }
+      const score = rock*10 + Math.abs(da)*0.02 + Math.abs(r - r0);
+      if (score < bs) { bs = score; best = [x, z]; }
+    }
+    s0.set(best[0], best[1]);
+  });
+  const opts = { gem_cut: 0, size: 1, hand_mat: 0 };     // owner, round 28: dream-sized on the floor
   const S = LAYOUT.sun_dir, sxz = new THREE.Vector2(S.x/S.y, S.z/S.y);
   const sun = { dir: S.clone(), col: new THREE.Vector3(1, 0.9, 0.72).multiplyScalar(22) };
   const egg = { x: LAYOUT.egg.x, z: LAYOUT.egg.z, r: 0.42, top: cave.ground_y(0, 0) + 0.8 };
@@ -75,13 +96,13 @@ export function create_items(ctx) {
   function make_body(w) {
     w.g.updateMatrixWorld(true);
     const P = [];
-    w.g.traverse(o => { if (o.isMesh) { const g = o.geometry, p = g.attributes.position; o.updateMatrix(); const m = new THREE.Matrix4().compose(o.position, o.quaternion, o.scale); for (let k = 0; k < p.count; k += 1) P.push(new THREE.Vector3().fromBufferAttribute(p, k).applyMatrix4(m)); } });
+    w.g.traverse(o => { if (o.isMesh && !o.isInstancedMesh && !o.userData.no_contact) { const g = o.geometry, p = g.attributes.position; o.updateMatrix(); const m = new THREE.Matrix4().compose(o.position, o.quaternion, o.scale); const step = Math.max(1, Math.floor(p.count/6000)); for (let k = 0; k < p.count; k += step) P.push(new THREE.Vector3().fromBufferAttribute(p, k).applyMatrix4(m)); } });
     const pg = new THREE.BufferGeometry().setFromPoints(P);
     const k = SIZES[opts.size].k;
     for (const q of P) q.multiplyScalar(k);
     const pts = contact_points(pg.setFromPoints(P), 64);
     const bb = new THREE.Box3().setFromPoints(P), sz = bb.getSize(new THREE.Vector3());
-    const b = create_body({ points: pts, mass: w.it.mass, inertia: box_inertia(w.it.mass, sz.x, sz.y, sz.z), restitution: w.it.rest, friction: w.it.fric, rolling: 0.8, floor, egg });
+    const b = create_body({ points: pts, mass: w.it.mass, inertia: box_inertia(w.it.mass, sz.x, sz.y, sz.z), restitution: w.it.rest, friction: w.it.fric, rolling: w.it.rolling ?? 0.8, floor, egg });
     b.on_hit = (v) => dust(b.x, v);
     return b;
   }
@@ -129,9 +150,16 @@ export function create_items(ctx) {
     w.body = make_body(w);
     const x = s.x + rng.spread(0.12), z = s.y + rng.spread(0.12);
     w.body.x.set(x, floor(x, z) + 1.25, z);
-    w.body.q.setFromEuler(new THREE.Euler(rng.spread(1.2), rng.float(0, 6.28), rng.spread(1.2)));
+    if (w.it.face_up) {
+      // the mask comes down face up, tipping a little, so it lies showing its slits (face down
+      // its black back read as a hole in the floor)
+      w.body.q.setFromEuler(new THREE.Euler(-Math.PI/2 + rng.spread(0.35), rng.float(0, 6.28), rng.spread(0.35), 'YXZ'));
+      w.body.w.set(rng.spread(1), rng.spread(1.5), rng.spread(1));
+    } else {
+      w.body.q.setFromEuler(new THREE.Euler(rng.spread(1.2), rng.float(0, 6.28), rng.spread(1.2)));
+      w.body.w.set(rng.spread(3), rng.spread(2), rng.spread(3));
+    }
     w.body.v.set(rng.spread(0.3), -0.2, rng.spread(0.3));
-    w.body.w.set(rng.spread(3), rng.spread(2), rng.spread(3));
     w.state = 'forming'; w.t = 0;
     w.g.visible = true;
     for (let k = 0; k < 6; k++) warp.puff({ x: x + rng.spread(0.15), y: w.body.x.y + rng.spread(0.12), z: z + rng.spread(0.15), vx: rng.spread(0.3), vy: rng.spread(0.2), vz: rng.spread(0.3), drag: 2.5, life: rng.float(0.35, 0.55), s0: 0.35, s1: 0.12, amp: 3.2, spin: rng.spread(4) });
@@ -185,21 +213,27 @@ export function create_items(ctx) {
     }
     // the gem sees the sun only in the pool
     const gw = W[4];
-    if (gw && gw.g.visible) {
-      gw.g.userData.mat.userData.U.uLit.value = in_sun(gw.g.position);
-    }
+    if (gw && gw.g.visible) for (const m of gw.g.userData.mats) m.userData.U.uLit.value = in_sun(gw.g.position);
   }
 
-  // swap the gem's cut (C): rebuild its world instance in place
+  // swap the gem's cut (C) or the hand's metal (M): rebuild that world instance in place
   function set_cut(c) {
     opts.gem_cut = ((c % GEM_CUTS.length) + GEM_CUTS.length) % GEM_CUTS.length;
-    const w = W[4];
+    rebuild(4);
+    return GEM_CUTS[opts.gem_cut];
+  }
+  function set_hand_mat(c) {
+    opts.hand_mat = ((c % HAND_MATS.length) + HAND_MATS.length) % HAND_MATS.length;
+    rebuild(1);
+    return HAND_MATS[opts.hand_mat];
+  }
+  function rebuild(i) {
+    const w = W[i];
     const vis = w.g.visible, pos = w.g.position.clone(), q = w.g.quaternion.clone();
     R.world_scene.remove(w.g);
     w.g = w.make(); w.g.visible = vis; w.g.position.copy(pos); w.g.quaternion.copy(q);
     R.world_scene.add(w.g);
     if (w.state !== 'away') { const old = w.body; w.body = make_body(w); w.body.x.copy(old.x); w.body.q.copy(old.q); w.body.x.y += 0.05; w.state = 'falling'; }
-    return GEM_CUTS[opts.gem_cut];
   }
 
   // S: redrop whatever lies on the floor at the other size
@@ -210,7 +244,7 @@ export function create_items(ctx) {
   }
 
   return {
-    W, opts, drop, take, update, set_cut, set_size, SLOTS,
+    W, opts, drop, take, update, set_cut, set_hand_mat, set_size, SLOTS,
     state: () => W.map(w => w && (w.bodies ? { state: w.state, balls: w.bodies.map(b => [+b.x.x.toFixed(2), +b.x.y.toFixed(3), +b.x.z.toFixed(2), b.asleep ? 1 : 0]) }
       : { state: w.state, x: +w.g.position.x.toFixed(2), y: +w.g.position.y.toFixed(3), z: +w.g.position.z.toFixed(2), asleep: !!(w.body && w.body.asleep) })),
   };

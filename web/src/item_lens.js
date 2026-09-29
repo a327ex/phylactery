@@ -7,7 +7,10 @@
 import * as THREE from 'three';
 
 const R = 0.22;               // radius, m (44 cm across; the attack's is 76)
-const TC = 0.064, TE = 0.014; // centre and edge thickness
+// round 29 (owner: "shouldn't a lens that does that kind of attack be convex?"): it was, 14% as
+// thick as wide, but the bulge didn't read; a burning glass gathers the sun to a point by being
+// thicker in the middle, so it bulges plainly now (about a quarter as thick as it is wide)
+const TC = 0.105, TE = 0.012; // centre and edge thickness
 const BEV = 0.0025;           // the bevel at each corner of the edge
 const SEG = 288;
 
@@ -115,7 +118,7 @@ export function build_lens(ctx = {}) {
   const rough = scratch_texture(7);
   const lit = ctx.lit || (m => m);
   const glass = rim(lit(new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, metalness: 0, roughness: 0.035, roughnessMap: rough, transmission: 1, thickness: 0.045, ior: 1.52,
+    color: 0xffffff, metalness: 0, roughness: 0.035, roughnessMap: rough, transmission: 1, thickness: 0.075, ior: 1.52,
     dispersion: 0.9, attenuationColor: new THREE.Color(0.8, 0.93, 0.84), attenuationDistance: 0.22,
     specularIntensity: 0.7, envMapIntensity: (ctx.env_i ?? 1)*1.1, side: THREE.FrontSide,
   })), ctx.rim ?? 0);

@@ -26,8 +26,8 @@ import { LENS_LOOKS } from 'game/lens.js';
 import { build_nav } from 'game/nav.js';
 import { create_mover, MOVE } from 'game/mover.js';
 import { draw_text } from 'game/hud_font.js';
-import { create_items, ITEMS, GEM_CUTS, SIZES } from 'game/items.js';
-import { create_inspect, BACKDROPS } from 'game/inspect.js';
+import { create_items, ITEMS, GEM_CUTS, HAND_MATS, SIZES } from 'game/items.js';
+import { create_inspect } from 'game/inspect.js';
 
 const R = create_render(document.body);
 R.canvas.style.cursor = 'default';
@@ -96,7 +96,7 @@ let env_world = null;
   for (const o of hidden) o.visible = true;
   env_world = rt.texture;
 }
-const items = create_items({ R, cave, fx, warp, env_world });
+const items = create_items({ R, cave, fx, warp, env_world, nav });
 const inspect = create_inspect({ R, items, ITEMS });
 G.items = items; G.inspect = inspect;
 function toggle_power(i) {
@@ -234,13 +234,13 @@ addEventListener('keydown', (e) => {
     if (e.code === 'KeyA' || e.code === 'ArrowLeft') inspect.next(-1);
     if (e.code === 'KeyD' || e.code === 'ArrowRight') inspect.next(1);
     if (e.code === 'KeyC') { items.set_cut(items.opts.gem_cut + 1); inspect.rebuild(); }
-    if (e.code === 'KeyV') inspect.set_backdrop(inspect.S.backdrop + 1);
+    if (e.code === 'KeyM') { items.set_hand_mat(items.opts.hand_mat + 1); inspect.rebuild(); }
     if (e.code === 'KeyH') G.hud = !G.hud;
     return;
   }
   if (e.code === 'KeyI') { held.clear(); mouse.down = false; inspect.open(); return; }
   if (e.code === 'KeyC') items.set_cut(items.opts.gem_cut + 1);
-  if (e.code === 'KeyV') inspect.set_backdrop(inspect.S.backdrop + 1);
+  if (e.code === 'KeyM') items.set_hand_mat(items.opts.hand_mat + 1);
   if (e.code === 'KeyZ') items.set_size(items.opts.size + 1);
   if (KEYMAP[e.code]) { held.add(KEYMAP[e.code]); e.preventDefault(); }
   const d = /^(Digit|Numpad)([1-4])$/.exec(e.code);
@@ -305,8 +305,8 @@ function draw_hud() {
   draw_text(hud, `${G.cam === CAM_EGG ? 'Y' : G.cam === CAM_FREE ? 4 : G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `Z ON THE FLOOR: ${SIZES[items.opts.size].name}`, 8, R.H - 147, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `C GEM CUT: ${GEM_CUTS[items.opts.gem_cut]}`, 8, R.H - 136, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `V BEHIND THE OBJECT: ${BACKDROPS[inspect.S.backdrop]}`, 8, R.H - 125, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `C CRYSTAL: ${GEM_CUTS[items.opts.gem_cut]}`, 8, R.H - 136, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `M HAND: ${HAND_MATS[items.opts.hand_mat]}`, 8, R.H - 125, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `O BEHIND HIM: ${FACINGS[powers.facing]}`, 8, R.H - 114, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `K BEAM COLOUR: ${BEAM_LOOKS[powers.beam.look]}`, 8, R.H - 103, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `X BEAM RECOIL: ${lich.RECOILS[lich.recoil].name}`, 8, R.H - 92, '#a8987c', 1, 'left', null, ink);
@@ -326,7 +326,7 @@ function draw_hud() {
   draw_text(hud, `REACHED THE EGG: ${snakes.reached}`, R.W - 8, 8 + 7*11 + 3, snakes.reached ? '#e0a070' : '#a8987c', 1, 'right', null, ink);
   draw_text(hud, 'I: INSPECT THE OBJECTS   5-0: REMOVE A POWER (ITS OBJECT DROPS)', R.W - 8, R.H - 37, '#f2e3c2', 1, 'right', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 Y CAMERA   Z C V O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 Y CAMERA   Z C M O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
@@ -455,7 +455,7 @@ window.GAME = {
   inspect_pose(yaw, pitch, roll = 0, zoom = 1) { inspect.pose(yaw, pitch, roll, zoom); render(0); return true; },
   inspect_close() { inspect.close(); return true; },
   gem_cut(i) { const c = items.set_cut(i); inspect.rebuild(); render(0); return c; },
-  backdrop(i) { return inspect.set_backdrop(i); },
+  hand_mat(i) { const c = items.set_hand_mat(i); inspect.rebuild(); render(0); return c; },
   floor_size(i) { return items.set_size(i); },
   // tests: advance (no rendering) until a condition holds, at most `max` ticks; returns ticks run
   until(src, max = 3600) { const f = new Function('G', 'return (' + src + ');'); let n = 0; while (n < max && !f(G)) { tick(); place_camera(DT); n++; } render(n*DT); return n; },

@@ -127,6 +127,22 @@ export function mesh_sdf(f, box, h) {
   return g;
 }
 
+// the largest connected piece of an indexed mesh (crumbs a noisy field leaves are dropped)
+export function largest_piece(g) {
+  const idx = g.index.array, n = g.attributes.position.count;
+  const parent = new Int32Array(n); for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (a) => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  for (let t = 0; t < idx.length; t += 3) { const a = find(idx[t]), b = find(idx[t + 1]), c = find(idx[t + 2]); parent[b] = a; parent[find(c)] = a; }
+  const count = new Map();
+  for (let t = 0; t < idx.length; t += 3) { const r = find(idx[t]); count.set(r, (count.get(r) || 0) + 1); }
+  let best = -1, bn = 0;
+  for (const [r, c] of count) if (c > bn) { bn = c; best = r; }
+  const keep = [];
+  for (let t = 0; t < idx.length; t += 3) if (find(idx[t]) === best) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+  g.setIndex(keep);
+  return g;
+}
+
 // ---------------------------------------------------------------- swept tubes
 // A tube along a polyline of points [[x,y,z], ...] with an elliptical section (w across the
 // curve's `up` side, t across the other), radii scaled per point by prof(s) (s = 0..1).
