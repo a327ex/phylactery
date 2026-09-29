@@ -44,6 +44,8 @@ export function create_items(ctx) {
   // on the floor the gem's light is the shaft's opening, a few degrees across seen from below
   const world_ctx = { lit: m => gi_dynamic(m, cave.GU), env: env_world, env_i: 0, sun, glint_pow: 260, rim: 0.15 };
   const floor = (x, z) => cave.ground_y(x, z);
+  // how much of the shaft's sun reaches a point (the pool, soft-edged)
+  const in_sun = p => 1 - smoothstep(1.55, 2.05, Math.hypot(p.x - sxz.x*p.y, p.z - sxz.y*p.y));
 
   // one world instance per item that has a model
   const W = ITEMS.map((it, i) => {
@@ -70,12 +72,13 @@ export function create_items(ctx) {
     const bb = new THREE.Box3().setFromPoints(P), sz = bb.getSize(new THREE.Vector3());
     const b = create_body({ points: pts, mass: w.it.mass, inertia: box_inertia(w.it.mass, sz.x, sz.y, sz.z), restitution: w.it.rest, friction: w.it.fric, rolling: 0.8, floor, egg });
     b.on_hit = (v) => {
-      // dust knocked up where it lands
-      const gy = floor(b.x.x, b.x.z), n = Math.min(10, Math.round(v*4));
-      for (let k = 0; k < n; k++) {
+      // dust knocked up where it lands: lit by the sun in the pool, dark out of it
+      const gy = floor(b.x.x, b.x.z), n = Math.min(7, Math.round(v*3));
+      const lit = in_sun(b.x), k = 0.06 + 0.5*lit;
+      for (let j = 0; j < n; j++) {
         const a = rng.float(0, 6.28);
-        fx.puff({ x: b.x.x + Math.cos(a)*0.08, y: gy + 0.03, z: b.x.z + Math.sin(a)*0.08, vx: Math.cos(a)*rng.float(0.2, 0.6)*v*0.4, vy: rng.float(0.1, 0.4), vz: Math.sin(a)*rng.float(0.2, 0.6)*v*0.4,
-          drag: 2.2, life: rng.float(0.6, 1.1), s0: 0.06, s1: 0.22, r: 0.05, g: 0.042, b: 0.03, a: 0.4 });
+        fx.puff({ x: b.x.x + Math.cos(a)*0.08, y: gy + 0.03, z: b.x.z + Math.sin(a)*0.08, vx: Math.cos(a)*rng.float(0.2, 0.6)*v*0.35, vy: rng.float(0.08, 0.3), vz: Math.sin(a)*rng.float(0.2, 0.6)*v*0.35,
+          drag: 2.4, life: rng.float(0.5, 0.9), s0: 0.05, s1: 0.16, r: 0.9*k, g: 0.72*k, b: 0.5*k, a: 0.28 });
       }
     };
     return b;
@@ -131,8 +134,7 @@ export function create_items(ctx) {
     // the gem sees the sun only in the pool
     const gw = W[4];
     if (gw && gw.g.visible) {
-      const p = gw.g.position, d = Math.hypot(p.x - sxz.x*p.y, p.z - sxz.y*p.y);
-      gw.g.userData.mat.userData.U.uLit.value = 1 - smoothstep(1.55, 2.05, d);
+      gw.g.userData.mat.userData.U.uLit.value = in_sun(gw.g.position);
     }
   }
 
