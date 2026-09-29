@@ -87,25 +87,48 @@ const CLAW_PATHS = CLAW_LINES.map(({ pts, w }) => {
   }
   return { pts: out, w };
 });
+// Round 34 (owner: the marks "look cheap, it needs to look like it's a deep gash, right now it
+// kind of looks like a texture on top"): each is cut deep now, 4 mm into the 5.5 mm shell, with
+// steep walls; through its deepest stretch it has gone right through (a slot you can see
+// through); its edges torn unevenly, each side its own, chipped here and there; the lips pushed up
+// broken. In colour: its walls the cut core, browned by the fire; its depth dark (round 33's pale
+// dust filled it level with the face: a painted stripe).
+const GASH_THROUGH = [[0.36, 0.56], [0.28, 0.6]];
 function claws(x, y) {
-  let depth = 0, lip = 0, inside = 0;
-  for (const { pts, w: w0 } of CLAW_PATHS) {
-    // nearest point on the curve: distance across, and how far along
-    let best = 1e9, tt = 0;
+  let depth = 0, lip = 0, inside = 0, wall = 0, slot = -1;
+  CLAW_PATHS.forEach(({ pts, w: w0 }, li) => {
+    // nearest point on the curve: distance across (signed: which side), and how far along
+    let best = 1e9, tt = 0, side = 1;
     for (let k = 0; k < pts.length - 1; k++) {
       const [ax, ay, at] = pts[k], [bx, by, bt] = pts[k + 1];
       const dx = bx - ax, dy = by - ay, L2 = dx*dx + dy*dy;
       const u = Math.max(0, Math.min(1, ((x - ax)*dx + (y - ay)*dy)/L2));
       const d = Math.hypot(x - ax - dx*u, y - ay - dy*u);
-      if (d < best) { best = d; tt = at + (bt - at)*u; }
+      if (d < best) { best = d; tt = at + (bt - at)*u; side = dx*(y - ay) - dy*(x - ax) >= 0 ? 1 : -1; }
     }
-    if (best > 0.008) continue;
-    const taper = Math.pow(Math.sin(Math.PI*Math.min(1, tt*1.2)), 0.6)*(tt > 0.82 ? sstep(1.0, 0.82, tt) : 1);
-    const w = w0*(0.55 + 0.45*taper);
-    if (best < w) { const q = 1 - (best/w)*(best/w); depth = Math.max(depth, 0.0028*taper*q); inside = Math.max(inside, taper*q); }
-    lip = Math.max(lip, 0.00034*taper*Math.exp(-(((best - w*1.35)/(w*0.45))**2)));
-  }
-  return { depth, lip, inside };
+    if (best > 0.01) return;
+    const taper = Math.pow(Math.sin(Math.PI*Math.min(1, tt*1.15)), 0.5)*(tt > 0.84 ? sstep(1.0, 0.84, tt) : 1);
+    // each edge torn on its own: the width wobbles along it, with chips bitten out
+    const tear = (fbm3(tt*34, side*3.1, li*7.7, 101, 3) - 0.5)*0.45 + sstep(0.64, 0.72, fbm3(tt*65, side*5.3, li, 103, 2))*0.2;
+    const w = w0*(0.5 + 0.5*taper)*(1 + tear);
+    if (best < w) {
+      const a = best/w;
+      const q = Math.pow(1 - Math.pow(a, 1.8), 0.7);           // steep walls, a rounded floor
+      depth = Math.max(depth, 0.0042*taper*q);
+      inside = Math.max(inside, taper*q);
+      wall = Math.max(wall, taper*sstep(0.35, 0.85, a));
+    }
+    // right through where it went deepest
+    const [t0, t1] = GASH_THROUGH[li];
+    if (tt > t0 && tt < t1) {
+      const k = Math.sin(Math.PI*(tt - t0)/(t1 - t0));
+      slot = Math.max(slot, w*0.3*Math.pow(k, 0.6)*(1 + 0.4*(fbm3(tt*60, 0.5, li, 105, 2) - 0.5)) - best);
+    }
+    // the lips: pushed up and broken
+    const lp = Math.exp(-(((best - w*1.3)/(w*0.5))**2))*(0.5 + fbm3(tt*90, side*2.3, li*3.3, 107, 2));
+    lip = Math.max(lip, 0.0006*taper*lp);
+  });
+  return { depth, lip, inside, wall, slot };
 }
 // the pierce: the wearer's left eye (the viewer's right), where the owner drew it: an irregular
 // hole, wider than tall, taking most of that eye's slit; around it the face crushed in; cracks
@@ -132,13 +155,22 @@ function pierce(x, y) {
 // down the cheek from the hole's lower edge, a coat round the rim, and a spray flung out from the
 // break: drops, most small, stretched along the way they flew, thicker near the hole
 const SPRAY = (() => {
+  // round 34 (owner: "fewer blood particles in general, more down, few up, due to gravity"): 55
+  // drops, most thrown downward and to the sides, a few up; the ones below run a little further
+  // down, stretched by their weight as much as by their flight
   const R = rand(4242), out = [];
-  for (let i = 0; i < 150; i++) {
-    const a = R.f(0, 6.283) + 0.35*Math.sin(i*1.7), far = Math.pow(R.next(), 1.8);
-    const d = 0.004 + far*0.055;
-    const size = (0.0022 - 0.0016*far)*R.f(0.35, 1.0);
+  for (let i = 0; i < 55; i++) {
+    const up = R.next() < 0.12;
+    const g = (R.next() + R.next() + R.next() - 1.5)*1.25;           // roughly normal
+    const a = up ? R.f(0.3, 2.8) : -Math.PI/2 + g;
+    const far = Math.pow(R.next(), 1.7);
+    const d = 0.004 + far*(up ? 0.022 : 0.05);
+    const size = (0.0021 - 0.0014*far)*R.f(0.4, 1.0);
     const ex = HOLE[0] + Math.cos(a)*(HRX + d), ey = HOLE[1] + Math.sin(a)*(HRY + d*0.85);
-    out.push([ex, ey, Math.cos(a), Math.sin(a), size, 1 + far*2.6 + R.f(0, 0.8)]);
+    // the way it's stretched: its flight, pulled down
+    let ux = Math.cos(a), uy = Math.sin(a) - 0.9;
+    const ul = Math.hypot(ux, uy); ux /= ul; uy /= ul;
+    out.push([ex, ey, ux, uy, size, 1 + far*2.2 + R.f(0, 0.8) + (up ? 0 : R.f(0, 1.4))]);
   }
   return out;
 })();
@@ -205,6 +237,7 @@ function field(x, y, z) {
   let d = Math.max(z - front, back - z);
   d = smax(d, o, 0.0016);
   d = Math.max(d, p.R - p.r);                                 // the hole, straight through
+  d = Math.max(d, cl.slot);                                   // the gashes, through where deepest
   return d;
 }
 
@@ -245,9 +278,13 @@ function geometry() {
     if (front) {
       // the gouges: the claw cut through the lacquer to the pale core, then the fire browned it
       // and time filled it with dust; the lips glossy black
-      const g0 = cl.inside;
-      r += (0.07 - r)*g0; gg += (0.055 - gg)*g0; bb += (0.042 - bb)*g0; rough += (0.93 - rough)*g0;
-      const lp = Math.min(1, cl.lip/0.00032);
+      const g0 = cl.inside, gw = cl.wall;
+      // the walls: the cut core, browned by the fire; deeper, darker
+      r += (0.05 - r)*gw*0.8; gg += (0.036 - gg)*gw*0.8; bb += (0.024 - bb)*gw*0.8;
+      const deep = sstep(0.35, 0.9, g0)*(1 - gw*0.6);
+      r += (0.0035 - r)*deep; gg += (0.003 - gg)*deep; bb += (0.0027 - bb)*deep;
+      rough += (0.9 - rough)*g0;
+      const lp = Math.min(1, cl.lip/0.0006);
       rough -= 0.25*lp;
       // crushed round the hole: broken into grey-brown grit, the cracks dark with dust at their lips
       r += (0.05 - r)*p.crush*0.7; gg += (0.043 - gg)*p.crush*0.7; bb += (0.036 - bb)*p.crush*0.7;
@@ -257,14 +294,14 @@ function geometry() {
         // blood that burned (round 33: not red): a crust of dark maroon-brown, rust at its thin
         // edges, a little glossy, standing off the dead black of the char
         const k = bl.m*(0.85 + 0.15*t);
-        const cr = 0.028 + 0.02*bl.rim, cg = 0.0085 + 0.011*bl.rim, cb = 0.0055 + 0.005*bl.rim;
+        const cr = 0.021 + 0.01*bl.rim, cg = 0.0056 + 0.004*bl.rim, cb = 0.0038 + 0.0022*bl.rim;   // round 34: darker
         r += (cr - r)*k; gg += (cg - gg)*k; bb += (cb - bb)*k; rough += (0.4 + 0.25*bl.rim - rough)*k;
       }
     }
     // the hole's wall: the core, charred through
     r += (0.03 - r)*wall; gg += (0.022 - gg)*wall; bb += (0.016 - bb)*wall;
     // time: dust settled in the hollows (gouges, cracks, the crush), the high points rubbed smooth
-    const hollow = front ? Math.min(1, cl.depth/0.0012 + p.crack + p.crush*0.5) : 0;
+    const hollow = front ? Math.min(1, cl.wall*0.25 + p.crack + p.crush*0.5) : 0;
     const dust = hollow*0.5*(0.6 + 0.4*t);
     r += (0.085 - r)*dust; gg += (0.08 - gg)*dust; bb += (0.074 - bb)*dust;
     const worn = front ? sstep(0.004, 0.008, f - (-(x*x)/(2*0.105) - ((y - 0.01)**2)/(2*0.3))) : 0;
