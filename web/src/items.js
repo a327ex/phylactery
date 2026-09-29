@@ -20,10 +20,10 @@ import { LAYOUT } from 'game/cave.js';
 
 // in powers.ALL's order (keys 5-0): FIRE, LIFT, ROCK, LEAKAGE, PRISMATIC BEAM, LENS
 export const ITEMS = [
-  { power: 'FIRE', name: 'A BURNED MASK', build: (ctx) => build_mask(ctx), mass: 0.4, rest: 0.12, fric: 0.6, view: [0.12, 0.35, 0.05], face_up: true },
+  { power: 'FIRE', name: 'A BURNED MASK', build: (ctx) => build_mask(ctx), mass: 0.4, rest: 0.12, fric: 0.6, view: [0.12, 0.35, 0.05], face_up: true, floor_mul: 0.7 },
   { power: 'LIFT AND BURST', name: 'A HAND', build: (ctx, o) => build_hand(ctx, o), mass: 1.5, rest: 0.1, fric: 0.55, view: [-0.1, 0.5, 0.0] },
   { power: 'ROCK', name: 'A LODESTONE', build: (ctx) => build_lodestone(ctx), mass: 1.2, rest: 0.1, fric: 0.7, view: [0.35, 0.45, 0.0] },
-  { power: 'LEAKAGE', name: 'THE ORBS', build: (ctx) => build_orbs(ctx), mass: 0.3, rest: 0.35, fric: 0.4, balls: true },
+  { power: 'LEAKAGE', name: 'THE ORBS', build: (ctx) => build_orbs(ctx), mass: 0.3, rest: 0.35, fric: 0.4, balls: true, floor_mul: 0.65 },
   { power: 'PRISMATIC BEAM', name: 'A PRISMATIC GEM', build: (ctx) => build_gem(ctx.gem ?? ctx), mass: 0.4, rest: 0.12, fric: 0.7, rolling: 3, view: [0.5, 0.4, 0.1] },
   { power: 'LENS', name: 'A LENS', build: (ctx) => build_lens(ctx), mass: 3, rest: 0.15, fric: 0.45, view: [0.85, 0.65, 0.2], fixed_k: 1.8 },
 ];
@@ -39,7 +39,8 @@ export function create_items(ctx) {
   const rng = make_rng(71);
   // round 31 (owner): the hand's default is the material that isn't metal (BONE)
   const opts = { size: 0, hand_mat: HAND_MATS.indexOf('BONE') };
-  const kf = (w) => w.it.fixed_k ?? SIZES[opts.size].k;
+  // round 35 (owner): the mask and the orbs smaller on the floor than the rest (x2.1, x1.95)
+  const kf = (w) => w.it.fixed_k ?? SIZES[opts.size].k*(w.it.floor_mul ?? 1);
   const S = LAYOUT.sun_dir, sxz = new THREE.Vector2(S.x/S.y, S.z/S.y);
   const sun = { dir: S.clone(), col: new THREE.Vector3(1, 0.9, 0.72).multiplyScalar(22) };
   const egg = { x: LAYOUT.egg.x, z: LAYOUT.egg.z, r: 0.42, top: cave.ground_y(0, 0) + 0.8 };
