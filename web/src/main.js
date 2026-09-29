@@ -5,7 +5,7 @@
 // torso and head lag and settle, the arms swing, the jaw clacks shut when he stops.
 //
 // Keys: 1-4 camera (1 = the room camera, the game's; 2-4 follow him to judge the motion),
-// 5-0 the six powers on/off, K beam colour, X beam recoil, L lens beam, F fire colour, J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
+// 5-0 the six powers on/off, O what he does when a target goes behind him, K beam colour, X beam recoil, L lens beam, F fire colour, J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
 // H hides the text. In 4 (FREE) right-drag orbits.
 // Fixed 60 Hz step, rendering every animation frame. window.GAME is the harness API
 // (tools/shoot.mjs): ready, setManual, step(n, input), state(), cam(i), juice(i).
@@ -17,7 +17,7 @@ import { create_lich } from 'game/lich.js';
 import { create_snakes } from 'game/snakes.js';
 import { create_fire } from 'game/fire.js';
 import { create_fx } from 'game/fx.js';
-import { create_powers } from 'game/powers.js';
+import { create_powers, FACINGS } from 'game/powers.js';
 import { create_gore } from 'game/gore.js';
 import { BEAM_LOOKS } from 'game/beam.js';
 import { LENS_LOOKS } from 'game/lens.js';
@@ -201,6 +201,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyF') fire.look = fire.look + 1;
   if (e.code === 'KeyK') powers.beam.look = powers.beam.look + 1;
   if (e.code === 'KeyX') lich.recoil = lich.recoil + 1;
+  if (e.code === 'KeyO') powers.facing = powers.facing + 1;
   if (e.code === 'KeyL') powers.lens.look = powers.lens.look + 1;
   const pk = /^(Digit|Numpad)([0-9])$/.exec(e.code);
   if (pk && POWER_KEYS.includes(pk[2])) powers.toggle(POWER_KEYS.indexOf(pk[2]));
@@ -244,6 +245,7 @@ function draw_hud() {
   const ink = 'rgba(8,6,5,0.85)';
   draw_text(hud, `${G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `O BEHIND HIM: ${FACINGS[powers.facing]}`, 8, R.H - 114, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `K BEAM COLOUR: ${BEAM_LOOKS[powers.beam.look]}`, 8, R.H - 103, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `X BEAM RECOIL: ${lich.RECOILS[lich.recoil].name}`, 8, R.H - 92, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `L LENS BEAM: ${LENS_LOOKS[powers.lens.look]}`, 8, R.H - 81, '#f2e3c2', 1, 'left', null, ink);
@@ -261,7 +263,7 @@ function draw_hud() {
   draw_text(hud, `EACH POWER X${powers.power.toFixed(1)}`, R.W - 8, 8 + 6*11 + 3, '#a8987c', 1, 'right', null, ink);
   draw_text(hud, `REACHED THE EGG: ${snakes.reached}`, R.W - 8, 8 + 7*11 + 3, snakes.reached ? '#e0a070' : '#a8987c', 1, 'right', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 CAMERA   5-0 POWERS   K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 CAMERA   5-0 POWERS   O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
@@ -373,6 +375,7 @@ window.GAME = {
   force(i, x, z) { return powers.force(i, x, z); },
   beam_look(m) { powers.beam.look = m; return BEAM_LOOKS[powers.beam.look]; },
   recoil(m) { lich.recoil = m; return lich.RECOILS[lich.recoil].name; },
+  facing(m) { powers.facing = m; return FACINGS[powers.facing]; },
   lens_look(m) { powers.lens.look = m; return LENS_LOOKS[powers.lens.look]; },
   reached() { return snakes.reached; },
   // tests: advance (no rendering) until a condition holds, at most `max` ticks; returns ticks run

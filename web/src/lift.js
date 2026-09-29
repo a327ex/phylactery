@@ -29,6 +29,7 @@ export function create_lift(ctx) {
   const held = [];                    // the lifts of the last cast, until they burst
   const groups = [];                  // snakes lifted together, and when they burst
   const AIM = new THREE.Vector3(), TOWARD = new THREE.Vector3();
+  let hand_free = false;              // round 22: he let go of them (they burst on their own)
 
   function lift_fx(s, delay, grp) {
     const H = rng.float(1.5, 2.0), side = new THREE.Vector2();
@@ -83,7 +84,7 @@ export function create_lift(ctx) {
     // where he points: the middle of the body
     aim_ring: () => mid,
     cast(targets, from, ring, arm = 1) {
-      held.length = 0;
+      held.length = 0; hand_free = false;
       // the others near them go up too
       const all = [...targets];
       for (const s of snakes.S) {
@@ -103,10 +104,12 @@ export function create_lift(ctx) {
         if (g.t > g.at + 0.5) groups.splice(i, 1);
       }
     },
+    // round 22: he lets go of them (they went behind him): they burst on their own, no pull
+    let_go() { hand_free = true; for (const g of groups) g.curled = true; },
     // while any is still up his hand stays on them, following them as they rise, and through his
     // pull a moment after they burst; one group at a time (the one that bursts next: an extra one
     // lifted while he holds these is far from them, and pointing between the two points at nothing)
-    busy: () => held.length > 0 || groups.some(g => g.t < g.at + AFTER),
+    busy: () => !hand_free && (held.length > 0 || groups.some(g => g.t < g.at + AFTER)),
     aim_point() {
       const g = groups.find(q => q.t < q.at + AFTER);
       if (!g) return g === undefined && held.length ? held[0].s.spine[mid] : AIM;

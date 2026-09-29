@@ -278,6 +278,14 @@ export function create_beam(ctx) {
         if (ch.phase === 'end') { ch.phase = 'shoot'; ch.pt = 0; ch.segs.push(new_seg(ch.head)); }
       }
     },
+    // round 22: he lets go of it (it went behind him): it thins out now; the snakes it was still
+    // coming for crawl on
+    let_go() {
+      if (!ch) return;
+      for (let k = ch.i + (ch.phase === 'dwell' ? 1 : 0); k < ch.targets.length; k++) { const s = ch.targets[k].s; if (s.fx && s.fx.placeholder) s.fx = null; }
+      ch.targets.length = Math.min(ch.targets.length, ch.i + 1);
+      if (ch.phase !== 'end') { ch.phase = 'end'; ch.pt = 0; }
+    },
     // while it channels his finger stays on the first snake, where the segment from it goes
     busy: () => !!ch,
     aim_point: () => (ch ? at(ch.targets[0]) : null),

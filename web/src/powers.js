@@ -47,6 +47,14 @@ const SOON = 1.5;
 // after holding this long (the hand, shared by the gestured powers, was the bottleneck: with
 // five powers the lens made up for it and was used twice as much)
 const HOLD_CHAIN = 0.2;
+// round 22 (owner: "he tries to orient his body such that what he points at [is] in a 180 degree
+// angle in front of him ... his body should orient itself such that it doesn't break, or he
+// should drop a previous target, maybe? I don't know"): O picks which. Either way a new gesture
+// prefers a snake in front of him; one behind him he only turns for when nothing in front will
+// do, or it is about to reach the egg.
+export const FACINGS = ['TURNS TO KEEP IT IN FRONT', 'LETS GO OF IT'];
+const FRONT = Math.PI/2;            // behind = past his shoulders' line
+const ARM_UP = 1.66, FIRE_IN = 1.4; // his arm rises only once it is within 95 deg, and it goes off within 80
 
 export function create_powers(ctx) {
   const { snakes, fire, lich, mover, egg, get_L, rng } = ctx;
@@ -74,7 +82,11 @@ export function create_powers(ctx) {
   const count = (a, n) => { uses.set(a, uses.get(a) + 1); took.set(a, took.get(a) + n); fair.set(a, fair.get(a) + 1); };
   const reset_fair = () => { for (const a of ALL) fair.set(a, 0); };
   let quick_lens = 0;                 // tests: lenses fired at once, for something about to reach the egg
-  const G = { phase: 'idle', ab: null, targets: [], t: 0, on_t: 0, arm: 1, ring: 0, primary: null, quick: false, w: 0, pw: 0, point: new THREE.Vector3() };
+  const G = { phase: 'idle', ab: null, targets: [], t: 0, on_t: 0, arm: 1, ring: 0, primary: null, quick: false, w: 0, pw: 0, point: new THREE.Vector3(), must_turn: false };
+  let facing = 0, drops = 0, test_old = false;       // test_old: round 21's facing, to compare against
+  // where something is from his facing (radians, 0 = straight ahead), and whether it is behind him
+  const rel_yaw = (c) => { const L = get_L(); const a = Math.atan2(c.x - L.x, c.z - L.z) - mover.yaw; return Math.atan2(Math.sin(a), Math.cos(a)); };
+  const behind = (c) => Math.abs(rel_yaw(c)) > FRONT;
   const TIP = new THREE.Vector3();
   // a lens forms from his mind: when his hands are free he glances up at it while it forms
   const LOOK = { p: new THREE.Vector3(), t: 9 };
@@ -104,6 +116,8 @@ export function create_powers(ctx) {
     G.primary = targets[0]; G.ring = ab.aim_ring();
     G.point.copy(G.primary.spine[G.ring]);
     G.arm = pick_arm(G.point);
+    // letting go of what goes behind him (O): not of one he had to turn for
+    G.must_turn = behind(G.point);
   }
 
   function tick(t, dt) {
@@ -141,7 +155,11 @@ export function create_powers(ctx) {
       // the least used, then the least recently used
       const ab = ready.reduce((x, y) => (fair.get(x) < fair.get(y) || (fair.get(x) === fair.get(y) && last.get(x) <= last.get(y)) ? x : y));
       const first = quick ? [...urgent].sort((a, b) => d_egg(a) - d_egg(b)) : [];
-      const pick = [...first, ...th.filter(s => !urgent.has(s))];
+      // in front of him first (the list is already nearest the egg first)
+      const ahead = th.filter(s => !urgent.has(s)).map(s => [s, !test_old && behind(s.spine[Math.round(N*0.3)]) ? 1 : 0]).sort((a, b) => a[1] - b[1]).map(q => q[0]);
+      // letting go (O): one behind him only if it is about to reach the egg
+      const pick = [...first, ...(facing === 1 ? ahead.filter(s => !behind(s.spine[Math.round(N*0.3)])) : ahead)];
+      if (!pick.length) return false;
       start_gesture(ab, pick.slice(0, Math.max(1, ab.capacity(power))), quick);
       return true;
     };
@@ -150,7 +168,8 @@ export function create_powers(ctx) {
     } else if (G.phase === 'aim') {
       G.t += dt;
       const s = G.primary;
-      if (!on.get(G.ab) || !snakes.free(s)) {
+      if (!on.get(G.ab) || !snakes.free(s) || (facing === 1 && !G.must_turn && behind(s.spine[G.ring]))) {
+        if (on.get(G.ab) && snakes.free(s)) drops++;
         // it's gone (another power took it), or the power was taken from him: let go, try again
         for (const q of G.targets) q.claim = null;
         G.phase = 'lower'; G.t = 0;
@@ -159,7 +178,8 @@ export function create_powers(ctx) {
         const [gy] = gaze_to(G.point);
         const S = lich.springs, reach = Math.max(-1.45, Math.min(1.45, gy));
         G.on_t = Math.abs(reach - (S.hy.x + S.cy.x)) < 0.12 ? G.on_t + dt : 0;
-        const arrived = G.pw >= 1 && G.on_t >= ON_T && lich.arm_speed(G.arm) < (G.quick ? QUICK_ARRIVE : ARRIVE);
+        // (round 22: and with it in front of him: one behind him he turns to before his arm comes up)
+        const arrived = G.pw >= 1 && G.on_t >= ON_T && lich.arm_speed(G.arm) < (G.quick ? QUICK_ARRIVE : ARRIVE) && (test_old || Math.abs(rel_yaw(G.point)) < FIRE_IN);
         G.still = arrived ? G.still + dt : 0;
         const beat = Math.min(G.ab.beat ?? BEAT, G.quick ? QUICK_BEAT : 9);
         if (G.still >= beat || G.t >= (G.quick ? QUICK_MAX : AIM_MAX)) {
@@ -174,8 +194,14 @@ export function create_powers(ctx) {
     } else if (G.phase === 'hold') {
       G.t += dt;
       // a channelled power (the beam; the lift, round 20) keeps his hand up, following it, until it ends
-      const channel = G.ab.busy && G.ab.busy();
+      let channel = G.ab.busy && G.ab.busy();
       if (channel) { G.t = 0; const p = G.ab.aim_point(); if (p) G.point.copy(p); }
+      // letting go (O): what he holds has gone behind him (he was moved away from it): the beam
+      // ends, the lift goes on without his hand
+      if (facing === 1 && !G.must_turn && behind(G.point)) {
+        if (channel && G.ab.let_go) G.ab.let_go();
+        drops++; G.phase = 'lower'; G.t = 0; channel = false;
+      }
       // something about to reach the egg: a channel takes it on; any other hold gives way at once
       if (urgent.size) {
         if (channel && G.ab.extend) G.ab.extend([...urgent], G.arm);
@@ -191,9 +217,23 @@ export function create_powers(ctx) {
       else if (G.t >= LOWER || urgent.size) { G.phase = 'idle'; G.t = 0; G.ab = null; }
     }
     // head and hand
-    if (G.phase === 'aim') { G.w = Math.min(1, G.w + dt/0.12); G.pw = Math.min(1, G.pw + dt/(G.quick ? 0.12 : 0.22)); }
-    else if (G.phase === 'hold') { G.w = 1; G.pw = 1; }
+    if (G.phase === 'aim') {
+      G.w = Math.min(1, G.w + dt/0.12);
+      // his head turns to it at once; his arm waits until his body has brought it round in front
+      if (test_old || Math.abs(rel_yaw(G.point)) < ARM_UP) G.pw = Math.min(1, G.pw + dt/(G.quick ? 0.12 : 0.22));
+      else G.pw = Math.max(0, G.pw - dt/0.2);
+    }
+    else if (G.phase === 'hold') {
+      G.w = 1;
+      // swung round faster than he can turn: his arm dips until his body brings it back in front
+      if (test_old || Math.abs(rel_yaw(G.point)) < ARM_UP) G.pw = Math.min(1, G.pw + dt/0.15);
+      else G.pw = Math.max(0.2, G.pw - dt/0.15);
+    }
     else { G.w = Math.max(0, G.w - dt/LOWER); G.pw = Math.max(0, G.pw - dt/LOWER); }
+    // turning to keep it in front: while he points (TURNS), or for one he had to turn for (LETS GO)
+    const pointing = G.phase === 'aim' || G.phase === 'hold';
+    mover.face.on = !test_old && pointing && (facing === 0 || G.must_turn);
+    if (mover.face.on) { const L = get_L(); mover.face.yaw = Math.atan2(G.point.x - L.x, G.point.z - L.z); }
     const m = mover.motion;
     m.gaze_w = G.w;
     if (G.w > 0) [m.gaze, m.gaze_p] = gaze_to(G.point);
@@ -247,6 +287,13 @@ export function create_powers(ctx) {
     state: () => ({ phase: G.phase, ab: G.ab && G.ab.name, t: +G.t.toFixed(2), power: +power.toFixed(2), on: ALL.filter(a => on.get(a)).map(a => a.name), next: ALL.map(a => +next.get(a).toFixed(2)), leak_reach: +leak.reach.toFixed(1),
       uses: Object.fromEntries(ALL.map(a => [a.name, a === leak ? snakes.dissolved : uses.get(a)])), took: Object.fromEntries(ALL.map(a => [a.name, a === leak ? snakes.dissolved : took.get(a)])) }),
     get quick_lens() { return quick_lens; },
+    get facing() { return facing; },
+    set facing(i) { facing = ((i % FACINGS.length) + FACINGS.length) % FACINGS.length; },
+    get drops() { return drops; },
+    set test_old(v) { test_old = !!v; },
+    // tests: how far off his facing what he points at is (degrees), while he points
+    // (only while his arm is up, and not for something almost under him, where the way to it is noise)
+    point_off: () => { const L = get_L(); return (G.phase === 'aim' || G.phase === 'hold') && G.pw > 0.5 && Math.hypot(G.point.x - L.x, G.point.z - L.z) > 1 ? Math.abs(rel_yaw(G.point))*57.3 : null; },
     reset_uses() { for (const a of ALL) { uses.set(a, 0); took.set(a, 0); } },
     // tests: cast one power now at the snake nearest a point, skipping cooldowns
     force(i, x, z) {
