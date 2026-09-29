@@ -14,13 +14,16 @@ import { draw_text } from 'game/hud_font.js';
 
 
 // an environment for reflections and refraction: dark warm rock all round, the shaft's bright
-// opening above, the warm pool below (radiance, linear)
-function env_scene() {
+// opening above, the warm pool below (radiance, linear). r28 = round 28's (the gem was accepted
+// in it: a larger, brighter opening and bright points; round 29 made them small for the raw
+// crystals, whose flat faces mirrored them as white discs)
+function env_scene(r28 = false) {
   const s = new THREE.Scene();
   const m = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
     vertexShader: `varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }`,
     fragmentShader: `varying vec3 vD;
+      #define R28 ${r28 ? 'true' : 'false'}
       float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719)))*43758.5453); }
       float n3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f);
         return mix(mix(mix(h(i), h(i + vec3(1,0,0)), f.x), mix(h(i + vec3(0,1,0)), h(i + vec3(1,1,0)), f.x), f.y),
@@ -34,8 +37,8 @@ function env_scene() {
         c += vec3(0.08, 0.055, 0.03)*smoothstep(0.1, -0.6, d.y);
         // the shaft's opening, a little off the top, and the column's glow around it
         float a = dot(d, normalize(vec3(0.25, 1.0, 0.35)));
-        c += vec3(2.2, 2.0, 1.7)*smoothstep(0.9993, 0.9997, a);
-        c += vec3(0.35, 0.28, 0.18)*pow(max(a, 0.0), 60.0);
+        c += R28 ? vec3(9.0, 8.2, 6.8)*smoothstep(0.994, 0.997, a) : vec3(2.2, 2.0, 1.7)*smoothstep(0.9993, 0.9997, a);
+        c += R28 ? vec3(0.9, 0.72, 0.45)*pow(max(a, 0.0), 24.0) : vec3(0.35, 0.28, 0.18)*pow(max(a, 0.0), 60.0);
         // a lit wall to one side: a broad soft panel, and a thin bright crack of light on the
         // other (glass shows its edges by what it reflects)
         float b = dot(d, normalize(vec3(-1.0, 0.25, 0.5)));
@@ -47,7 +50,7 @@ function env_scene() {
         for (int i = 0; i < 7; i++) {
           float fi = float(i);
           vec3 p = normalize(vec3(sin(fi*2.4 + 0.3), 0.35 + 0.5*sin(fi*1.7), cos(fi*2.4 + 0.3)));
-          c += vec3(3.0, 2.7, 2.2)*smoothstep(0.99985, 0.99996, dot(d, p));
+          c += R28 ? vec3(5.0, 4.4, 3.6)*smoothstep(0.9993, 0.9998, dot(d, p)) : vec3(3.0, 2.7, 2.2)*smoothstep(0.99985, 0.99996, dot(d, p));
         }
         gl_FragColor = vec4(c, 1.0);
       }`,
@@ -64,6 +67,8 @@ export function create_inspect(ctx) {
   const cube_rt = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
   const cube_cam = new THREE.CubeCamera(0.1, 50, cube_rt);
   cube_cam.update(renderer, env_scene());
+  const cube28 = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+  new THREE.CubeCamera(0.1, 50, cube28).update(renderer, env_scene(true));
   const pmrem = new THREE.PMREMGenerator(renderer);
   const env_pm = pmrem.fromCubemap(cube_rt.texture).texture;
 
@@ -117,6 +122,8 @@ export function create_inspect(ctx) {
   // the traced stones see the key as a small hard light (a facet shows its image: a wide lobe
   // made a white disc on a whole face)
   const inspect_ctx = { lit: m => m, env: cube_rt.texture, env_k: 1, env_i: 1, sun, glint_pow: 9000 };
+  // the gem as it was accepted (round 28): its environment and its key-light glint
+  inspect_ctx.gem = { ...inspect_ctx, env: cube28.texture, sun: { dir: sun.dir, col: new THREE.Vector3(1, 0.9, 0.72).multiplyScalar(45) }, glint_pow: 1400 };
 
   const S = {
     active: false, t: 0, idx: 5, model: null, radius: 0.2, backdrop: 0,
@@ -228,7 +235,7 @@ export function create_inspect(ctx) {
     draw_text(hud, it.name, R.W/2, R.H - 64, '#f2e3c2', 2, 'center', null, ink);
     draw_text(hud, `THE ${it.power} POWER`, R.W/2, R.H - 44, '#a8987c', 1, 'center', null, ink);
     draw_text(hud, it.build ? '[ YOUR TEXT ]' : `NOT MODELLED YET: ${it.pending}`, R.W/2, R.H - 30, '#6f6252', 1, 'center', null, ink);
-    draw_text(hud, 'DRAG: TURN   WHEEL: CLOSER   A D: NEXT   C M: VARIANTS   I: PUT AWAY', R.W/2, R.H - 12, '#6a5e4e', 1, 'center', null, ink);
+    draw_text(hud, 'DRAG: TURN   WHEEL: CLOSER   A D: NEXT   M: THE HAND\'S METAL   I: PUT AWAY', R.W/2, R.H - 12, '#6a5e4e', 1, 'center', null, ink);
     hud.globalAlpha = 1;
   }
 

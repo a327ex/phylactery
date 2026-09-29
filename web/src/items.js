@@ -11,7 +11,7 @@ import { gi_dynamic } from 'game/gi.js';
 import { make_rng, smoothstep } from 'game/util.js';
 import { create_body, contact_points, box_inertia } from 'game/body.js';
 import { build_lens } from 'game/item_lens.js';
-import { build_gem, GEM_CUTS } from 'game/item_gem.js';
+import { build_gem } from 'game/item_gem.js';
 import { build_orbs } from 'game/item_orbs.js';
 import { build_mask } from 'game/item_mask.js';
 import { build_hand, HAND_MATS } from 'game/item_hand.js';
@@ -24,10 +24,10 @@ export const ITEMS = [
   { power: 'LIFT AND BURST', name: 'A HAND', build: (ctx, o) => build_hand(ctx, o), mass: 1.5, rest: 0.1, fric: 0.55, view: [-0.1, 0.5, 0.0] },
   { power: 'ROCK', name: 'A LODESTONE', build: (ctx) => build_lodestone(ctx), mass: 1.2, rest: 0.1, fric: 0.7, view: [0.35, 0.45, 0.0] },
   { power: 'LEAKAGE', name: 'THE ORBS', build: (ctx) => build_orbs(ctx), mass: 0.3, rest: 0.35, fric: 0.4, balls: true },
-  { power: 'PRISMATIC BEAM', name: 'A PRISMATIC CRYSTAL', build: (ctx, o) => build_gem(ctx, o.gem_cut), mass: 0.4, rest: 0.12, fric: 0.7, rolling: 3, view: [0.5, 0.4, 0.1] },
+  { power: 'PRISMATIC BEAM', name: 'A PRISMATIC GEM', build: (ctx) => build_gem(ctx.gem ?? ctx), mass: 0.4, rest: 0.12, fric: 0.7, rolling: 3, view: [0.5, 0.4, 0.1] },
   { power: 'LENS', name: 'A LENS', build: (ctx) => build_lens(ctx), mass: 3, rest: 0.15, fric: 0.45, view: [0.85, 0.65, 0.2] },
 ];
-export { GEM_CUTS, HAND_MATS };
+export { HAND_MATS };
 // how big they lie on the floor (the snakes are dream-sized, 4.4 m, so they read from the room
 // camera; the objects as made are the size you'd hold)
 export const SIZES = [{ name: 'AS MADE', k: 1 }, { name: 'DREAM-SIZED (X1.8)', k: 1.8 }];
@@ -59,7 +59,7 @@ export function create_items(ctx) {
     }
     s0.set(best[0], best[1]);
   });
-  const opts = { gem_cut: 0, size: 1, hand_mat: 0 };     // owner, round 28: dream-sized on the floor
+  const opts = { size: 1, hand_mat: 0 };                  // owner, round 28: dream-sized on the floor
   const S = LAYOUT.sun_dir, sxz = new THREE.Vector2(S.x/S.y, S.z/S.y);
   const sun = { dir: S.clone(), col: new THREE.Vector3(1, 0.9, 0.72).multiplyScalar(22) };
   const egg = { x: LAYOUT.egg.x, z: LAYOUT.egg.z, r: 0.42, top: cave.ground_y(0, 0) + 0.8 };
@@ -216,12 +216,7 @@ export function create_items(ctx) {
     if (gw && gw.g.visible) for (const m of gw.g.userData.mats) m.userData.U.uLit.value = in_sun(gw.g.position);
   }
 
-  // swap the gem's cut (C) or the hand's metal (M): rebuild that world instance in place
-  function set_cut(c) {
-    opts.gem_cut = ((c % GEM_CUTS.length) + GEM_CUTS.length) % GEM_CUTS.length;
-    rebuild(4);
-    return GEM_CUTS[opts.gem_cut];
-  }
+  // swap the hand's metal (M): rebuild that world instance in place
   function set_hand_mat(c) {
     opts.hand_mat = ((c % HAND_MATS.length) + HAND_MATS.length) % HAND_MATS.length;
     rebuild(1);
@@ -244,7 +239,7 @@ export function create_items(ctx) {
   }
 
   return {
-    W, opts, drop, take, update, set_cut, set_hand_mat, set_size, SLOTS,
+    W, opts, drop, take, update, set_hand_mat, set_size, SLOTS,
     state: () => W.map(w => w && (w.bodies ? { state: w.state, balls: w.bodies.map(b => [+b.x.x.toFixed(2), +b.x.y.toFixed(3), +b.x.z.toFixed(2), b.asleep ? 1 : 0]) }
       : { state: w.state, x: +w.g.position.x.toFixed(2), y: +w.g.position.y.toFixed(3), z: +w.g.position.z.toFixed(2), asleep: !!(w.body && w.body.asleep) })),
   };

@@ -26,7 +26,7 @@ import { LENS_LOOKS } from 'game/lens.js';
 import { build_nav } from 'game/nav.js';
 import { create_mover, MOVE } from 'game/mover.js';
 import { draw_text } from 'game/hud_font.js';
-import { create_items, ITEMS, GEM_CUTS, HAND_MATS, SIZES } from 'game/items.js';
+import { create_items, ITEMS, HAND_MATS, SIZES } from 'game/items.js';
 import { create_inspect } from 'game/inspect.js';
 
 const R = create_render(document.body);
@@ -233,13 +233,11 @@ addEventListener('keydown', (e) => {
     if (e.code === 'KeyI' || e.code === 'Escape' || e.code === 'KeyE') inspect.close();
     if (e.code === 'KeyA' || e.code === 'ArrowLeft') inspect.next(-1);
     if (e.code === 'KeyD' || e.code === 'ArrowRight') inspect.next(1);
-    if (e.code === 'KeyC') { items.set_cut(items.opts.gem_cut + 1); inspect.rebuild(); }
     if (e.code === 'KeyM') { items.set_hand_mat(items.opts.hand_mat + 1); inspect.rebuild(); }
     if (e.code === 'KeyH') G.hud = !G.hud;
     return;
   }
   if (e.code === 'KeyI') { held.clear(); mouse.down = false; inspect.open(); return; }
-  if (e.code === 'KeyC') items.set_cut(items.opts.gem_cut + 1);
   if (e.code === 'KeyM') items.set_hand_mat(items.opts.hand_mat + 1);
   if (e.code === 'KeyZ') items.set_size(items.opts.size + 1);
   if (KEYMAP[e.code]) { held.add(KEYMAP[e.code]); e.preventDefault(); }
@@ -305,7 +303,6 @@ function draw_hud() {
   draw_text(hud, `${G.cam === CAM_EGG ? 'Y' : G.cam === CAM_FREE ? 4 : G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `Z ON THE FLOOR: ${SIZES[items.opts.size].name}`, 8, R.H - 147, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `C CRYSTAL: ${GEM_CUTS[items.opts.gem_cut]}`, 8, R.H - 136, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `M HAND: ${HAND_MATS[items.opts.hand_mat]}`, 8, R.H - 125, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `O BEHIND HIM: ${FACINGS[powers.facing]}`, 8, R.H - 114, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `K BEAM COLOUR: ${BEAM_LOOKS[powers.beam.look]}`, 8, R.H - 103, '#a8987c', 1, 'left', null, ink);
@@ -326,7 +323,7 @@ function draw_hud() {
   draw_text(hud, `REACHED THE EGG: ${snakes.reached}`, R.W - 8, 8 + 7*11 + 3, snakes.reached ? '#e0a070' : '#a8987c', 1, 'right', null, ink);
   draw_text(hud, 'I: INSPECT THE OBJECTS   5-0: REMOVE A POWER (ITS OBJECT DROPS)', R.W - 8, R.H - 37, '#f2e3c2', 1, 'right', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 Y CAMERA   Z C M O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 Y CAMERA   Z M O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
@@ -454,7 +451,6 @@ window.GAME = {
   inspect(i) { inspect.open(i); render(0); return ITEMS[inspect.S.idx].name; },
   inspect_pose(yaw, pitch, roll = 0, zoom = 1) { inspect.pose(yaw, pitch, roll, zoom); render(0); return true; },
   inspect_close() { inspect.close(); return true; },
-  gem_cut(i) { const c = items.set_cut(i); inspect.rebuild(); render(0); return c; },
   hand_mat(i) { const c = items.set_hand_mat(i); inspect.rebuild(); render(0); return c; },
   floor_size(i) { return items.set_size(i); },
   // tests: advance (no rendering) until a condition holds, at most `max` ticks; returns ticks run

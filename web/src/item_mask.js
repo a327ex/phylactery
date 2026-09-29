@@ -1,8 +1,8 @@
 // item_mask.js -- round 29: the FIRE power's object (owner: "a burned mask instead,
 // specifically the a327ex, so black with white eyes/mouth, as though it had been burned"). The
-// a327ex avatar is Shun's mask (Shin Sekai Yori): a smooth white full-face mask, an egg narrowing
-// to a pointed chin, no features but a faint ridge of a nose, two narrow slits for eyes and a
-// short one for the mouth.
+// a327ex avatar is Shun's mask (Shin Sekai Yori): a smooth white full-face mask, a round brow over
+// a short lower face narrowing to a pointed chin, no features but a faint ridge of a nose, two
+// long slits for eyes and a short one for the mouth.
 //
 // Burned: the face charred black into blistered scales split by cracks (charred wood's
 // alligator pattern), the rim eaten ragged and grey with ash where it burned through, one hole
@@ -16,42 +16,51 @@ import { cells2, fbm3, sstep, vertex_mr } from 'game/shape_noise.js';
 const T = 0.0055;                 // shell thickness, m
 const GROOVE = 0.0026;            // how far the slits sit below the face
 
-// the outline: an egg, wide at the brow, narrowing to a rounded point at the chin (2D, <0 inside)
+// Round 30 (owner: "the proportions are off compared to the source"). Measured on the avatar,
+// in units of E = the span from one eye's outer end to the other's: each eye 0.34 E long with a
+// 0.34 E gap between them; the mouth 0.47 E below the eyes and 0.24 E long; the chin's point
+// 0.77 E below the eyes; the face 1.37 E wide at the eyes, 1.26 E a little below them, 1.02 E at
+// a third of E down, 0.81 E at the mouth, then straight jaw lines to the point. (Round 29 had the
+// mouth 0.84 E and the chin 1.18 E down, the eyes 0.21 E apart: a long face.) E = 13.8 cm here.
+const EY = 0.022;                 // the eyes' line
+const JAW = [[0, 0.093], [0.0245, 0.0855], [0.042, 0.0695], [0.06, 0.059], [0.068, 0.0555], [0.085, 0.0365], [0.098, 0.017], [0.106, 0.0]];
+function jaw(dy) {
+  // Catmull-Rom through the measured half-widths (dy below the eyes)
+  if (dy <= 0) return JAW[0][1];
+  if (dy >= JAW[JAW.length - 1][0]) return 0;
+  let i = 0;
+  while (JAW[i + 1][0] < dy) i++;
+  const p0 = JAW[Math.max(0, i - 1)][1], p1 = JAW[i][1], p2 = JAW[i + 1][1], p3 = JAW[Math.min(JAW.length - 1, i + 2)][1];
+  const t = (dy - JAW[i][0])/(JAW[i + 1][0] - JAW[i][0]);
+  return 0.5*((2*p1) + (-p0 + p2)*t + (2*p0 - 5*p1 + 4*p2 - p3)*t*t + (-p0 + 3*p1 - 3*p2 + p3)*t*t*t);
+}
+// the outline (2D, <0 inside): a round brow over the eyes, the measured jaw below them
 function outline(x, y) {
-  const n = sstep(-0.01, -0.122, y);
-  const rx = 0.093*(1 - 0.58*n*n), ry = y > 0 ? 0.118 : 0.124;
-  return (Math.hypot(x/rx, y/ry) - 1)*Math.min(rx, ry);
+  if (y >= EY) return (Math.hypot(x/0.093, (y - EY)/0.09) - 1)*0.09;
+  const dy = EY - y;
+  if (dy > 0.106) return Math.hypot(x, dy - 0.106);
+  return (Math.abs(x) - jaw(dy))*0.85;
 }
 // the face, before the fire: its height toward the viewer at (x, y)
 function face(x, y) {
-  let z = -(x*x)/(2*0.105) - (y*y)/(2*0.32);
-  z += 0.0085*Math.exp(-((x/0.0105)**2))*sstep(0.05, 0.0, y)*sstep(-0.052, -0.03, y);            // the nose's ridge
-  z -= 0.0038*Math.exp(-(((Math.abs(x) - 0.042)/0.028)**2 + ((y - 0.034)/0.02)**2));             // the eyes sit a little in
-  z += 0.0028*Math.exp(-(((Math.abs(x) - 0.05)/0.03)**2 + ((y + 0.03)/0.03)**2));               // cheeks
-  z += 0.0018*Math.exp(-((x/0.03)**2 + ((y + 0.075)/0.015)**2));                                  // the mouth's rise
+  const v = y - 0.01;
+  let z = -(x*x)/(2*0.105) - (v*v)/(2*0.3);
+  z += 0.008*Math.exp(-((x/0.0105)**2))*sstep(EY + 0.012, EY - 0.01, y)*sstep(EY - 0.046, EY - 0.03, y);   // the nose's ridge
+  z -= 0.0035*Math.exp(-(((Math.abs(x) - 0.046)/0.026)**2 + ((y - EY)/0.018)**2));                         // the eyes sit a little in
+  z += 0.0026*Math.exp(-(((Math.abs(x) - 0.048)/0.028)**2 + ((y - EY + 0.036)/0.024)**2));                 // cheeks
+  z += 0.0016*Math.exp(-((x/0.026)**2 + ((y - EY + 0.064)/0.013)**2));                                      // the mouth's rise
   return z;
 }
-// the slits (2D): > 0 inside, its value the depth fraction there
+// the slits (2D): > 0 inside, its value the depth fraction there. Bars of even thickness with
+// rounded ends, like the avatar's (round 30's first pass tapered them to points)
+function bar(x, y, cx, cy, hl, t) {
+  const dx = Math.max(Math.abs(x - cx) - (hl - t), 0), dy = y - cy;
+  return (t - Math.hypot(dx, dy))/t;
+}
 function slit(x, y) {
   let best = -1;
-  for (const s of [-1, 1]) {
-    const cx = s*0.041, cy = 0.036, hl = 0.027;
-    const u = (x - cx)/hl;
-    if (Math.abs(u) < 1) {
-      const yc = cy - 0.0035*u*s + 0.0016*(1 - u*u);
-      const t = 0.0042*Math.pow(1 - u*u, 0.55) + 0.0004;
-      best = Math.max(best, (t - Math.abs(y - yc))/t);
-    }
-  }
-  {
-    const hl = 0.021, u = x/hl;
-    if (Math.abs(u) < 1) {
-      const yc = -0.078 + 0.0009*(1 - u*u);
-      const t = 0.0027*Math.pow(1 - u*u, 0.5) + 0.0004;
-      best = Math.max(best, (t - Math.abs(y - yc))/t);
-    }
-  }
-  return best;
+  for (const s of [-1, 1]) best = Math.max(best, bar(x, y, s*0.046, EY, 0.0235, 0.0041));
+  return Math.max(best, bar(x, y, 0, EY - 0.065, 0.0168, 0.0029));
 }
 // the char: matte black with a rough grain, crazed with fine cracks in patches (not all over:
 // round 29's first pass, all scales, read as reptile skin), a few blisters risen from the heat
@@ -66,12 +75,13 @@ function char(x, y) {
   const grain = fbm3(x*420, y*420, 0.5, 43, 2) - 0.5;
   return { disp: dome*0.00025 - crack*0.0007 + blister*0.0013 + grain*0.0003, crack, dome, blister, id: c.id, patch };
 }
-// where the fire ate the rim, and the hole through the cheek (2D, > 0 = burned away)
+// where the fire ate the rim, and the hole through the cheek (2D, > 0 = burned away); ragged
+// but shallow (round 30: up to ~7 mm, so the outline stays the source's)
 function burned(x, y) {
   const n = fbm3(x*38, y*38, 1.3, 47, 3);
-  let eat = (n - 0.42)*0.03;                                       // ragged: up to ~1.7 cm in
-  eat += 0.016*Math.exp(-(((x + 0.07)/0.04)**2 + ((y + 0.07)/0.05)**2));   // the lower left jaw burned further
-  const hole = 0.0075 + 0.004*(fbm3(x*90, y*90, 2.1, 53, 2) - 0.5)*2 - Math.hypot(x - 0.056, y + 0.052);
+  let eat = (n - 0.45)*0.014;
+  eat += 0.006*Math.exp(-(((x + 0.06)/0.03)**2 + ((y - EY + 0.07)/0.03)**2));   // a bite out of the lower left jaw
+  const hole = 0.0065 + 0.0035*(fbm3(x*90, y*90, 2.1, 53, 2) - 0.5)*2 - Math.hypot(x - 0.058, y - EY + 0.04);
   return { eat: Math.max(eat, 0), hole };
 }
 
@@ -93,7 +103,7 @@ function field(x, y, z) {
 let CACHE = null;
 function geometry() {
   if (CACHE) return CACHE;
-  const g = largest_piece(mesh_sdf(field, [-0.1, -0.132, -0.078, 0.1, 0.126, 0.02], 0.00085));
+  const g = largest_piece(mesh_sdf(field, [-0.1, -0.09, -0.07, 0.1, 0.118, 0.02], 0.00085));
   // colour, roughness
   const P = g.attributes.position, n = P.count;
   const col = new Float32Array(n*3), mr = new Float32Array(n*2);
