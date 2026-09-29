@@ -433,19 +433,27 @@ export function create_render(parent = document.body) {
   window.addEventListener('resize', resize);
   resize();
 
+  // lich-survivors round 28: a copy of the last final frame (the inspect view's backdrop)
+  const rt_freeze = new THREE.WebGLRenderTarget(W, H, { type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: false });
+  const copy_mat = mk(`precision highp float; varying vec2 vUv; uniform sampler2D tSrc; void main(){ gl_FragColor = texture2D(tSrc, vUv); }`, { tSrc: { value: rt_final.texture } });
+  function freeze() { pass(copy_mat, rt_freeze); return rt_freeze.texture; }
+
   let time = 0;
   function render(dt = 1/60) {
     time += dt;
     const p = params;
-    // world
-    world_camera.updateMatrixWorld();
+    // world (params.world_override = { scene, camera } draws another scene in its place: the
+    // inspect view; no shafts, fog or warp then)
+    const ov = p.world_override;
+    const ws = ov ? ov.scene : world_scene, wc = ov ? ov.camera : world_camera;
+    wc.updateMatrixWorld();
     renderer.setRenderTarget(rt_world);
-    renderer.setClearColor(world_scene.background || 0x000000, 1);
-    renderer.render(world_scene, world_camera);
+    renderer.setClearColor(ws.background || 0x000000, 1);
+    renderer.render(ws, wc);
     // what bends the light (warp.js)
     renderer.setRenderTarget(rt_warp);
     renderer.setClearColor(0x000000, 0);
-    renderer.render(warp_scene, world_camera);
+    if (ov) renderer.clear(); else renderer.render(warp_scene, world_camera);
     // viewmodel
     renderer.setRenderTarget(rt_view);
     renderer.setClearColor(0x000000, 0);
@@ -471,7 +479,7 @@ export function create_render(parent = document.body) {
     }
     const sh = p.shafts;
     const sl = sh && sh.light;
-    U.uShaftOn.value = sh && sh.on && sl && sl.shadow && sl.shadow.map ? 1 : 0;
+    U.uShaftOn.value = !ov && sh && sh.on && sl && sl.shadow && sl.shadow.map ? 1 : 0;
     if (U.uShaftOn.value) {
       U.uShadowMap.value = sl.shadow.map.texture;
       U.uShadowMat.value.copy(sl.shadow.matrix);
@@ -480,10 +488,10 @@ export function create_render(parent = document.body) {
       U.uShaftStreak.value = sh.streak || 0; U.uShaftRise.value = sh.rise || 0; U.uShaftSoft.value = sh.soft || 0; U.uShaftTop.value = sh.top || 30;
       if (!(sk && sk.on)) U.uSunDir.value.subVectors(sl.position, sl.target.position).normalize();
     }
-    U.uProjInv.value.copy(world_camera.projectionMatrixInverse);
-    U.uCamWorld.value.copy(world_camera.matrixWorld);
+    U.uProjInv.value.copy(wc.projectionMatrixInverse);
+    U.uCamWorld.value.copy(wc.matrixWorld);
     U.uFogColor.value.copy(p.fog.color);
-    U.uFogNear.value = p.fog.near; U.uFogFar.value = p.fog.far; U.uFogMax.value = p.fog.max; U.uFogCurve.value = p.fog.curve;
+    U.uFogNear.value = p.fog.near; U.uFogFar.value = p.fog.far; U.uFogMax.value = ov ? 0 : p.fog.max; U.uFogCurve.value = p.fog.curve;
     U.uFogSky.value = p.fog.sky; U.uFogBaseY.value = p.fog.base_y; U.uFogFalloff.value = p.fog.falloff; U.uFogHeightMix.value = p.fog.height_mix;
     U.uBloom.value = p.bloom.strength; U.uExposure.value = p.exposure; U.uKnee.value = p.knee;
     U.uContrast.value = p.contrast; U.uSaturation.value = p.saturation; U.uVignette.value = p.vignette;
@@ -520,6 +528,7 @@ export function create_render(parent = document.body) {
     renderer, canvas, W, H, world_scene, world_camera, view_scene, view_camera, warp_scene,
     hud_canvas, hud_tex, params, hooks, hook_uniforms, rebuild, render, resize, view, to_game_px,
     set_shadow_light(l) { params.shafts.light = l; },
-    targets: { rt_world, rt_view, rt_final, rt_warp },
+    freeze,
+    targets: { rt_world, rt_view, rt_final, rt_warp, rt_freeze },
   };
 }

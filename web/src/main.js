@@ -5,7 +5,8 @@
 // torso and head lag and settle, the arms swing, the jaw clacks shut when he stops.
 //
 // Keys: 1-4 camera (1 = the room camera, the game's; 2-4 follow him to judge the motion),
-// 5-0 the six powers on/off, O what he does when a target goes behind him, K beam colour, X beam recoil, L lens beam, F fire colour, J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
+// 5-0 the six powers on/off (round 28: a removed power's object drops around the egg), I the
+// inspect view (inspect.js), C the gem's cut, V what the inspect view has behind the object, O what he does when a target goes behind him, K beam colour, X beam recoil, L lens beam, F fire colour, J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
 // H hides the text. In 4 (FREE) right-drag orbits.
 // Fixed 60 Hz step, rendering every animation frame. window.GAME is the harness API
 // (tools/shoot.mjs): ready, setManual, step(n, input), state(), cam(i), juice(i).
@@ -25,6 +26,8 @@ import { LENS_LOOKS } from 'game/lens.js';
 import { build_nav } from 'game/nav.js';
 import { create_mover, MOVE } from 'game/mover.js';
 import { draw_text } from 'game/hud_font.js';
+import { create_items, ITEMS, GEM_CUTS, SIZES } from 'game/items.js';
+import { create_inspect, BACKDROPS } from 'game/inspect.js';
 
 const R = create_render(document.body);
 R.canvas.style.cursor = 'default';
@@ -34,7 +37,7 @@ const EGG = cave.egg.position;
 
 const G = { t: 0, tick: 0, cam: 0, manual: false, hud: true, dark: 1,
   static: { eye: [-3.6, 9.8, -10.4], tgt: [0.4, 0.1, 2.4] },   // owner, round 2: lower, tilted up; the far wall just shows
-  free: { yaw: 200, pitch: 18, dist: 4.5 } };
+  free: { yaw: 200, pitch: 18, dist: 4.5 }, egg_view: { yaw: 195, pitch: 32, dist: 3.4 } };
 window.G = G;
 G.R = R; G.bake_ms = Math.round(cave.bake_ms); G.tris = cave.tris; G.cave = cave; G.gi_cached = cave.gi_cached; G.lich = lich;
 
@@ -76,6 +79,32 @@ G.powers = powers; G.fx = fx; G.gore = gore; G.warp = warp;
 gore.follow(() => L);
 const POWER_KEYS = ['5', '6', '7', '8', '9', '0'];
 
+// ------------------------------------------------------------------ the powers' objects (round 28)
+// What the gem sees on the floor: the cave from its place by the egg, captured once (only the
+// cave: the lich and the snakes are hidden for it), at the level the game shows it.
+let env_world = null;
+{
+  cave.set_darkness(G.dark);
+  const rt = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+  const cc = new THREE.CubeCamera(0.05, 60, rt);
+  const hidden = R.world_scene.children.filter(o => o !== cave.group && o.visible);
+  for (const o of hidden) o.visible = false;
+  cave.set_dome_visible(true);
+  const gy = cave.ground_y(-0.53, -1.13);
+  cc.position.set(-0.53, gy + 0.15, -1.13);
+  cc.update(R.renderer, R.world_scene);
+  for (const o of hidden) o.visible = true;
+  env_world = rt.texture;
+}
+const items = create_items({ R, cave, fx, warp, env_world });
+const inspect = create_inspect({ R, items, ITEMS });
+G.items = items; G.inspect = inspect;
+function toggle_power(i) {
+  const on = powers.toggle(i);
+  if (on === false) items.drop(i); else if (on === true) items.take(i);
+  return on;
+}
+
 // ------------------------------------------------------------------ cameras
 const v = (x, y, z) => new THREE.Vector3(x, y, z);
 const F = L.clone();                             // what the follow cameras track (eased)
@@ -91,13 +120,19 @@ const CAMS = [
     rig: () => [F.clone().add(from_room(18, 4.6)), F.clone().add(v(0, -0.15, 0))] },
   { name: 'SIDE', note: 'FOLLOWS HIM FROM THE SIDE: A/D TO SEE HIS PROFILE', fov: 45,
     rig: () => [F.clone().addScaledVector(SIDE_DIR, 4.4).add(v(0, 0.25, 0)), F.clone().add(v(0, -0.2, 0))] },
+  // round 28: to look at what lies around the egg
+  { name: 'EGG', note: 'AROUND THE EGG: RIGHT-DRAG TO ORBIT, SCROLL TO ZOOM', fov: 45,
+    rig: () => {
+      const fr = G.egg_view, y = fr.yaw*Math.PI/180, p = fr.pitch*Math.PI/180, c = v(EGG.x, EGG.y + 0.15, EGG.z);
+      return [c.clone().add(v(Math.sin(y)*Math.cos(p)*fr.dist, Math.sin(p)*fr.dist, Math.cos(y)*Math.cos(p)*fr.dist)), c];
+    } },
   { name: 'FREE', note: 'RIGHT-DRAG TO ORBIT, SCROLL TO ZOOM', fov: 45,
     rig: () => {
       const fr = G.free, y = fr.yaw*Math.PI/180, p = fr.pitch*Math.PI/180;
       return [F.clone().add(v(Math.sin(y)*Math.cos(p)*fr.dist, Math.sin(p)*fr.dist, Math.cos(y)*Math.cos(p)*fr.dist)), F.clone()];
     } },
 ];
-const CAM_FREE = CAMS.length - 1;
+const CAM_FREE = CAMS.length - 1, CAM_EGG = CAMS.length - 2;
 // a follow camera stops short of rock between it and him (the room camera is never moved)
 function clear_eye(eye, from) {
   const d = eye.clone().sub(from), n = Math.ceil(d.length()/0.1);
@@ -112,7 +147,7 @@ function place_camera(dt) {
   const k = 1 - Math.exp(-3.5*dt);
   F.lerp(L, k);
   let [eye, tgt] = c.rig();
-  if (G.cam !== 0) eye = clear_eye(eye, F);
+  if (G.cam !== 0 && G.cam !== CAM_EGG) eye = clear_eye(eye, F);
   cave.set_dome_visible(c.dome !== false);
   const C = R.world_camera;
   C.fov = c.fov; C.updateProjectionMatrix();
@@ -193,9 +228,24 @@ function wanted_velocity() {
 }
 
 addEventListener('keydown', (e) => {
+  // the inspect view takes the keys while it is up
+  if (inspect.S.active) {
+    if (e.code === 'KeyI' || e.code === 'Escape' || e.code === 'KeyE') inspect.close();
+    if (e.code === 'KeyA' || e.code === 'ArrowLeft') inspect.next(-1);
+    if (e.code === 'KeyD' || e.code === 'ArrowRight') inspect.next(1);
+    if (e.code === 'KeyC') { items.set_cut(items.opts.gem_cut + 1); inspect.rebuild(); }
+    if (e.code === 'KeyV') inspect.set_backdrop(inspect.S.backdrop + 1);
+    if (e.code === 'KeyH') G.hud = !G.hud;
+    return;
+  }
+  if (e.code === 'KeyI') { held.clear(); mouse.down = false; inspect.open(); return; }
+  if (e.code === 'KeyC') items.set_cut(items.opts.gem_cut + 1);
+  if (e.code === 'KeyV') inspect.set_backdrop(inspect.S.backdrop + 1);
+  if (e.code === 'KeyZ') items.set_size(items.opts.size + 1);
   if (KEYMAP[e.code]) { held.add(KEYMAP[e.code]); e.preventDefault(); }
   const d = /^(Digit|Numpad)([1-4])$/.exec(e.code);
-  if (d) set_cam(+d[2] - 1);
+  if (d) set_cam(+d[2] === 4 ? CAM_FREE : +d[2] - 1);
+  if (e.code === 'KeyY') set_cam(CAM_EGG);
   if (e.code === 'KeyH') G.hud = !G.hud;
   if (e.code === 'KeyP') lich.mode = lich.mode + 1;
   if (e.code === 'KeyJ') lich.juice = lich.juice + 1;
@@ -207,7 +257,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyO') powers.facing = powers.facing + 1;
   if (e.code === 'KeyL') powers.lens.look = powers.lens.look + 1;
   const pk = /^(Digit|Numpad)([0-9])$/.exec(e.code);
-  if (pk && POWER_KEYS.includes(pk[2])) powers.toggle(POWER_KEYS.indexOf(pk[2]));
+  if (pk && POWER_KEYS.includes(pk[2])) toggle_power(POWER_KEYS.indexOf(pk[2]));
   if (e.code === 'KeyB') { G.dark = (G.dark + 1) % cave.DARK.length; cave.set_darkness(G.dark); }
 });
 addEventListener('keyup', (e) => { if (KEYMAP[e.code]) held.delete(KEYMAP[e.code]); });
@@ -216,24 +266,30 @@ let drag = null;
 R.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 R.canvas.addEventListener('pointerdown', (e) => {
   try { R.canvas.setPointerCapture(e.pointerId); } catch { }
+  if (inspect.S.active) return;
   if (e.button === 0) { mouse.down = true; mouse.px = e.clientX; mouse.py = e.clientY; pick_goal(); }   // picked now: a quick click never falls between ticks
-  if (e.button === 2 && G.cam === CAM_FREE) drag = [e.clientX, e.clientY];
+  if (e.button === 2 && (G.cam === CAM_FREE || G.cam === CAM_EGG)) drag = [e.clientX, e.clientY];
 });
 R.canvas.addEventListener('pointerup', (e) => { if (e.button === 0) mouse.down = false; if (e.button === 2) drag = null; });
 R.canvas.addEventListener('pointermove', (e) => {
   mouse.px = e.clientX; mouse.py = e.clientY;
-  if (!drag || G.cam !== CAM_FREE) return;
-  G.free.yaw -= (e.clientX - drag[0])*0.3;
-  G.free.pitch = clamp(G.free.pitch + (e.clientY - drag[1])*0.25, -10, 88);
+  if (!drag || (G.cam !== CAM_FREE && G.cam !== CAM_EGG)) return;
+  const fr = G.cam === CAM_EGG ? G.egg_view : G.free;
+  fr.yaw -= (e.clientX - drag[0])*0.3;
+  fr.pitch = clamp(fr.pitch + (e.clientY - drag[1])*0.25, -10, 88);
   drag = [e.clientX, e.clientY];
 });
-R.canvas.addEventListener('wheel', (e) => { if (G.cam === CAM_FREE) G.free.dist = clamp(G.free.dist*Math.exp(e.deltaY*0.001), 1.5, 30); }, { passive: true });
+R.canvas.addEventListener('wheel', (e) => {
+  if (G.cam === CAM_FREE) G.free.dist = clamp(G.free.dist*Math.exp(e.deltaY*0.001), 1.5, 30);
+  if (G.cam === CAM_EGG) G.egg_view.dist = clamp(G.egg_view.dist*Math.exp(e.deltaY*0.001), 0.8, 12);
+}, { passive: true });
 
 // ------------------------------------------------------------------ hud
 const hud = R.hud_canvas.getContext('2d');
 const gp = new THREE.Vector3();
 function draw_hud() {
   hud.clearRect(0, 0, R.W, R.H);
+  if (inspect.S.active) { if (G.hud) inspect.draw_hud(hud); return; }
   // where the mouse sent him: a small pale cross on the floor
   if (goal) {
     gp.copy(goal).project(R.world_camera);
@@ -246,12 +302,15 @@ function draw_hud() {
   if (!G.hud) return;
   const c = CAMS[G.cam];
   const ink = 'rgba(8,6,5,0.85)';
-  draw_text(hud, `${G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `${G.cam === CAM_EGG ? 'Y' : G.cam === CAM_FREE ? 4 : G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
-  draw_text(hud, `O BEHIND HIM: ${FACINGS[powers.facing]}`, 8, R.H - 114, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `K BEAM COLOUR: ${BEAM_LOOKS[powers.beam.look]}`, 8, R.H - 103, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `X BEAM RECOIL: ${lich.RECOILS[lich.recoil].name}`, 8, R.H - 92, '#f2e3c2', 1, 'left', null, ink);
-  draw_text(hud, `L LENS BEAM: ${LENS_LOOKS[powers.lens.look]}`, 8, R.H - 81, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `Z ON THE FLOOR: ${SIZES[items.opts.size].name}`, 8, R.H - 147, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `C GEM CUT: ${GEM_CUTS[items.opts.gem_cut]}`, 8, R.H - 136, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `V BEHIND THE OBJECT: ${BACKDROPS[inspect.S.backdrop]}`, 8, R.H - 125, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `O BEHIND HIM: ${FACINGS[powers.facing]}`, 8, R.H - 114, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `K BEAM COLOUR: ${BEAM_LOOKS[powers.beam.look]}`, 8, R.H - 103, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `X BEAM RECOIL: ${lich.RECOILS[lich.recoil].name}`, 8, R.H - 92, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `L LENS BEAM: ${LENS_LOOKS[powers.lens.look]}`, 8, R.H - 81, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `F FIRE: ${fire.LOOKS[fire.look].name}`, 8, R.H - 70, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `J FLOATINESS: ${lich.JUICE[lich.juice].name}`, 8, R.H - 59, '#a8987c', 1, 'left', null, ink);
   draw_text(hud, `R PRISM PATTERN: ${lich.PATTERNS[lich.pattern]}`, 8, R.H - 48, '#a8987c', 1, 'left', null, ink);
@@ -265,12 +324,14 @@ function draw_hud() {
   });
   draw_text(hud, `EACH POWER X${powers.power.toFixed(1)}`, R.W - 8, 8 + 6*11 + 3, '#a8987c', 1, 'right', null, ink);
   draw_text(hud, `REACHED THE EGG: ${snakes.reached}`, R.W - 8, 8 + 7*11 + 3, snakes.reached ? '#e0a070' : '#a8987c', 1, 'right', null, ink);
+  draw_text(hud, 'I: INSPECT THE OBJECTS   5-0: REMOVE A POWER (ITS OBJECT DROPS)', R.W - 8, R.H - 37, '#f2e3c2', 1, 'right', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 CAMERA   5-0 POWERS   O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 Y CAMERA   Z C V O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
 // ------------------------------------------------------------------ sim + render
 function tick() {
+  if (inspect.S.active) { inspect.tick(DT); return; }       // the game waits while he looks
   G.tick++;
   G.t += DT;
   mover.tick(G.t, DT, wanted_velocity());
@@ -285,8 +346,10 @@ function tick() {
   fx.update(G.t, DT);
   gore.update(G.t, DT);
   warp.update(G.t, DT);
+  items.update(G.t, DT);
 }
 function render(dt) {
+  if (!inspect.render_setup()) R.params.world_override = null;
   place_camera(0);
   fire.set_camera(R.world_camera, R.H);
   fx.set_camera(R.world_camera, R.H);
@@ -327,6 +390,7 @@ window.GAME = {
   cam(i, free) { set_cam(i); if (free) Object.assign(G.free, free); render(0); return CAMS[G.cam].name; },
   hud(on) { G.hud = !!on; render(0); return G.hud; },
   // inspection: camera 4 looks at a fixed point from a direction (degrees) and distance
+  egg_cam(yaw, pitch, dist) { Object.assign(G.egg_view, { yaw, pitch, dist }); set_cam(CAM_EGG); render(0); return 'EGG'; },
   view_at(x, y, z, yaw, pitch, dist, fov = 45) {
     const p = v(x, y, z), a = yaw*Math.PI/180, b = pitch*Math.PI/180;
     CAMS[CAM_FREE].rig = () => [p.clone().add(v(Math.sin(a)*Math.cos(b)*dist, Math.sin(b)*dist, Math.cos(a)*Math.cos(b)*dist)), p.clone()];
@@ -383,6 +447,16 @@ window.GAME = {
   facing(m) { powers.facing = m; return FACINGS[powers.facing]; },
   lens_look(m) { powers.lens.look = m; return LENS_LOOKS[powers.lens.look]; },
   reached() { return snakes.reached; },
+  // round 28: the objects
+  drop(i) { if (powers.is_on(powers.ALL[i])) toggle_power(i); return items.state()[i]; },
+  restore(i) { if (!powers.is_on(powers.ALL[i])) toggle_power(i); return items.state()[i]; },
+  items() { return items.state(); },
+  inspect(i) { inspect.open(i); render(0); return ITEMS[inspect.S.idx].name; },
+  inspect_pose(yaw, pitch, roll = 0, zoom = 1) { inspect.pose(yaw, pitch, roll, zoom); render(0); return true; },
+  inspect_close() { inspect.close(); return true; },
+  gem_cut(i) { const c = items.set_cut(i); inspect.rebuild(); render(0); return c; },
+  backdrop(i) { return inspect.set_backdrop(i); },
+  floor_size(i) { return items.set_size(i); },
   // tests: advance (no rendering) until a condition holds, at most `max` ticks; returns ticks run
   until(src, max = 3600) { const f = new Function('G', 'return (' + src + ');'); let n = 0; while (n < max && !f(G)) { tick(); place_camera(DT); n++; } render(n*DT); return n; },
   // set the snake nearest (x, z) alight now; returns its index
