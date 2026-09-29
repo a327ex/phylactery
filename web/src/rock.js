@@ -12,13 +12,22 @@
 // else lies in its way; the throw is aimed along the line that takes the most snakes ("when it
 // makes sense"). Then it lies there a while and sinks into the ground.
 // With fewer powers left one gesture raises several rocks, thrown one after another.
+// Round 24 (owner: "The hand should follow the rock, the rock's movement should be more natural,
+// not so flat, like floating a bit, not stopping so abruptly, not starting so abruptly, imagine it
+// is being controlled by someone's mind who isn't precise like a computer"): nothing moves it by
+// script any more; his mind has it: a soft spring pulls it toward where he means it to be (so it
+// overshoots and settles, and floats while held), the push always easing in, never steady (slow
+// wandering forces), a little drawn back before the throw; thrown, it is urged along a floating
+// arc toward the snake, gathering speed rather than leaving at full speed, wandering a little off
+// the line and corrected; it is his until it strikes, and his hand follows it all the way.
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { smoothstep } from 'game/util.js';
 import { gi_dynamic } from 'game/gi.js';
 
-// (quick: from his gesture to the hit it has ~1.5 s, the time a snake 4.6 m out takes to reach the egg)
-const RIP = 0.25, HOLD = 0.18, STAGGER = 0.12, SPEED = 17, GRAV = 9.8, HIT_R = 0.14;
+// (quick: from his gesture to the hit it has ~2 s, the time a snake 5.6 m out takes to reach the egg)
+const HOLD = 0.25, STAGGER = 0.12, SPEED = 17, ACCEL = 55, GRAV = 9.8, HIT_R = 0.14;
+const CONTROL_MAX = 1.4;              // s of flight before he lets go of one that has hit nothing
 const REST = 3.0, SINK = 1.2;
 
 export function create_rock(ctx) {
@@ -54,7 +63,7 @@ export function create_rock(ctx) {
   }
   const live = [];
   const stats = { thrown: 0, hits: 0, multi: 0, missed: 0 };      // tests
-  const V = new THREE.Vector3(), V2 = new THREE.Vector3(), Q = new THREE.Quaternion();
+  const V = new THREE.Vector3(), V2 = new THREE.Vector3(), Q = new THREE.Quaternion(), A = new THREE.Vector3(), TG = new THREE.Vector3();
 
   // ---------------------------------------------------------------- crushed
   function crush_fx(s, c, dir) {
@@ -146,7 +155,8 @@ export function create_rock(ctx) {
     from.y = cave.ground_y(from.x, from.z) - q.r*0.8;
     const hold = L.clone().addScaledVector(dir, 0.85).addScaledVector(side, 0.35*(arm ? 1 : -1) + off);
     hold.y = L.y + 0.35 + k*0.12;
-    Object.assign(q, { on: true, phase: 'rip', t: -k*STAGGER*(quick ? 0.4 : 1), rip: quick ? 0.14 : RIP, hold_t: quick ? 0.04 : HOLD, speed: quick ? SPEED*1.45 : SPEED,
+    Object.assign(q, { on: true, phase: 'rip', t: -k*STAGGER*(quick ? 0.4 : 1), quick, hold_t: quick ? 0.05 : HOLD, speed: quick ? SPEED*1.45 : SPEED,
+      accel: quick ? ACCEL*2.2 : ACCEL, ramp: 0, ph: [rng.float(0, 6.28), rng.float(0, 6.28), rng.float(0, 6.28), rng.float(0, 6.28)], ctrl: true,
       torn: false, hits: 0, from, hold, target, arm, hit: [], v: new THREE.Vector3(), w: new THREE.Vector3(),
       rest: 0, bounced: 0, wake: 0, dir });
     q.m.position.copy(from); q.m.visible = true;
@@ -177,50 +187,90 @@ export function create_rock(ctx) {
       const q = live[i], m = q.m;
       q.t += dt;
       if (q.t < 0) continue;
+      // its snake has come close to the egg while it rises or is held: it hurries (emergency timing)
+      if (!q.quick && q.target && (q.phase === 'rip' || q.phase === 'hold' || q.phase === 'fly') && Math.hypot(q.target.x - snakes.egg.x, q.target.z - snakes.egg.z) < 2.9) {
+        q.quick = true; q.hold_t = Math.min(q.hold_t, 0.05); q.speed = SPEED*1.45; q.accel = ACCEL*2.2;
+      }
+      // the slow forces of an imprecise mind: never quite steady, never the same twice
+      const wander = (amp, out) => out.set(
+        (Math.sin(t*2.1 + q.ph[0])*0.6 + Math.sin(t*4.7 + q.ph[1])*0.4)*amp,
+        (Math.sin(t*1.7 + q.ph[2])*0.6 + Math.sin(t*3.9 + q.ph[3])*0.4)*amp*0.6,
+        (Math.sin(t*2.6 + q.ph[1])*0.6 + Math.sin(t*5.3 + q.ph[2])*0.4)*amp);
+      // his hand on it, held: a spring toward where he means it to be (f Hz, damping z), its push
+      // capped at amax and easing in over 0.15 s whenever what he wants of it changes
+      const hold_on = (T, f, z, amax, wob) => {
+        const w = 6.2832*f;
+        q.ramp = Math.min(1, q.ramp + dt/0.15);
+        A.subVectors(T, m.position).multiplyScalar(w*w).addScaledVector(q.v, -2*z*w);
+        A.add(wander(wob, V));
+        const l = A.length(), cap = amax*q.ramp;
+        if (l > cap) A.multiplyScalar(cap/l);
+        q.v.addScaledVector(A, dt);
+        m.position.addScaledVector(q.v, dt);
+      };
+      // a slow tumble that it gathers and loses
+      const spin = (to, rate) => { q.w.multiplyScalar(1 - Math.min(1, rate*dt)); if (q.w.length() < to) q.w.addScaledVector(V.set(q.ph[0] - 3, q.ph[1] - 3, q.ph[2] - 3).normalize(), to*rate*dt); };
       if (q.phase === 'rip') {
-        if (!q.torn) { q.torn = true; tear(q); }
-        // up out of the floor, easing in beside his hand
-        const u = smoothstep(0, q.rip, q.t);
-        m.position.lerpVectors(q.from, q.hold, u);
-        m.position.y += Math.sin(u*Math.PI)*0.25;
-        Q.setFromAxisAngle(V.set(0.3, 1, 0.2).normalize(), dt*3); m.quaternion.premultiply(Q);
-        if (q.t >= q.rip) { q.phase = 'hold'; q.pt = 0; }
+        if (!q.torn) { q.torn = true; tear(q); q.v.set(q.dir.x*0.6, q.quick ? 5 : 3.4, q.dir.z*0.6); q.ramp = 0.3; }
+        // it breaks out of the floor and is drawn up beside his hand, over-rising a little and settling
+        hold_on(q.hold, q.quick ? 2.4 : 1.5, 0.5, q.quick ? 90 : 40, 2.5);
+        spin(2, 3);
+        if (rng.next() < 0.5) aura(m.position, 0.9);
+        const near = m.position.distanceTo(q.hold) < 0.2 && q.v.length() < 1.2;
+        if ((q.t > (q.quick ? 0.12 : 0.3) && near) || q.t > (q.quick ? 0.25 : 0.6)) { q.phase = 'hold'; q.pt = 0; q.ramp = 0.5; }
       } else if (q.phase === 'hold') {
         q.pt += dt;
-        // held: it trembles in the air, turning slowly, in a shimmer of warped air
-        m.position.copy(q.hold).add(V.set(Math.sin(t*37 + i)*0.012, Math.sin(t*43 + i*2)*0.012 + Math.sin(t*3)*0.02, Math.cos(t*31 + i)*0.012));
-        Q.setFromAxisAngle(V.set(0.2, 1, 0.4).normalize(), dt*1.5); m.quaternion.premultiply(Q);
+        // held: floating, bobbing, drifting on his attention; just before it goes it is drawn back
+        // a little toward him (the throw gathered)
+        const back = smoothstep(q.hold_t - 0.14, q.hold_t, q.pt);
+        TG.copy(q.hold).addScaledVector(q.dir, -0.18*back);
+        TG.y += 0.05*back + Math.sin(t*2.2 + q.ph[0])*0.03;
+        hold_on(TG, 1.3, 0.42, 25, 2.0);
+        spin(0.8, 2);
         if (rng.next() < 0.7) aura(m.position, 1);
         if (q.pt >= q.hold_t) {
-          // thrown: along the line that takes the most, at where its snake will be when it gets there
+          // thrown: along the line that takes the most, toward where its snake will be
           if (!q.target || !snakes.free(q.target) || claimed(q.target, q)) q.target = another(q);
-          const s = q.target ? best_line(m.position, q.target, q) : null;
-          const goal = s ? ahead(s, m.position.distanceTo(s.spine[mid])/q.speed, new THREE.Vector3()) : m.position.clone().addScaledVector(q.dir, 4).setY(0);
-          goal.y = cave.ground_y(goal.x, goal.z) + 0.12;
-          q.target = s;
-          const h = Math.hypot(goal.x - m.position.x, goal.z - m.position.z), T = Math.max(0.12, h/q.speed);
-          q.v.set((goal.x - m.position.x)/T, (goal.y - m.position.y)/T + 0.5*GRAV*T, (goal.z - m.position.z)/T);
-          q.w.set(rng.spread(1), rng.spread(1), rng.spread(1)).normalize().multiplyScalar(rng.float(8, 14));
-          q.phase = 'fly'; q.ft = 0; stats.thrown++;
-          lich.kick(q.arm, 0.3);
+          q.target = q.target ? best_line(m.position, q.target, q) : null;
+          q.phase = 'fly'; q.ft = 0; q.ramp = 0.35; q.s_cmd = q.v.length(); q.l0 = m.position.clone();
+          q.h0 = q.target ? Math.max(1, Math.hypot(q.target.spine[mid].x - m.position.x, q.target.spine[mid].z - m.position.z)) : 4;
+          stats.thrown++;
+          lich.kick(q.arm, 0.2);
           for (let k = 0; k < 4; k++) aura(m.position, 1.3);
         }
       } else if (q.phase === 'fly') {
         q.ft += dt;
-        // steered onto its snake until it has it (he guides it): turned toward where it is, and
-        // its fall reckoned again for the way left, so it arrives at the body rather than the floor
-        if (q.target && !q.hit.includes(q.target) && snakes.free(q.target)) {
-          ahead(q.target, 0, V2); V2.y = cave.ground_y(V2.x, V2.z) + 0.1;
-          const hx = V2.x - m.position.x, hz = V2.z - m.position.z, h = Math.hypot(hx, hz);
-          const hs = Math.max(q.speed*0.6, Math.hypot(q.v.x, q.v.z));
-          if (h > 0.05) {
-            q.v.x = hx/h*hs; q.v.z = hz/h*hs;
-            const T = Math.max(0.03, h/hs);
-            q.v.y = (V2.y - m.position.y)/T + 0.5*GRAV*T;
-          }
+        if (q.ctrl && q.target && (!snakes.free(q.target) || q.hit.includes(q.target))) {
+          // its snake gone before it got there: another, or he lets it go
+          const o = q.hit.length ? null : another(q);
+          if (o) q.target = o; else q.ctrl = false;
         }
-        q.v.y -= GRAV*dt;
-        m.position.addScaledVector(q.v, dt);
+        if (q.ctrl && q.target && q.ft < CONTROL_MAX) {
+          // urged at its snake along a floating arc: it gathers speed (never leaves at full
+          // speed), wanders a little off the line and is corrected, and dives onto the body
+          ahead(q.target, 0, TG); TG.y = cave.ground_y(TG.x, TG.z) + 0.1;
+          const hx = TG.x - m.position.x, hz = TG.z - m.position.z, h = Math.max(1e-3, Math.hypot(hx, hz));
+          q.s_cmd = Math.min(q.speed, q.s_cmd + q.accel*dt);
+          const u = Math.min(1, 1 - h/q.h0), arc = Math.min(0.6, 0.1*q.h0)*(q.quick ? 0.5 : 1);
+          const look = Math.min(1, u + q.s_cmd*0.12/q.h0);
+          const y_next = m.position.y + (TG.y - m.position.y)*Math.min(1, q.s_cmd*0.12/h) + arc*4*(look*(1 - look) - u*(1 - u));
+          V2.set(hx/h*q.s_cmd, (y_next - m.position.y)/0.12, hz/h*q.s_cmd);
+          q.ramp = Math.min(1, q.ramp + dt/0.15);
+          A.subVectors(V2, q.v).multiplyScalar(12);
+          // imprecise: a slow sideways and up-and-down wander that the correction keeps catching
+          const side = V.set(-hz/h, 0, hx/h).multiplyScalar((Math.sin(t*3.1 + q.ph[0])*0.7 + Math.sin(t*6.3 + q.ph[3])*0.3)*7);
+          A.add(side); A.y += Math.sin(t*2.7 + q.ph[2])*3;
+          const l = A.length(), cap = q.accel*1.4*q.ramp;
+          if (l > cap) A.multiplyScalar(cap/l);
+          q.v.addScaledVector(A, dt);
+          m.position.addScaledVector(q.v, dt);
+        } else {
+          // his, no longer: it flies on as a thrown thing does
+          q.ctrl = false;
+          q.v.y -= GRAV*dt;
+          m.position.addScaledVector(q.v, dt);
+        }
+        spin(q.ctrl ? 9 : 5, 2.5);
         const wl = q.w.length();
         if (wl > 1e-3) { Q.setFromAxisAngle(V.copy(q.w).multiplyScalar(1/wl), wl*dt); m.quaternion.premultiply(Q); }
         // its wake
@@ -234,6 +284,7 @@ export function create_rock(ctx) {
           q.hit.push(s);
           gore.crush(s.spine[j], dir, s.radii[j]);
           q.v.multiplyScalar(0.78);
+          q.ctrl = false;
           q.hits = (q.hits || 0) + 1; stats.hits++; if (q.hits === 2) stats.multi++;
         });
         // the floor: it bounces, skids, and comes to rest
@@ -251,7 +302,12 @@ export function create_rock(ctx) {
           const d = 1 - Math.min(1, 2.2*dt); q.v.x *= d; q.v.z *= d;
         }
         if (q.bounced && Math.hypot(q.v.x, q.v.z) < 0.6 && Math.abs(q.v.y) < 0.3) { q.phase = 'rest'; q.rest = 0; if (!q.hits) stats.missed++; }
-      } else if (q.phase === 'rest') {
+      }
+      if (q.phase === 'rip' || q.phase === 'hold') {
+        const wl = q.w.length();
+        if (wl > 1e-3) { Q.setFromAxisAngle(V.copy(q.w).multiplyScalar(1/wl), wl*dt); m.quaternion.premultiply(Q); }
+      }
+      if (q.phase === 'rest') {
         q.rest += dt;
         if (q.rest > REST) m.position.y -= (q.r*2.4/SINK)*dt;
         if (q.rest > REST + SINK) { q.on = false; m.visible = false; live.splice(i, 1); }
@@ -270,9 +326,9 @@ export function create_rock(ctx) {
     update,
     // something about to reach the egg while he holds a rock: another tears out for it at once
     extend(more, arm = 1) { more.filter(s => snakes.free(s) && !claimed(s, null)).slice(0, 2).forEach((s, k) => raise(s, k, arm, true)); },
-    // his hand stays up until the last of this gesture's rocks has gone
-    busy: () => live.some(q => q.phase === 'rip' || q.phase === 'hold' || q.t < 0),
-    aim_point: () => { const q = live.find(q => q.phase === 'hold' || q.phase === 'rip'); return q && q.target && snakes.free(q.target) ? q.target.spine[mid] : null; },
+    // his hand is on it (round 24: it follows the rock) until the last he holds has struck or gone
+    busy: () => live.some(q => q.t < 0 || q.phase === 'rip' || q.phase === 'hold' || (q.phase === 'fly' && q.ctrl)),
+    aim_point: () => { const q = live.find(q => q.t >= 0 && (q.phase === 'rip' || q.phase === 'hold' || (q.phase === 'fly' && q.ctrl))); return q ? q.m.position : null; },
     stats,
     // tests
     debug: () => live.map(q => [q.phase, q.hits || 0, +q.m.position.x.toFixed(2), +q.m.position.y.toFixed(2), +q.m.position.z.toFixed(2),
