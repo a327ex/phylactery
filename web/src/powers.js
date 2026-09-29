@@ -315,6 +315,8 @@ export function create_powers(ctx) {
     after_pose(t) { beam.after_pose(t); },
     get power() { return power; },
     is_on: a => on.get(a),
+    // round 31: he glances at a point (where something he let go of lands)
+    glance(p) { LOOK.p.copy(p); LOOK.t = 0; },
     toggle(i) { const a = ALL[i]; if (a) { on.set(a, !on.get(a)); reset_fair(); } return a && on.get(a); },
     set(i, v) { const a = ALL[i]; if (a && on.get(a) !== !!v) { on.set(a, !!v); reset_fair(); } },
     state: () => ({ phase: G.phase, ab: G.ab && G.ab.name, t: +G.t.toFixed(2), power: +power.toFixed(2), on: ALL.filter(a => on.get(a)).map(a => a.name), next: ALL.map(a => +next.get(a).toFixed(2)), leak_reach: +leak.reach.toFixed(1),

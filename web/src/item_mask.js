@@ -62,18 +62,35 @@ function slit(x, y) {
   for (const s of [-1, 1]) best = Math.max(best, bar(x, y, s*0.046, EY, 0.0235, 0.0041));
   return Math.max(best, bar(x, y, 0, EY - 0.065, 0.0168, 0.0029));
 }
-// the char: matte black with a rough grain, crazed with fine cracks in patches (not all over:
-// round 29's first pass, all scales, read as reptile skin), a few blisters risen from the heat
+// the burn (round 31, owner: "a different burning texture ... irregularities to it overall, it
+// should look burned, worn, etc. The same kind of irregularities you added to the hand"): the
+// shell warped by the heat, a grainy, pitted surface; blisters risen and a few burst; charred
+// crackle over part of it (irregular, not round 30's even scales everywhere); a few long fissures;
+// a burn front at the eaten rim, ash going to brown going to black (colour, below).
 function char(x, y) {
-  const S = 0.0058;
-  const c = cells2(x/(S*1.2) + 3.1, y/S - 1.7, 41);
-  const patch = sstep(0.46, 0.6, fbm3(x*22, y*22, 4.1, 45, 3));
-  const crack = sstep(0.0008, 0.00015, c.edge*S)*patch;
-  const dome = sstep(0, 0.0022, c.edge*S)*patch;
-  const b = cells2(x/0.019 - 7.3, y/0.019 + 2.2, 49);
-  const blister = b.id > 0.72 ? sstep(0.34, 0.0, b.d1) : 0;
-  const grain = fbm3(x*420, y*420, 0.5, 43, 2) - 0.5;
-  return { disp: dome*0.00025 - crack*0.0007 + blister*0.0013 + grain*0.0003, crack, dome, blister, id: c.id, patch };
+  const warp = (fbm3(x*9 + 1.7, y*9, 3.3, 57, 3) - 0.5)*0.007;
+  const grain = (fbm3(x*260, y*260, 0.5, 43, 3) - 0.5)*0.0008 + (fbm3(x*70, y*70, 0.9, 44, 2) - 0.5)*0.0012;
+  const pc = cells2(x/0.004 + 0.3, y/0.004, 59);
+  const pit = pc.id > 0.82 ? sstep(0.35, 0.05, pc.d1)*0.0005 : 0;
+  // blisters (lacquer lifting off in the heat): some whole, a few burst to a shallow crater
+  const bc = cells2(x/0.013 - 7.3, y/0.013 + 2.2, 49);
+  let blister = 0, burst = 0;
+  if (bc.id > 0.5) {
+    const r = bc.d1/(0.22 + 0.25*bc.id);
+    if (bc.id > 0.9) { burst = r < 0.8 ? 1 : 0; blister = 0.0005*sstep(1.0, 0.75, r) - 0.0007*sstep(0.8, 0.2, r); }
+    else blister = 0.0011*Math.pow(sstep(1.0, 0.0, r), 0.7);
+  }
+  // charred crackle in patches: cells bent out of true by the noise, deep cracks
+  const qx = x + (fbm3(x*40, y*40, 2.9, 71, 2) - 0.5)*0.006, qy = y + (fbm3(x*40, y*40, 6.1, 72, 2) - 0.5)*0.006;
+  const cc = cells2(qx/0.0075, qy/0.0065, 41);
+  const patch = sstep(0.5, 0.6, fbm3(x*16, y*16, 4.1, 45, 3));
+  const crack = sstep(0.0009, 0.00015, cc.edge*0.007)*patch;
+  const dome = sstep(0, 0.0022, cc.edge*0.007)*patch;
+  // long fissures where the noise lets them run
+  const fc = cells2(x/0.034 + 5.1, y/0.028 - 3.3, 61);
+  const fissure = sstep(0.0011, 0.0002, fc.edge*0.03)*sstep(0.55, 0.66, fbm3(x*14, y*14, 7.7, 63, 2));
+  return { disp: warp + grain - pit + blister + dome*0.0003 - crack*0.0008 - fissure*0.0009, pit: pit > 0 ? 1 : 0,
+    blister: Math.max(0, blister)/0.0011, burst, crack, dome, fissure, id: bc.id };
 }
 // where the fire ate the rim, and the hole through the cheek (2D, > 0 = burned away); ragged
 // but shallow (round 30: up to ~7 mm, so the outline stays the source's)
@@ -92,8 +109,8 @@ function field(x, y, z) {
   const f = face(x, y);
   const s = slit(x, y);
   const ch = char(x, y);
-  const front = f + ch.disp*(s > 0 ? 0.2 : 1) - (s > 0 ? GROOVE*Math.min(1, s*3) : 0);
-  const back = f - T;
+  const front = f + ch.disp*(s > 0 ? 0.5 : 1) - (s > 0 ? GROOVE*Math.min(1, s*3) : 0);
+  const back = f + (fbm3(x*9 + 1.7, y*9, 3.3, 57, 3) - 0.5)*0.007 - T;
   let d = Math.max(z - front, back - z);
   d = smax(d, o, 0.0016);
   d = Math.max(d, b.hole);
@@ -103,31 +120,38 @@ function field(x, y, z) {
 let CACHE = null;
 function geometry() {
   if (CACHE) return CACHE;
-  const g = largest_piece(mesh_sdf(field, [-0.1, -0.09, -0.07, 0.1, 0.118, 0.02], 0.00085));
+  const g = largest_piece(mesh_sdf(field, [-0.1, -0.09, -0.075, 0.1, 0.118, 0.022], 0.0007));
   // colour, roughness
   const P = g.attributes.position, n = P.count;
   const col = new Float32Array(n*3), mr = new Float32Array(n*2);
   for (let i = 0; i < n; i++) {
     const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
     const f = face(x, y), s = slit(x, y), ch = char(x, y), b = burned(x, y);
-    const front = z > f - T*0.5;
+    const front = z > f + (fbm3(x*9 + 1.7, y*9, 3.3, 57, 3) - 0.5)*0.007 - T*0.85;
     const rim = sstep(-0.006, -0.0005, outline(x, y) + b.eat) + sstep(-0.004, 0.0, b.hole);
     let r, gg, bb, rough;
+    const soot = fbm3(x*45, y*20, 1.9, 67, 3);
+    // how far in from where the fire ate the rim (0 at the edge): the burn front
+    const edge = -(outline(x, y) + b.eat), front_d = Math.min(edge, -b.hole + 0.0065*0.3);
+    const ashy = sstep(0.006, 0.0, front_d), brown = sstep(0.02, 0.004, front_d);
     if (front && s > 0.05) {
-      // the slits kept their white, sooted toward their edges
-      const w = sstep(0.05, 0.6, s);
-      r = 0.05 + 0.73*w; gg = 0.048 + 0.71*w; bb = 0.045 + 0.67*w; rough = 0.6;
-    } else {
-      // char: black, a little uneven; crazed patches catch a faint sheen, cracks dead black,
-      // blisters glossier
+      // the slits kept their white, stained brown with soot, dirtier at their edges
+      const w = sstep(0.05, 0.6, s)*(0.7 + 0.3*sstep(0.62, 0.4, soot));
+      r = 0.05 + 0.68*w; gg = 0.042 + 0.62*w; bb = 0.036 + 0.55*w; rough = 0.65;
+    } else if (front) {
+      // char: black, velvety; a faint grey sheen on crackle tops and blisters; cracks and
+      // craters dead black; scorched brown and then ash toward the eaten rim; soot streaks
       const t = fbm3(x*60, y*60, 2.2, 55, 3);
-      const v = 0.0035 + 0.005*t + 0.002*ch.dome - 0.003*ch.crack + 0.003*ch.blister;
-      r = v; gg = v*0.98; bb = v*0.96;
-      if (!front) { r = 0.006; gg = 0.0058; bb = 0.0056; }
-      rough = 0.74 - 0.2*ch.dome - 0.35*ch.blister + 0.2*ch.crack + (front ? 0 : 0.15);
+      const v = 0.0045 + 0.005*t + 0.004*ch.dome + 0.003*ch.blister*(1 - ch.burst) - 0.003*Math.max(ch.crack, ch.fissure, ch.burst, ch.pit);
+      r = v*1.15; gg = v; bb = v*0.9;
+      r += (0.045 - r)*brown*0.8; gg += (0.026 - gg)*brown*0.8; bb += (0.014 - bb)*brown*0.8;
+      const streak = sstep(0.62, 0.74, soot)*0.5;
+      r *= 1 - streak*0.5; gg *= 1 - streak*0.5; bb *= 1 - streak*0.5;
+      rough = 0.8 - 0.25*ch.dome - 0.35*ch.blister*(1 - ch.burst) + 0.15*ch.crack;
+    } else {
+      r = 0.008; gg = 0.0065; bb = 0.0055; rough = 0.9;
     }
-    // ash where it burned through
-    r += (0.1 - r)*rim; gg += (0.092 - gg)*rim; bb += (0.085 - bb)*rim; rough += (0.95 - rough)*rim;
+    r += (0.085 - r)*ashy*0.85; gg += (0.078 - gg)*ashy*0.85; bb += (0.072 - bb)*ashy*0.85; rough += (0.95 - rough)*ashy;
     col[i*3] = r; col[i*3 + 1] = gg; col[i*3 + 2] = bb;
     mr[i*2] = 0; mr[i*2 + 1] = Math.min(1, rough);
   }

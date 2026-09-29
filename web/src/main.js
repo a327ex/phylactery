@@ -96,7 +96,7 @@ let env_world = null;
   for (const o of hidden) o.visible = true;
   env_world = rt.texture;
 }
-const items = create_items({ R, cave, fx, warp, env_world, nav });
+const items = create_items({ R, cave, fx, warp, env_world, nav, lich, mover, get_L: () => L, glance: (p) => powers.glance(p) });
 const inspect = create_inspect({ R, items, ITEMS });
 G.items = items; G.inspect = inspect;
 function toggle_power(i) {
