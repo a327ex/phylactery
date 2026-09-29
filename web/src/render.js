@@ -3,6 +3,10 @@
 // Frame:  world scene  -> rt_world (HalfFloat linear, + depth texture)
 //         view scene   -> rt_view  (HalfFloat, alpha = coverage; the viewmodel never clips walls)
 //         bright pass  -> rt_bloom (160x90) -> separable blur          (skipped when bloom = 0)
+//         warp scene   -> rt_warp  (HalfFloat: screen-space shift in px, its prismatic split,
+//                         coverage), lich-survivors round 23: things that bend the light
+//                         behind them (wind, heat haze); drawn with the world camera, each
+//                         fragment tested against the world's depth itself
 //         final pass   -> rt_final (640x360 8-bit): fog on the world, viewmodel over it, bloom,
 //                         exposure, soft shoulder, sRGB encode, grade, flash/hurt, ordered dither +
 //                         quantize, HUD canvas composited last (never graded or dithered)
@@ -177,7 +181,7 @@ function final_fs(hooks, steps = 24) {
 precision highp float;
 #define SHAFT_STEPS ${steps | 0}
 varying vec2 vUv;
-uniform sampler2D tWorld, tDepth, tView, tBloom, tHud;
+uniform sampler2D tWorld, tDepth, tView, tBloom, tHud, tWarp;
 uniform vec2 uRes;
 uniform mat4 uProjInv, uCamWorld;
 uniform vec3 uFogColor;
@@ -185,13 +189,19 @@ uniform float uFogNear, uFogFar, uFogMax, uFogCurve, uFogSky, uFogBaseY, uFogFal
 uniform float uBloom, uExposure, uKnee, uContrast, uSaturation, uVignette, uDither, uLevels, uTime, uDitherDark0, uDitherDark1;
 uniform vec3 uLift, uGamma, uGain;
 uniform vec4 uFlash;
-uniform vec3 uHurtColor; uniform float uHurt, uDesat, uHud;
+uniform vec3 uHurtColor; uniform float uHurt, uDesat, uHud, uWarpView;
 ${COMMON}
 ${SKY_GLSL}
 ${SHAFT_GLSL}
 ${hooks.decl || ''}
 vec3 hook_world(vec3 c, vec3 wpos, float dist, float sky){ ${hooks.world || 'return c;'} }
 vec3 hook_grade(vec3 c, vec2 px){ ${hooks.grade || 'return c;'} }
+// the world, bilinear (its target is nearest-filtered): a warp shifts it by fractions of a pixel
+vec3 world_bl(vec2 uv){
+  vec2 p = uv*uRes - 0.5, f = fract(p), b = (floor(p) + 0.5)/uRes, d = 1.0/uRes;
+  return mix(mix(texture2D(tWorld, b).rgb, texture2D(tWorld, b + vec2(d.x, 0.0)).rgb, f.x),
+             mix(texture2D(tWorld, b + vec2(0.0, d.y)).rgb, texture2D(tWorld, b + d).rgb, f.x), f.y);
+}
 vec3 shoulder(vec3 c){
   // identity below the knee, smooth roll-off above it: flat colours stay exact
   vec3 over = max(c - uKnee, 0.0);
@@ -202,6 +212,15 @@ void main(){
   vec2 px = floor(vUv*uRes);
   vec2 uv = (px + 0.5)/uRes;
   vec3 world = texture2D(tWorld, uv).rgb;
+  // bent by what is in the warp target: the three channels shifted by slightly different amounts
+  // (the prismatic split), a faint haze where it is dense
+  vec4 wp = texture2D(tWarp, uv);
+  if (abs(wp.x) + abs(wp.y) > 0.03) {
+    vec2 o = wp.xy/uRes;
+    float ch = clamp(wp.z, 0.0, 1.5);
+    world = vec3(world_bl(uv + o*(1.0 + ch)).r, world_bl(uv + o).g, world_bl(uv + o*(1.0 - ch)).b);
+  }
+  world *= 1.0 + 0.16*clamp(wp.w, 0.0, 1.0);
   float z = texture2D(tDepth, uv).x;
   float sky = step(0.999999, z);
   vec4 vp = uProjInv*vec4(uv*2.0 - 1.0, z*2.0 - 1.0, 1.0);
@@ -236,6 +255,8 @@ void main(){
   c = mix(c, uHurtColor, uHurt*smoothstep(0.42, 1.12, r));
   c = mix(c, uFlash.rgb, uFlash.a);
   c = hook_grade(clamp(c, 0.0, 1.0), px);
+  // tests (params.warp_view): where the world is being bent, tinted by how far
+  if (uWarpView > 0.5) c = mix(c, vec3(0.3, 1.0, 0.85), clamp(length(wp.xy)*0.3, 0.0, 0.85));
   if (uLevels > 1.5) {
     float th = mix(0.5, bayer4(px), uDither*smoothstep(uDitherDark0, uDitherDark1, luma(c)));
     c = floor(clamp(c, 0.0, 1.0)*(uLevels - 1.0) + th)/(uLevels - 1.0);
@@ -309,6 +330,8 @@ export function create_render(parent = document.body) {
   const blo = { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: false };
   const rt_bloom_a = new THREE.WebGLRenderTarget(BW, BH, blo);
   const rt_bloom_b = new THREE.WebGLRenderTarget(BW, BH, blo);
+  const rt_warp = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: false });
+  const warp_scene = new THREE.Scene();
   const rt_final = new THREE.WebGLRenderTarget(W, H, { type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: false });
 
   const world_scene = new THREE.Scene();
@@ -365,14 +388,14 @@ export function create_render(parent = document.body) {
 
   const U = {
     tWorld: { value: rt_world.texture }, tDepth: { value: rt_world.depthTexture }, tView: { value: rt_view.texture },
-    tBloom: { value: black }, tHud: { value: hud_tex }, uRes: { value: new THREE.Vector2(W, H) },
+    tBloom: { value: black }, tHud: { value: hud_tex }, tWarp: { value: rt_warp.texture }, uRes: { value: new THREE.Vector2(W, H) },
     uProjInv: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() },
     uFogColor: { value: new THREE.Color() }, uFogNear: { value: 0 }, uFogFar: { value: 1 }, uFogMax: { value: 0 },
     uFogCurve: { value: 1 }, uFogSky: { value: 0 }, uFogBaseY: { value: 0 }, uFogFalloff: { value: 0 }, uFogHeightMix: { value: 0 },
     uBloom: { value: 0 }, uExposure: { value: 1 }, uKnee: { value: 0.8 }, uContrast: { value: 1 }, uSaturation: { value: 1 },
     uVignette: { value: 0 }, uDither: { value: 0 }, uLevels: { value: 0 }, uTime: { value: 0 }, uDitherDark0: { value: -1 }, uDitherDark1: { value: 0 },
     uLift: { value: new THREE.Vector3() }, uGamma: { value: new THREE.Vector3(1, 1, 1) }, uGain: { value: new THREE.Vector3(1, 1, 1) },
-    uFlash: { value: new THREE.Vector4() }, uHurtColor: { value: new THREE.Vector3() }, uHurt: { value: 0 }, uDesat: { value: 0 }, uHud: { value: 1 },
+    uFlash: { value: new THREE.Vector4() }, uHurtColor: { value: new THREE.Vector3() }, uHurt: { value: 0 }, uDesat: { value: 0 }, uHud: { value: 1 }, uWarpView: { value: 0 },
     uSkyOn: { value: 0 }, uSunSize: { value: 0.9988 }, uClouds: { value: 0 },
     uZenith: { value: new THREE.Vector3() }, uHorizon: { value: new THREE.Vector3() }, uGroundCol: { value: new THREE.Vector3() },
     uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3() }, uHalo: { value: new THREE.Vector3() },
@@ -419,6 +442,10 @@ export function create_render(parent = document.body) {
     renderer.setRenderTarget(rt_world);
     renderer.setClearColor(world_scene.background || 0x000000, 1);
     renderer.render(world_scene, world_camera);
+    // what bends the light (warp.js)
+    renderer.setRenderTarget(rt_warp);
+    renderer.setClearColor(0x000000, 0);
+    renderer.render(warp_scene, world_camera);
     // viewmodel
     renderer.setRenderTarget(rt_view);
     renderer.setClearColor(0x000000, 0);
@@ -464,7 +491,7 @@ export function create_render(parent = document.body) {
     U.uDitherDark0.value = p.dither_dark[0]; U.uDitherDark1.value = p.dither_dark[1];
     U.uLift.value.fromArray(p.lift); U.uGamma.value.fromArray(p.gamma); U.uGain.value.fromArray(p.gain);
     U.uFlash.value.fromArray(p.flash); U.uHurtColor.value.fromArray(p.hurt_color); U.uHurt.value = p.hurt; U.uDesat.value = p.desat;
-    U.uHud.value = p.hud;
+    U.uHud.value = p.hud; U.uWarpView.value = p.warp_view ? 1 : 0;
     hud_tex.needsUpdate = true;
     pass(final_mat, rt_final);
     // upscale to the canvas
@@ -490,9 +517,9 @@ export function create_render(parent = document.body) {
   }
 
   return {
-    renderer, canvas, W, H, world_scene, world_camera, view_scene, view_camera,
+    renderer, canvas, W, H, world_scene, world_camera, view_scene, view_camera, warp_scene,
     hud_canvas, hud_tex, params, hooks, hook_uniforms, rebuild, render, resize, view, to_game_px,
     set_shadow_light(l) { params.shafts.light = l; },
-    targets: { rt_world, rt_view, rt_final },
+    targets: { rt_world, rt_view, rt_final, rt_warp },
   };
 }

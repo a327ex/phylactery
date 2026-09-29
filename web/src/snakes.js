@@ -106,9 +106,12 @@ uniform float uSnakeT;`)
     float c2 = abs(sin(cu.x*12.57 + cu.y*3.1 + sin(cu.y*5.0)));
     float crack = smoothstep(0.24, 0.0, min(c1, c2));
     totalEmissiveRadiance += uEmber*vBurn.y*(0.03 + 0.8*crack);
-    // prismatic light inside it (beam, leakage): a pale shimmer running with a rainbow
+    // prismatic light inside it (beam, leakage): a shimmer running with a rainbow. Round 18: in
+    // the lich's colours (the beam's: smooth spectrum, a little grey, normalised) and dim enough
+    // not to roll off to white on screen (it was a white snake beside a rainbow beam)
     vec3 hue = clamp(abs(fract(cu.y*0.35 + cu.x + uSnakeT*0.3 + vec3(0.0, 0.6667, 0.3333))*6.0 - 3.0) - 1.0, 0.0, 1.0);
-    totalEmissiveRadiance += mix(vec3(1.0), hue, 0.6)*vBurn.z*vBurn.z*1.6;
+    hue = mix(hue*hue*(3.0 - 2.0*hue), vec3(0.5), 0.16); hue /= max((hue.r + hue.g + hue.b)/3.0, 0.2);
+    totalEmissiveRadiance += mix(vec3(1.0), hue, 0.8)*vBurn.z*vBurn.z*0.8;
   }`)
         .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
   {
@@ -164,13 +167,13 @@ uniform float uSnakeT;`)
     for (let i = 0; i < 400; i++) s.trail.push([s.x - Math.cos(s.dir)*i*0.01, s.z - Math.sin(s.dir)*i*0.01]);
     s.dying = -1; s.delay = delay; s.scale = 1; s.dist = 0;
     s.burn = null; s.sag = 0; s.sink = -1; s.burnt = false;
-    s.fx = null; s.leak = 0; s.claim = null;
+    s.fx = null; s.leak = 0; s.leak_at = null; s.claim = null;
     s.m.geometry.attributes.aBurn.array.fill(0); s.m.geometry.attributes.aBurn.needsUpdate = true;
   };
   for (let i = 0; i < count; i++) { const s = make_mesh(); spawn(s, i*1.6); S.push(s); }
   // gone (burst, shattered, dissolved, ...): out of sight until it comes back out of the dark
   const respawn = (s) => spawn(s, rng.float(RESPAWN[0], RESPAWN[1]));
-  let reached = 0;
+  let reached = 0, dissolved = 0;                // tests: dissolved = taken by leakage
   const reach_log = [];               // tests: what each one that got through was doing
 
   const P = [], T = new THREE.Vector3(), Nn = new THREE.Vector3(), Bn = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
@@ -214,7 +217,7 @@ uniform float uSnakeT;`)
         if (s.trail.length > 600) s.trail.length = 600;
         if (Math.hypot(s.x - egg.x, s.z - egg.z) < 1.1) { s.dying = 0; reached++; reach_log.push({ t: +t.toFixed(2), claim: s.claim, until: s.claim_until, leak: +s.leak.toFixed(2), speed: s.speed }); }   // it reached the egg (placeholder: it shrinks away)
       }
-      if (s.leak >= 1.12 && !s.burn && s.sink < 0) { respawn(s); continue; }   // dissolved into nothing
+      if (s.leak >= 1.12 && !s.burn && s.sink < 0) { dissolved++; if (api.on_dissolve) api.on_dissolve(s); respawn(s); continue; }   // dissolved into nothing
       build(s);
     }
   }
@@ -223,12 +226,17 @@ uniform float uSnakeT;`)
   function build(s) {
     let acc = 0, ti = 0;
     const sc = s.scale, fx = s.fx;
-    // per ring: radius factor (cuts, dissolving, swelling) and prismatic glow
+    // per ring: radius factor (cuts, dissolving, swelling) and prismatic glow.
+    // Leakage (round 25, owner: "the snakes disappear from outwards inwards and that looks wrong,
+    // need to be reversed"; it went tail first, the far end first): it goes from the part of it
+    // nearest him (s.leak_at, set by leak.js) outward both ways along the body. Ahead of the edge
+    // the flesh turns glassy and prismatic, like his bones, a band that the edge eats into.
     const f = s.leak*1.12;
+    const ac = S_AT(s.leak_at ?? 0), ext = Math.max(ac, LEN - ac, 0.5);
     for (let i = 0; i < RINGS; i++) {
-      const u = (RINGS - 1 - i)/(RINGS - 1);                     // 0 at the tail: it dissolves tail first
-      RK[i] = s.leak > 0 ? smoothstep(f, f + 0.12, u) : 1;
-      GL[i] = s.leak > 0 ? Math.max(s.leak*0.45, Math.exp(-(((u - f)/0.07)**2))) : 0;
+      const u = Math.abs(S_AT(i) - ac)/ext;                        // 0 nearest him, 1 at the far end
+      RK[i] = s.leak > 0 ? smoothstep(f, f + 0.1, u) : 1;
+      GL[i] = s.leak > 0 ? Math.min(1, 0.62*Math.exp(-(((u - f)/0.04)**2)) + 0.4*(1 - smoothstep(f, f + 0.12, u))*Math.min(1, s.leak*4)) : 0;
       if (fx) { if (fx.radk) RK[i] *= fx.radk(i); if (fx.glow) GL[i] = Math.max(GL[i], fx.glow(i)); }
     }
     for (let i = 0; i < RINGS; i++) {
@@ -248,6 +256,7 @@ uniform float uSnakeT;`)
       SH[0] = SH[1] = SH[2] = 0;
       if (fx) { if (fx.sag !== undefined) lift *= 1 - fx.sag; if (fx.lift) lift += fx.lift(i); if (fx.shift) fx.shift(i, SH); }
       P[i].set(x + SH[0], cave.ground_y(x, z) + R0*radius_at(target)*sc*flat_at(target) + lift + SH[1] - sink_depth(s), z + SH[2]);
+      if (fx && fx.place) fx.place(i, P[i]);                    // round 25: a body the fx moves itself (knocked by a rock)
       s.spine[i].copy(P[i]); s.radii[i] = r;
     }
     // how burnt each ring is, how its cracks glow, how it glows with prismatic light
@@ -320,5 +329,7 @@ uniform float uSnakeT;`)
   const free = s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0 && !s.fx;
   const live = () => S.filter(free);
   function set_ember(c) { uEmber.value.setRGB(c[0], c[1], c[2]); }
-  return { update, S, ignite, take, live, free, set_ember, respawn, RINGS, egg, reach_log, arc: S_AT, ring_at: I_AT, get reached() { return reached; } };
+  const api = { update, S, ignite, LEN, take, live, free, set_ember, respawn, RINGS, SIDES, mat, egg, reach_log, arc: S_AT, ring_at: I_AT, get reached() { return reached; }, get dissolved() { return dissolved; },
+    on_dissolve: null };            // round 23: leak.js puffs its last smoke here
+  return api;
 }

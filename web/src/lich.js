@@ -127,6 +127,22 @@ export function create_lich(R, opts = {}) {
     legs: [0, 1].map(() => ({ p: SP(), r: SP(), k: SP(), an: SP(), tw: SP() })),
     arms: ARM_REST.map(r => ({ p: SP(r.p), r: SP(), t: SP(), e: SP(r.e), w: SP(r.w), f: SP() })),
   };
+  // recoil (round 18, owner: when the beam fires "the lich's hand + arm should have some force
+  // thrown back on them so it looks realistic"): its own springs per arm, added on top of the
+  // pose. A kick (lich.kick) throws the shoulder up, the elbow into a bend and the finger up, and
+  // jolts the casting shoulder and the head back; while the beam pushes (lich.press) the arm is
+  // held a little up and bent against it and the hand trembles; when it lets go the arm springs
+  // back. The wrist's share is applied after the finger is aimed, so the aim doesn't cancel it.
+  const RC = [0, 1].map(() => ({ p: SP(), e: SP(), w: SP(), kick: 0, press: 0, curl_t: 9, fist: 0 }));
+  // the pull (round 21, owner: when the lift ends and the snake explodes "the lich's arm should do
+  // a little pull, as though he were doing a curl"): lich.curl starts it; the hand closes into a
+  // fist and the forearm snaps up toward him (elbow flexed ~55 deg, the upper arm drawn back a
+  // little, the shoulder and chest drawn with it), held a moment, then let go
+  const CURL = { up: 0.1, hold: 0.35, down: 0.8, elbow: 0.8, shoulder: 0.18 };
+  // X: how hard (MEDIUM: the hand thrown ~15 cm up at firing, the finger ~20 deg; HEAVY 1.7x)
+  // round 18 verdict (owner): HEAVY
+  const RECOILS = [{ name: 'HEAVY', gain: 1.7 }, { name: 'MEDIUM', gain: 1 }, { name: 'LIGHT', gain: 0.5 }, { name: 'OFF', gain: 0 }];
+  let recoil = 0;
   let fq = 1, dz = 1;
   // one step of a damped spring toward `target` (radians), `f` Hz, damping ratio `z`, plus a
   // force (rad/s^2); keeps its acceleration for the parts hanging below it
@@ -138,13 +154,16 @@ export function create_lich(R, opts = {}) {
   // air: slow, never-repeating pushes (a force that deflects a spring by about `amp` radians)
   const air = (t, k, f, amp) => { const w = 6.2832*f*fq; return w*w*amp*(Math.sin(t*0.71 + k*1.37)*0.55 + Math.sin(t*1.29 + k*2.71)*0.3 + Math.sin(t*2.17 + k*0.53)*0.15); };
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+  const smoothstep01 = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x*x*(3 - 2*x));
   const mix = (a, b, t) => a + (b - a)*t;
   const INV = new THREE.Matrix4(), TV = new THREE.Vector3(), TIP = new THREE.Vector3();
+  const AQ = { e: new THREE.Quaternion(), c: new THREE.Quaternion(), r: new THREE.Quaternion(), i: new THREE.Quaternion(), t: new THREE.Quaternion() };
+  const AV = { b: new THREE.Vector3(), t: new THREE.Vector3(), f: new THREE.Vector3(), d: new THREE.Vector3(), ax: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
   const NO_MOTION = { a: [0, 0, 0], v: [0, 0, 0], push: [0, 0], yaw_a: 0, yaw_v: 0, look: 0, gaze: 0, gaze_p: 0, gaze_w: 0 };
 
   const lich = {
     root, body, mat, light, MODES, build_ms, tris, nodes: { pelvis, spine, chest, neck, head, jaw, arms, legs },
-    JUICE, springs: S, GLOWS, PATTERNS,
+    JUICE, springs: S, GLOWS, PATTERNS, rc: RC,
     get pattern() { return GU.uPattern.value; },
     set pattern(i) { GU.uPattern.value = ((i % PATTERNS.length) + PATTERNS.length) % PATTERNS.length; },
     get glow() { return glow; },
@@ -160,6 +179,23 @@ export function create_lich(R, opts = {}) {
       const [ax, ay, az] = m.a, [vx, , vz] = m.v, [px, pz] = m.push;
       const ya = m.yaw_a, speed = Math.hypot(vx, vz), still = 1 - clamp(speed/0.6, 0, 1);
       const fwd = clamp(vz/2.6, 0, 1), side = clamp(vx/2.6, -1, 1);
+      // recoil: a kick jolts the casting shoulder back (the chest turns away from the beam), the
+      // chest and head back a little; the arm's share goes into its recoil springs
+      RC.forEach((rc, k) => {
+        if (rc.kick) {
+          const s = arms[k].s;
+          S.cy.v += s*1.6*rc.kick; S.cp.v -= 0.9*rc.kick; S.hp.v -= 1.6*rc.kick;
+          rc.p.v -= 2.6*rc.kick; rc.e.v -= 4.5*rc.kick; rc.w.v += 5.0*rc.kick;
+          rc.kick = 0;
+        }
+        rc.curl_t += dt;
+        const cw = smoothstep01(rc.curl_t/CURL.up)*(1 - smoothstep01((rc.curl_t - CURL.hold)/(CURL.down - CURL.hold)));
+        rc.fist = cw;
+        const on = cw > 0.01;
+        spring(rc.p, -0.03*rc.press + CURL.shoulder*cw, on ? 3.0 : 2.2, 0.5, 0, dt);
+        spring(rc.e, -0.06*rc.press - CURL.elbow*cw, on ? 4.2 : 2.6, 0.5, 0, dt);
+        spring(rc.w, 0.035*rc.press, 3.2, 0.45, 0, dt);
+      });
 
       // the upper body leads: the head first (fastest), then the chest, lean and turn toward
       // the push; leaning back a little when he brakes
@@ -237,17 +273,20 @@ export function create_lich(R, opts = {}) {
         spring(Q.w, mix(mix(R0.w, ARM_TRAIL.w, trail), 0.05, pt), mix(1.5*df, 3.0, pt), mix(0.3, 0.75, pt), (az*0.5 - Q.e.a*0.3)*g*(1 - pt) + air(tt, sd + 9, 1.5, 0.08*g*(1 - pt)), dt);
         spring(Q.f, (ARM_TRAIL.curl - R0.curl)*trail, 2.0*df, 0.3, (az*0.6 - Q.w.a*0.2)*g + air(tt, sd + 11, 2.0, 0.06*g), dt);
         const roll = s*Math.max(mix(-0.08, -0.45, pt), s*Q.r.x);      // never swings in through the ribs
+        // posed here without the recoil; the recoil goes on after the finger is aimed (below)
+        const rc = RC[k], tr = rc.press*Math.sin(t*31 + k*2)*0.012;
+        rc.sh = clamp(Q.p.x + rc.p.x + tr, -2.4, 1.0); rc.el = clamp(Q.e.x + rc.e.x, -1.9, -0.05);
         A.sh.rotation.set(clamp(Q.p.x, -2.4, 1.0), clamp(Q.t.x, -0.35, 0.35), base_r + roll);
         A.el.rotation.set(clamp(Q.e.x, -1.9, -0.05), 0, 0);
         A.wr.rotation.set(clamp(Q.w.x, -0.9, 0.7), -s*(s < 0 ? 0.9 : 1.25), 0);
-        const curl = R0.curl + clamp(Q.f.x, -0.3, 0.4);
+        const curl = R0.curl + clamp(Q.f.x, -0.3, 0.4), fw = RC[k].fist;
         A.fingers.forEach((segs, i) => {
-          // pointing: the index finger (0) straightens, the others close
-          const c = mix(curl, i === 0 ? -0.1 : 1.05, pt);
+          // pointing: the index finger (0) straightens, the others close; the pull: a fist
+          const c = mix(mix(curl, i === 0 ? -0.1 : 1.05, pt), 1.3, fw);
           segs.forEach((n, j) => n.rotation.set(0, 0, -s*(c + j*(i === 0 ? 0.12*(1 - pt) : 0.12 + 0.25*pt) + i*0.03 + Math.sin(t*1.3 + i)*0.03)));
         });
-        A.thumb[0].rotation.set(0.5, 0, -s*0.35);
-        A.thumb[1].rotation.set(0, 0, -s*0.3);
+        A.thumb[0].rotation.set(0.5 + 0.35*fw, 0, -s*(0.35 + 0.35*fw));
+        A.thumb[1].rotation.set(0, 0, -s*(0.3 + 0.5*fw));
       });
 
       body.position.y = 0;
@@ -258,12 +297,63 @@ export function create_lich(R, opts = {}) {
       neck.rotation.set(0.04 + S.hp.x*0.3, S.hy.x*0.3, S.hr.x*0.3);
       head.rotation.set(-0.02 + S.hp.x*0.7, S.hy.x*0.7, S.hr.x*0.7);                  // ~15 deg down in all, as in 07
       jaw.rotation.x = JAW0 + S.jw.x;
+
+      // pointing: the index finger laid along the line to the target (the arm alone left it up
+      // to ~16 deg off), turning the hand at the wrist, on the pose without the recoil; then the
+      // recoil's flick of the finger up; then the recoil goes onto the shoulder and elbow, and the
+      // hand, now set on the forearm, is carried with it (aiming after the recoil would undo it)
+      arms.forEach((A, k) => {
+        const rc = RC[k], pt = (m.point && m.point.arm === k ? m.point.w : 0)*(1 - rc.fist);   // a fist points at nothing
+        const flick = rc.w.x + rc.press*Math.sin(t*37 + k)*0.02;
+        const recoil_on = () => { A.sh.rotation.x = rc.sh; A.el.rotation.x = rc.el; };
+        if (pt <= 0 && Math.abs(flick) < 1e-4) { recoil_on(); return; }
+        A.el.updateWorldMatrix(true, false);
+        A.el.getWorldQuaternion(AQ.e);
+        AQ.c.identity();
+        const tipn = A.fingers[0].tip;
+        tipn.updateWorldMatrix(true, false); tipn.getWorldPosition(AV.t);
+        A.fingers[0][0].getWorldPosition(AV.b);
+        AV.f.subVectors(AV.t, AV.b).normalize();
+        if (pt > 0 && AV.d.set(m.point.x, m.point.y, m.point.z).distanceTo(AV.t) > 0.3) {
+          AV.d.sub(AV.t).normalize();
+          AQ.t.setFromUnitVectors(AV.f, AV.d);
+          AQ.c.slerp(AQ.t, pt);
+          const ang = 2*Math.acos(clamp(AQ.c.w, -1, 1));
+          if (ang > 0.8) { AQ.t.copy(AQ.c); AQ.c.identity().slerp(AQ.t, 0.8/ang); }
+          AV.f.applyQuaternion(AQ.c);
+        }
+        // the flick: the finger tips up, about the axis across it and the vertical
+        AV.ax.crossVectors(AV.f, AV.up);
+        if (AV.ax.lengthSq() > 1e-6 && Math.abs(flick) > 1e-4) { AV.ax.normalize(); AQ.r.setFromAxisAngle(AV.ax, flick); AQ.c.premultiply(AQ.r); }
+        // world correction -> the wrist's own frame: local' = parent^-1 * C * parent * local
+        AQ.t.copy(AQ.e).invert().multiply(AQ.c).multiply(AQ.e);
+        A.wr.quaternion.premultiply(AQ.t);
+        recoil_on();
+      });
     },
+    // recoil (round 18): a kick on an arm (1 = the beam firing), and how hard it pushes while on (0..1)
+    kick(k, amount = 1) { RC[k].kick += amount*lich.recoil_gain*RECOILS[recoil].gain; },
+    // the pull that bursts what he lifted (round 21): the chest and head drawn with the arm
+    curl(k) { const rc = RC[k]; if (rc.curl_t < CURL.hold) return; rc.curl_t = 0; S.cy.v += arms[k].s*0.9; S.cp.v -= 0.5; S.hp.v -= 0.6; },
+    press(k, w) { RC[k].press = w*lich.recoil_gain*RECOILS[recoil].gain; },
+    recoil_gain: 1,                           // tests: 0 = no recoil, to compare against
+    RECOILS,
+    get recoil() { return recoil; },
+    set recoil(i) { recoil = ((i % RECOILS.length) + RECOILS.length) % RECOILS.length; },
     update(t) {
       GU.uGemTime.value = t;
     },
     // where the index fingertip of an arm (0 = his right, 1 = his left) is, world
     fingertip(k, out = new THREE.Vector3()) { const n = arms[k].fingers[0].tip; n.updateWorldMatrix(true, false); return n.getWorldPosition(out); },
+    // how fast the arm is still swinging (rad/s, its shoulder and elbow springs, without recoil)
+    arm_speed(k) { const Q = S.arms[k]; return Math.abs(Q.p.v) + Math.abs(Q.r.v) + Math.abs(Q.e.v); },
+    // the way the index finger points (from its first joint to its tip), world
+    finger_dir(k, out = new THREE.Vector3()) {
+      const f = arms[k].fingers[0], n = f.tip;
+      n.updateWorldMatrix(true, false); n.getWorldPosition(out);
+      f[0].getWorldPosition(TV);
+      return out.sub(TV).normalize();
+    },
     head_pos(out = new THREE.Vector3()) { head.updateWorldMatrix(true, false); return head.getWorldPosition(out).add(TIP.set(0, 0.08, 0)); },
   };
   return lich;

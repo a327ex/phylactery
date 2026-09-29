@@ -69,12 +69,28 @@ export function sprite_pool(R, N, additive, shape) {
 //   2 FIRE LASER: a white-hot core in an orange sheath and a red glow, noise streaming along it
 //     toward p1 and a constant flicker
 //   3 PRISM IN FIRE: style 1's build in fire colours (white core, yellow, orange, red edges)
-// Energy streams along styles 1-3 from p0 to p1. `held` ribbons are kept alive and faded by
+//   4 PRISM LASER (round 18, owner: the prismatic beam "just like the lens beam, except
+//     prismatic instead of red", its colour "more like a rainbow sort of thing, inspired by
+//     the skeleton himself", thinner, leaving his finger exactly): style 2's build (white core,
+//     sheath, noise eating the edges, flicker) with the sheath in the colours of his bones (the
+//     gem's SOFT field: broad zones of lime, pink, lilac, peach, pale cyan; gem.js), the edge a
+//     little further round the hue wheel. The width is w1 all along except the first ~28 cm,
+//     which grows from w0 (the fingertip's thickness) so it leaves the bone rather than a ball.
+//     Its colour stays under the level where bright channels roll off to white on screen, and
+//     the white core only shows where the beam is wide enough on screen to have a middle. It can
+//     be drawn in pieces along a curve (x0: metres along the beam where a piece starts, ph0: the
+//     hue phase where the beam starts, pv/nx: the neighbouring pieces' far ends, so the pieces
+//     share their joins).
+//     `hue` picks the colour: 0 HIS COLOURS, STREAMING (the zones flow out from his finger) /
+//     1 HIS COLOURS, HELD (the same field his bones
+//     show, fixed in the room: the beam is a window onto it) / 2 FULL RAINBOW, STREAMING
+// Energy streams along styles 1-4 from p0 to p1. `held` ribbons are kept alive and faded by
 // their owner (set `a` each tick); others live `life` seconds.
 function ribbon_pool(R, N) {
   const V = N*4;
   const a0 = new Float32Array(V*3), a1 = new Float32Array(V*3), end = new Float32Array(V), side = new Float32Array(V);
-  const col = new Float32Array(V*4), wo = new Float32Array(V*3), bb = new Float32Array(V*4);
+  const apv = new Float32Array(V*3), anx = new Float32Array(V*3);
+  const col = new Float32Array(V*4), wo = new Float32Array(V*3), bb = new Float32Array(V*4), ax = new Float32Array(V*2);
   for (let i = 0; i < N; i++) for (let k = 0; k < 4; k++) { end[i*4 + k] = k >> 1; side[i*4 + k] = (k & 1) ? 1 : -1; }
   const idx = [];
   for (let i = 0; i < N; i++) { const b = i*4; idx.push(b, b + 1, b + 3, b, b + 3, b + 2); }
@@ -87,28 +103,78 @@ function ribbon_pool(R, N) {
   g.setAttribute('aCol', new THREE.BufferAttribute(col, 4));
   g.setAttribute('aWO', new THREE.BufferAttribute(wo, 3));          // min width px, offset px, hue (<0: none)
   g.setAttribute('aB', new THREE.BufferAttribute(bb, 4));           // w0 m, w1 m, style, length m
+  g.setAttribute('aX', new THREE.BufferAttribute(ax, 2));
+  // a beam drawn in pieces: the point before p0 and after p1 (the neighbouring pieces), so the
+  // pieces meet on a shared edge instead of leaving notches at their joins (= p0 / p1: none)
+  g.setAttribute('aPv', new THREE.BufferAttribute(apv, 3));
+  g.setAttribute('aNx', new THREE.BufferAttribute(anx, 3));           // style 4: metres along the beam at p0, the hue phase where it starts
   g.setIndex(idx);
   const mat = new THREE.ShaderMaterial({
     uniforms: { uRes: { value: new THREE.Vector2(640, 360) }, uTime: { value: 0 }, uProj: { value: 400 } },
-    vertexShader: `attribute vec3 aP0, aP1, aWO; attribute float aEnd, aSide; attribute vec4 aCol, aB;
-      uniform vec2 uRes; uniform float uProj; varying vec4 vCol; varying float vSide, vAlong, vHue, vStyle, vLen;
+    vertexShader: `attribute vec3 aP0, aP1, aWO; attribute float aEnd, aSide; attribute vec4 aCol, aB; attribute vec2 aX; attribute vec3 aPv, aNx;
+      uniform vec2 uRes; uniform float uProj; varying vec4 vCol; varying float vSide, vAlong, vHue, vStyle, vLen, vPx, vW0;
+      varying vec3 vW; varying vec2 vX;
       void main(){
         vec4 c0 = projectionMatrix*viewMatrix*vec4(aP0, 1.0), c1 = projectionMatrix*viewMatrix*vec4(aP1, 1.0);
         vec4 c = aEnd > 0.5 ? c1 : c0;
         vec2 s0 = c0.xy/max(c0.w, 1e-3), s1 = c1.xy/max(c1.w, 1e-3);
         vec2 d = (s1 - s0)*uRes; d = length(d) > 1e-4 ? normalize(d) : vec2(1.0, 0.0);
-        vec2 n = vec2(-d.y, d.x);
-        float px = aB.z > 0.5 ? max(aWO.x, mix(aB.x, aB.y, aEnd)*uProj/max(c.w, 0.05)) : aWO.x;
+        // at a join, the edge square to the average of this piece's and its neighbour's direction
+        vec4 cq = projectionMatrix*viewMatrix*vec4(aEnd > 0.5 ? aNx : aPv, 1.0);
+        vec2 sq = cq.xy/max(cq.w, 1e-3);
+        vec2 dq = (aEnd > 0.5 ? sq - s1 : s0 - sq)*uRes;
+        vec2 dm = d;
+        if (length(dq) > 1e-3) { dq = normalize(dq); if (dot(dq, d) > 0.3) dm = normalize(d + dq); }
+        vec2 n = vec2(-dm.y, dm.x);
+        // style 4 keeps w1 all along (its taper from w0 is cut in the fragment shader)
+        float wm = aB.z > 3.5 ? aB.y : mix(aB.x, aB.y, aEnd);
+        float px = aB.z > 0.5 ? max(aWO.x, wm*uProj/max(c.w, 0.05)) : aWO.x;
         c.xy += n*(aSide*px*0.5 + aWO.y)*2.0/uRes*c.w;
+        vPx = px; vW0 = aB.y > 1e-5 ? aB.x/aB.y : 1.0;
+        vW = aEnd > 0.5 ? aP1 : aP0; vX = aX;
         gl_Position = c; vCol = aCol; vSide = aSide; vAlong = aEnd; vHue = aWO.z; vStyle = aB.z; vLen = aB.w; }`,
-    fragmentShader: `uniform float uTime; varying vec4 vCol; varying float vSide, vAlong, vHue, vStyle, vLen;
+    fragmentShader: `uniform float uTime; varying vec4 vCol; varying float vSide, vAlong, vHue, vStyle, vLen, vPx, vW0;
+      varying vec3 vW; varying vec2 vX;
       vec3 spec(float h){ return clamp(abs(fract(h + vec3(0.0, 0.6667, 0.3333))*6.0 - 3.0) - 1.0, 0.0, 1.0); }
+      // his bones' colours (gem.js: a smooth spectrum toward grey, normalised by its mean so no
+      // hue is darker than another). On the bones it is 30% grey; light that bright at 30% grey
+      // rolls off to near white on screen, so the beam's is 16%; 'full' keeps the spectrum pure
+      vec3 opal(float h, float full){ vec3 c = spec(h); c = c*c*(3.0 - 2.0*c); c = mix(c, vec3(0.5), mix(0.16, 0.0, full)); return c/max((c.r + c.g + c.b)/3.0, 0.2); }
       float h1(float x){ return fract(sin(x*127.1)*43758.5453); }
       float n1(float x){ float i = floor(x), f = fract(x); return mix(h1(i), h1(i + 1.0), f*f*(3.0 - 2.0*f)); }
       void main(){
         float a = abs(vSide);
         vec3 c;
-        if (vStyle < 0.5) {
+        if (vStyle > 3.5) {
+          // PRISM LASER: the lens beam's build in his colours
+          // a beam can be drawn in pieces (a curve): x runs on from piece to piece
+          float x = vX.x + vAlong*vLen;
+          // the first ~28 cm grow from the fingertip's thickness (never under a pixel)
+          float tp = mix(vW0, 1.0, smoothstep(0.0, 0.28, x));
+          float tpx = max(1.0, tp*vPx);
+          a = a*vPx/tpx;
+          if (a > 1.0) discard;
+          float flow = 0.72 + 0.28*n1(x*3.0 - uTime*26.0) + 0.12*n1(x*9.0 - uTime*47.0);
+          float wob = 0.12*(n1(x*5.0 - uTime*30.0) - 0.5);
+          float aa = clamp(a + wob, 0.0, 1.0);
+          // the hue: his bones' SOFT field (the same phase they show where the beam leaves him)
+          float field0 = vX.y;                                        // the field where the beam leaves him
+          float ph;
+          // STREAMING: a full turn of the hue wheel every ~3.3 m, flowing out from his finger at
+          // 2.4 m/s; HELD: the field itself where the beam passes, drifting as slowly as it does
+          // on his bones
+          if (vHue < 0.5 || vHue > 1.5) ph = field0 - (x - uTime*2.4)*0.3;
+          else ph = dot(vW, vec3(0.45, 0.9, 0.3))*0.55 - uTime*0.04 + (n1(x*0.9 + 3.0) - 0.5)*0.25;
+          float full = vHue > 1.5 ? 1.0 : 0.0;
+          vec3 sheath = mix(opal(ph, full), opal(ph + 0.14, full), smoothstep(0.35, 0.85, aa));
+          // the colour carries it: kept under the point where the bright channels clip to white,
+          // brighter toward the middle; the white-hot core is narrower than the fire laser's and
+          // only shows where the beam is wide enough on screen to have a middle (a 2-3 px beam
+          // with a white core reads as a white line)
+          float core = smoothstep(3.0, 8.0, vPx)*(1.0 - smoothstep(0.04, 0.22, aa));
+          c = mix(sheath*0.62*mix(1.3, 0.75, aa), vec3(1.0, 0.98, 0.97)*3.0, core)*smoothstep(1.0, 0.55, aa);
+          c *= flow*vCol.rgb;
+        } else if (vStyle < 0.5) {
           float k = 1.0 - a; k = k*k*(3.0 - 2.0*k);
           c = vCol.rgb*k;
           if (vHue >= 0.0) c *= mix(vec3(1.0), spec(vHue + vAlong*0.6 - uTime*1.5), 0.75);
@@ -144,7 +210,7 @@ function ribbon_pool(R, N) {
   mesh.frustumCulled = false; mesh.renderOrder = 12;
   R.world_scene.add(mesh);
   const B = [];
-  for (let i = 0; i < N; i++) B.push({ life: 0, max: 1, p0: new THREE.Vector3(), p1: new THREE.Vector3(), c: [1, 1, 1], w: 2, off: 0, hue: -1, a: 1, fade_in: 0.03, held: false, style: 0, w0: 0, w1: 0 });
+  for (let i = 0; i < N; i++) B.push({ life: 0, max: 1, p0: new THREE.Vector3(), p1: new THREE.Vector3(), c: [1, 1, 1], w: 2, off: 0, hue: -1, a: 1, fade_in: 0.03, held: false, style: 0, w0: 0, w1: 0, x0: 0, ph0: 0, pv: null, nx: null });
   let next = 0;
   return {
     mat,
@@ -153,7 +219,7 @@ function ribbon_pool(R, N) {
       for (let k = 0; k < N && (B[next].held || B[next].life > 5); k++) next = (next + 1) % N;
       const b = B[next]; next = (next + 1) % N;
       b.p0.copy(p0); b.p1.copy(p1); b.c = o.c || [1, 1, 1]; b.w = o.w ?? 1.5; b.off = o.off || 0; b.hue = o.hue ?? -1; b.a = o.a ?? 1;
-      b.max = b.life = o.life ?? 1; b.fade_in = o.fade_in ?? 0.03; b.held = !!o.held; b.style = o.style || 0; b.w0 = o.w0 || 0; b.w1 = o.w1 ?? b.w0;
+      b.max = b.life = o.life ?? 1; b.fade_in = o.fade_in ?? 0.03; b.held = !!o.held; b.style = o.style || 0; b.w0 = o.w0 || 0; b.w1 = o.w1 ?? b.w0; b.x0 = o.x0 || 0; b.ph0 = o.ph0 || 0; b.pv = null; b.nx = null;
       return b;
     },
     release(b) { b.held = false; b.life = 0; },
@@ -172,9 +238,13 @@ function ribbon_pool(R, N) {
           col[v*4] = b.c[0]; col[v*4 + 1] = b.c[1]; col[v*4 + 2] = b.c[2]; col[v*4 + 3] = al;
           wo[v*3] = on ? b.w : 0; wo[v*3 + 1] = b.off; wo[v*3 + 2] = b.hue;
           bb[v*4] = on ? b.w0 : 0; bb[v*4 + 1] = on ? b.w1 : 0; bb[v*4 + 2] = b.style; bb[v*4 + 3] = len;
+          ax[v*2] = b.x0; ax[v*2 + 1] = b.ph0;
+          const q = b.pv || b.p0, r = b.nx || b.p1;
+          apv[v*3] = q.x; apv[v*3 + 1] = q.y; apv[v*3 + 2] = q.z;
+          anx[v*3] = r.x; anx[v*3 + 1] = r.y; anx[v*3 + 2] = r.z;
         }
       }
-      for (const k of ['aP0', 'aP1', 'aCol', 'aWO', 'aB']) g.attributes[k].needsUpdate = true;
+      for (const k of ['aP0', 'aP1', 'aCol', 'aWO', 'aB', 'aX', 'aPv', 'aNx']) g.attributes[k].needsUpdate = true;
     },
   };
 }
@@ -234,7 +304,7 @@ export function create_fx(R, cave) {
   const motes = sprite_pool(R, 1600, true, 'dot');
   const shards = sprite_pool(R, 400, true, 'shard');
   const puffs = sprite_pool(R, 600, false, 'dot');
-  const ribbons = ribbon_pool(R, 160);
+  const ribbons = ribbon_pool(R, 240);             // round 18: a beam from his finger is 10 pieces
   const chunks = chunk_pool(R, cave, 160);
   const init = (p, o) => {
     p.x = o.x; p.y = o.y; p.z = o.z; p.vx = o.vx || 0; p.vy = o.vy || 0; p.vz = o.vz || 0;

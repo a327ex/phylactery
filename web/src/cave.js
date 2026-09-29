@@ -502,7 +502,7 @@ export function build_cave(R, seed = 7, opts = {}) {
 
   const dome_mats = [M.dome];
   return {
-    group, ground_y, egg, sun, LAYOUT, GU, rock_geo, bake_ms, tris: baked.tris, gi_cached: baked.cached,
+    group, ground_y, egg, sun, LAYOUT, GU, rock_geo, rock_tex: tx.rock, bake_ms, tris: baked.tris, gi_cached: baked.cached,
     export_gi: () => export_gi(baked.data),
     set_dome_visible(on) { for (const m of dome_mats) { m.colorWrite = on; m.depthWrite = on; } },
     DARK,

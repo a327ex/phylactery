@@ -13,6 +13,7 @@ export const MOVE = {
   jerk: 11,              // how fast the push itself changes (1/s): no instant jolts
   radius: 0.34,          // his body, for rock
   turn_f: 0.8, turn_z: 0.85, turn_amax: 22, turn_vmax: 5.5,   // facing spring (Hz, damping, limits)
+  turn_f_point: 2.0, turn_amax_point: 45, turn_vmax_point: 8,   // round 22: quicker while he turns to keep what he points at in front
   bob: 0.05,             // the breathing float, metres
 };
 
@@ -23,6 +24,11 @@ export function create_mover(nav, lich, start, yaw0) {
   const v = new THREE.Vector3();               // horizontal velocity (y unused)
   const push = new THREE.Vector2();            // the applied horizontal acceleration
   let vy = 0, yaw = yaw0, yaw_v = 0, yaw_a = 0, want_yaw = yaw0;
+  // round 22 (owner: he should not point at something behind him; what he points at stays in the
+  // half in front, "open like on a cross" at most): while `face` is on, he faces as near to where
+  // he is sent as he can with face.yaw (the way to what he points at) within face.half of his
+  // facing; still, he turns toward it just enough. He floats, so he can go one way facing another.
+  const face = { on: false, yaw: 0, half: 1.31 };
   const prev_p = p.clone(), prev_vel = new THREE.Vector3(), vel = new THREE.Vector3(), acc = new THREE.Vector3();
   const motion = { a: [0, 0, 0], v: [0, 0, 0], push: [0, 0], yaw_a: 0, yaw_v: 0, look: 0 };
   const height_at = (t) => nav.floor(p.x, p.z) + lich.hover_h + MOVE.bob*Math.sin(t*1.1) + 0.015*Math.sin(t*0.63 + 1.0);
@@ -53,9 +59,11 @@ export function create_mover(nav, lich, start, yaw0) {
     p.y += vy*dt;
     // facing: a spring toward where he is sent
     if (pushing) want_yaw = Math.atan2(want.x, want.z);
-    const wy = 6.2832*MOVE.turn_f;
-    yaw_a = clamp(wy*wy*wrap(want_yaw - yaw) - 2*MOVE.turn_z*wy*yaw_v, -MOVE.turn_amax, MOVE.turn_amax);
-    yaw_v = clamp(yaw_v + yaw_a*dt, -MOVE.turn_vmax, MOVE.turn_vmax);
+    if (face.on) { const rel = wrap(face.yaw - want_yaw); if (Math.abs(rel) > face.half) want_yaw = wrap(face.yaw - Math.sign(rel)*face.half); }
+    const wy = 6.2832*(face.on ? MOVE.turn_f_point : MOVE.turn_f);
+    const tam = face.on ? MOVE.turn_amax_point : MOVE.turn_amax, tvm = face.on ? MOVE.turn_vmax_point : MOVE.turn_vmax;
+    yaw_a = clamp(wy*wy*wrap(want_yaw - yaw) - 2*MOVE.turn_z*wy*yaw_v, -tam, tam);
+    yaw_v = clamp(yaw_v + yaw_a*dt, -tvm, tvm);
     yaw = wrap(yaw + yaw_v*dt);
     // what the body felt this tick, in his frame (x = his left, z = forward)
     vel.subVectors(p, prev_p).divideScalar(dt);
@@ -77,7 +85,7 @@ export function create_mover(nav, lich, start, yaw0) {
   }
 
   return {
-    p, v, motion, tick,
+    p, v, motion, tick, face,
     get yaw() { return yaw; },
     get speed() { return Math.hypot(v.x, v.z); },
     place(x, z, y_ = yaw) {
