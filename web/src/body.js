@@ -20,6 +20,7 @@ export function create_body(opts) {
   const Ibi = new THREE.Vector3(1/Ib.x, 1/Ib.y, 1/Ib.z);
   const e = opts.restitution ?? 0.25, mu = opts.friction ?? 0.6;
   const roll = opts.rolling ?? 0.5;   // rolling resistance (1/s while in contact)
+  const rr = opts.rr ?? 0;            // a ball's rolling-resistance coefficient (grit)
   const pts = opts.points || null, rad = opts.sphere || 0;
   const R = new THREE.Matrix3(), Rt = new THREE.Matrix3(), m4 = new THREE.Matrix4();
   const anchor = { x: new THREE.Vector3(1e9, 0, 0), q: new THREE.Quaternion() };
@@ -111,6 +112,12 @@ export function create_body(opts) {
         const k = Math.exp(-(b.w.length() < 0.5 && b.v.length() < 0.08 ? 8 : roll)*h);
         b.w.multiplyScalar(k);
         b.v.x *= Math.exp(-0.4*h); b.v.z *= Math.exp(-0.4*h);
+        // a ball on grit: a steady drag against rolling (stops it on a gentle slope)
+        if (rr > 0) {
+          const hv = Math.hypot(b.v.x, b.v.z), dv = rr*G*h;
+          const s = hv > dv ? (hv - dv)/hv : 0;
+          b.v.x *= s; b.v.z *= s; b.w.multiplyScalar(s > 0 ? Math.max(s, 0.9) : 0.5);
+        }
       }
       if (hit > 0.4 && b.on_hit) b.on_hit(hit);
       touched = touched || b.contact;

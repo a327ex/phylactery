@@ -129,15 +129,18 @@ export function create_inspect(ctx) {
     S.idx = i;
     if (!it.build) return;
     const g = it.build(inspect_ctx, items.opts);
+    S.hover = g.userData.hover || null;
     const box = new THREE.Box3().setFromObject(g);
     const c = box.getCenter(new THREE.Vector3());
-    const sph = box.getBoundingSphere(new THREE.Sphere());
+    const size = box.getSize(new THREE.Vector3());
     g.position.sub(c);
     const wrap = new THREE.Group(); wrap.add(g);
-    S.model = wrap; S.radius = sph.radius;
+    // framed by its largest extent (a flat lens or a long crystal fills the view either way)
+    S.model = wrap; S.radius = Math.max(size.x, size.y, size.z)*0.55;
     holder.add(wrap);
-    // a pleasing first view: tipped toward the camera a little
-    S.q.setFromEuler(new THREE.Euler(0.55, 0.4, 0.0));
+    // the first view: each object's own (the lens tipped well toward you so its glass shows)
+    const v = it.view ?? [0.55, 0.4, 0.0];
+    S.q.setFromEuler(new THREE.Euler(v[0], v[1], v[2], 'YXZ'));
   }
 
   function open(i = S.idx) {
@@ -190,6 +193,7 @@ export function create_inspect(ctx) {
       turn(auto*dt, 0);
     }
     S.zoom = damp(S.zoom, S.zoom_t, 10, dt);
+    if (S.model && S.hover) S.hover(S.t);
     if (S.closing > 0.3) { S.active = false; R.params.world_override = null; R.params.bloom.strength = S.saved.bloom; }
   }
 
