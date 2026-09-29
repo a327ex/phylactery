@@ -1,3 +1,0 @@
-```json
-{"best": {"start": "4:12", "end": "4:19"}, "alt": {"start": "1:29", "end": "1:35"}, "duration": "4:35", "notes": "A high-intensity red laser beam with a brilliant white core and a lingering red energy trail. It produces a large flash on impact and ricochets sharply off hard surfaces.", "quality": 4}
-```
