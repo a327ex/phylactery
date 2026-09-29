@@ -210,7 +210,9 @@ export function create_powers(ctx) {
       }
       // something about to reach the egg: a channel takes it on; any other hold gives way at once
       if (urgent.size) {
-        if (channel && G.ab.extend) G.ab.extend([...urgent], G.arm);
+        // (round 27: the beam takes it only if it is the way he points; if not, the beams thin
+        // out now so his hand is free for it)
+        if (channel && G.ab.extend) { if (!G.ab.extend([...urgent], G.arm) && G.ab.cut) G.ab.cut(); }
         else if (!channel) { G.phase = 'idle'; G.t = 0; G.ab = null; }
       }
       // the next one waiting: straight on to it, the arm never lowered

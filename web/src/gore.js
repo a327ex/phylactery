@@ -594,21 +594,27 @@ export function create_gore(R, cave, snakes, fx, rng) {
   // round 26: a little gore where a beamed snake bursts (along its body): blood thrown out and
   // falling, a few bits of meat, a splash under it, a thin mist
   function spatter(pts) {
-    for (let k = 0; k < 38; k++) {
+    // (round 27, owner: "a little more gore")
+    for (let k = 0; k < 64; k++) {
       const p = pts[rng.int(0, pts.length - 1)], sp = rng.float(1.2, 4.2), d = V2.set(rng.spread(1), rng.float(0.1, 1), rng.spread(1)).normalize();
       drop(p.x, p.y, p.z, d.x*sp, d.y*sp, d.z*sp, rng.float(0.009, 0.02), 0.5);
     }
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < 15; k++) {
       const p = pts[rng.int(0, pts.length - 1)];
       meat.spawn({ x: p.x, y: p.y + 0.02, z: p.z, vx: rng.spread(2.5), vy: rng.float(1, 3), vz: rng.spread(2.5),
-        s: rng.float(0.01, 0.026), sx: rng.float(0.7, 1.4), sy: rng.float(0.5, 1.0), sz: rng.float(0.7, 1.5), c: MEAT_C[rng.int(0, MEAT_C.length - 1)], bleed: 0.2 });
+        s: rng.float(0.012, 0.03), sx: rng.float(0.7, 1.4), sy: rng.float(0.5, 1.0), sz: rng.float(0.7, 1.5), c: MEAT_C[rng.int(0, MEAT_C.length - 1)], bleed: 0.2 });
     }
-    const c = pts[Math.floor(pts.length/2)];
-    splash(c.x, c.z, rng.float(0.45, 0.7), 0.5);
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < 4; k++) {
       const p = pts[rng.int(0, pts.length - 1)];
-      fx.puff({ x: p.x, y: p.y + 0.05, z: p.z, vx: rng.spread(0.9), vy: rng.float(0, 0.6), vz: rng.spread(0.9), grav: 0.6, drag: 1.8,
-        life: rng.float(0.6, 1.1), s0: 0.08, s1: 0.28, r: 0.03, g: 0.0025, b: 0.002, a: 0.4, fin: 0.02 });
+      scraps.spawn({ x: p.x, y: p.y + 0.03, z: p.z, vx: rng.spread(2), vy: rng.float(0.8, 2.2), vz: rng.spread(2), s: rng.float(0.03, 0.05), sx: 1, sy: 0.7, sz: 1 });
+    }
+    const c = pts[Math.floor(pts.length/2)], c2 = pts[rng.int(0, pts.length - 1)];
+    splash(c.x, c.z, rng.float(0.55, 0.8), 0.5);
+    splash(c2.x + rng.spread(0.3), c2.z + rng.spread(0.3), rng.float(0.35, 0.5), 0.4);
+    for (let k = 0; k < 14; k++) {
+      const p = pts[rng.int(0, pts.length - 1)];
+      fx.puff({ x: p.x, y: p.y + 0.05, z: p.z, vx: rng.spread(1.0), vy: rng.float(0, 0.7), vz: rng.spread(1.0), grav: 0.6, drag: 1.8,
+        life: rng.float(0.6, 1.2), s0: 0.08, s1: 0.32, r: 0.03, g: 0.0025, b: 0.002, a: 0.45, fin: 0.02 });
     }
   }
 

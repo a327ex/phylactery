@@ -1,5 +1,6 @@
 // beam.js -- PRISMATIC BEAM (round 11, owner: "a beam of prismatic light that is shot from his
 // finger and pierces a snake, chaining if more need to be killed").
+// Round 27: it never ricochets any more; several beams from the one finger instead (see below).
 // Round 13 (owner's references: Diablo 3's Disintegrate for the animation and vibe): a channelled
 // beam. Its head shoots out to the first snake, burns into it a beat, then goes on to the next.
 // After the last it thins out and is gone. A pierced snake fills with the light from the wound
@@ -44,7 +45,7 @@ const opal = (h, full, out) => {
 };
 
 export function create_beam(ctx) {
-  const { R, snakes, fx, rng, lich, warp, gore } = ctx;
+  const { R, snakes, fx, rng, lich, warp, gore, get_L } = ctx;
   const N = snakes.RINGS;
   const light = new THREE.PointLight(0xffffff, 0, 5, 2);        // where it burns
   const hand = new THREE.PointLight(0xffffff, 0, 1.8, 2);       // on his hand and arm
@@ -110,16 +111,17 @@ export function create_beam(ctx) {
   // where it goes in: a point on the front half of the body
   const hit_ring = () => rng.int(Math.round(N*0.12), Math.round(N*0.55));
 
-  // where it bites: a white-hot point and a spit of sparks in its colours, no discs or rings
-  function bite(p, big) {
-    fx.mote({ x: p.x, y: p.y, z: p.z, life: 0.08, s0: big ? 0.16 : 0.1, s1: 0.06, r: 5, g: 5, b: 5, fin: 0.01 });
-    const x = ch ? ch.head.distanceTo(TIP) : 0;
-    for (let k = 0; k < (big ? 14 : 6); k++) spark(p, x + rng.spread(0.6), { vx: rng.spread(1.8), vy: rng.float(0.8, 2.8), vz: rng.spread(1.8), grav: 8, drag: 0.5,
+  // where it bites: a white-hot point and a spit of sparks in its colours, no discs or rings;
+  // the first bite of a cast kicks his arm
+  function bite(p, first) {
+    fx.mote({ x: p.x, y: p.y, z: p.z, life: 0.08, s0: 0.16, s1: 0.06, r: 5, g: 5, b: 5, fin: 0.01 });
+    const x = p.distanceTo(TIP);
+    for (let k = 0; k < 14; k++) spark(p, x + rng.spread(0.6), { vx: rng.spread(1.8), vy: rng.float(0.8, 2.8), vz: rng.spread(1.8), grav: 8, drag: 0.5,
       life: rng.float(0.3, 0.6), s0: 0.03, s1: 0.012, fin: 0.01 });
-    if (ch) { ch.pop = 1; if (ch.i === 0) lich.kick(ch.arm, 0.45); }
+    if (ch) { ch.pop = 1; if (first) lich.kick(ch.arm, 0.45); }
   }
-  // where the beam meets a target: fixed once it has burnt in (the snake then shatters and goes)
-  const at = (q) => q.at || q.s.spine[q.ring];
+  // where a beam meets its snake: fixed once it has burnt in (the snake then shatters and goes)
+  const at = (b) => b.at || b.s.spine[b.ring];
 
   // a segment of the beam: from his finger (a curve leaving along the finger) or snake to snake
   function new_seg(from) {
@@ -155,68 +157,85 @@ export function create_beam(ctx) {
     sg.len = x;
   }
 
+  // ---------------------------------------------------------------- the beams
+  // Round 27 (owner: "the beam should never ricochet, the lich should just fire multiple beams from
+  // the same hand if there are multiple snakes in that general direction and it needs to do so to
+  // protect the egg"): one beam per snake, every one from his fingertip, fanning out from along his
+  // finger onto its snake, a beat apart; only snakes within FAN of where he points (the others are
+  // left to the next gesture). Each burns into its snake, holds while it fills and bursts, and thins
+  // out; the channel is over when the last has.
+  // (a beam holds on its snake HOLD_B after burning in, then thins out; the snake fills with its
+  // light and bursts on its own: his hand is free sooner)
+  const FAN = 0.87, FAN_URGENT = 1.1, STAGGER_B = 0.07, HOLD_B = 0.16, FADE_B = 0.16;
+  const yaw_to = (p) => { const L = get_L(); return Math.atan2(p.x - L.x, p.z - L.z); };
+  const off_yaw = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+  const beam_of = (s, ring, delay) => ({ s, ring, at: null, head: TIP.clone(), phase: delay > 0 ? 'wait' : 'shoot', pt: -delay, seg: null, k: 1 });
+
   function update(t, dt) {
     clock = t;
     if (!ch) { light.intensity = 0; hand.intensity = 0; return; }
     ch.t += dt;
-    const cur = ch.targets[ch.i];
-    // the point on the current snake it goes to (the snake is held still while the beam comes)
-    const goal = cur ? at(cur) : ch.head;
-    if (ch.phase === 'shoot') {
-      const d = V.subVectors(goal, ch.head).length(), step = SHOOT_V*dt;
-      if (d <= step) ch.head.copy(goal); else ch.head.addScaledVector(V, step/d);
-      if (d <= step) {
-        // it burns in
-        cur.at = goal.clone();
-        if (!cur.s.fx || cur.s.fx.placeholder) cur.s.fx = pierce_fx(cur.s, cur.ring);
-        bite(goal, true);
-        ch.phase = 'dwell'; ch.pt = 0;
+    let live = 0, kmax = 0;
+    for (const b of ch.beams) {
+      if (b.phase === 'wait') { b.pt += dt; if (b.pt >= 0) { b.phase = 'shoot'; b.head.copy(TIP); b.seg = new_seg(TIP); } }
+      if (b.phase === 'shoot') {
+        const goal = at(b), d = V.subVectors(goal, b.head).length(), step = SHOOT_V*dt;
+        if (d <= step) {
+          // it burns in
+          b.head.copy(goal); b.at = goal.clone();
+          if (!b.s.fx || b.s.fx.placeholder) b.s.fx = pierce_fx(b.s, b.ring);
+          bite(goal, !ch.bit); ch.bit = true;
+          b.phase = 'burn'; b.pt = 0;
+        } else b.head.addScaledVector(V, step/d);
+      } else if (b.phase === 'burn') {
+        b.pt += dt;
+        if (b.pt >= HOLD_B) { b.phase = 'fade'; b.pt = 0; }
+      } else if (b.phase === 'fade') {
+        b.pt += dt;
+        if (b.pt >= FADE_B) { b.phase = 'gone'; if (b.seg) release(b.seg); b.seg = null; }
       }
-    } else if (ch.phase === 'dwell') {
-      ch.pt += dt;
-      if (ch.pt >= DWELL) {
-        ch.i++;
-        if (ch.i >= ch.targets.length) { ch.phase = 'end'; ch.pt = 0; }
-        else { ch.phase = 'shoot'; ch.segs.push(new_seg(ch.head)); }
-      }
-    } else if (ch.phase === 'end') {
-      ch.pt += dt;
+      b.k = b.phase === 'fade' ? 1 - smoothstep(0, FADE_B, b.pt) : b.phase === 'gone' ? 0 : 1;
+      if (b.phase !== 'gone') { live++; kmax = Math.max(kmax, b.k); }
     }
-    ch.k_end = ch.phase === 'end' ? 1 - smoothstep(0, END, ch.pt) : 1;
     ch.k_on = smoothstep(0, 0.06, ch.t);
     ch.pop = Math.max(0, ch.pop - dt*6);
-    // the pressure on his arm while it is on
-    lich.press(ch.arm, ch.k_on*ch.k_end);
-    // the burning point at the head, like the lens's: a white-hot point, sparks in its colours
+    ch.kmax = kmax;
+    // the pressure on his arm while any is on
+    lich.press(ch.arm, ch.k_on*kmax);
+    // the burning point at each head, like the lens's: a white-hot point, sparks in its colours
     const fl = 0.8 + 0.2*Math.sin(t*47);
-    const hx = ch.head.distanceTo(TIP);
-    if (ch.k_end > 0.3) {
-      fx.mote({ x: ch.head.x, y: ch.head.y, z: ch.head.z, life: 0.05, s0: 0.12*fl*ch.k_end, s1: 0.1, r: 4, g: 4, b: 4, fin: 0.01 });
-      const c = tint(ch.head, hx);
-      fx.mote({ x: ch.head.x, y: ch.head.y, z: ch.head.z, life: 0.05, s0: 0.26*fl*ch.k_end, s1: 0.22, r: 0.9*c[0], g: 0.9*c[1], b: 0.9*c[2], fin: 0.01 });
-      for (let k = 0; k < 2; k++) spark(ch.head, hx + rng.spread(0.5), { vx: rng.spread(2.0), vy: rng.float(0.6, 2.4), vz: rng.spread(2.0), grav: 7, drag: 0.5,
+    for (const b of ch.beams) {
+      if (!(b.phase === 'shoot' || b.phase === 'burn') || !b.seg) continue;
+      const hx = b.head.distanceTo(TIP);
+      fx.mote({ x: b.head.x, y: b.head.y, z: b.head.z, life: 0.05, s0: 0.12*fl, s1: 0.1, r: 4, g: 4, b: 4, fin: 0.01 });
+      const c = tint(b.head, hx);
+      fx.mote({ x: b.head.x, y: b.head.y, z: b.head.z, life: 0.05, s0: 0.26*fl, s1: 0.22, r: 0.9*c[0], g: 0.9*c[1], b: 0.9*c[2], fin: 0.01 });
+      if (rng.next() < 0.7) spark(b.head, hx + rng.spread(0.5), { vx: rng.spread(2.0), vy: rng.float(0.6, 2.4), vz: rng.spread(2.0), grav: 7, drag: 0.5,
         life: rng.float(0.25, 0.55), s0: 0.028, s1: 0.01 });
     }
-    // sparks shed along its length
-    for (const sg of ch.segs) {
-      if (sg.len < 0.3 || rng.next() > 0.8) continue;
-      const b = sg.rb[rng.int(0, PIECES - 1)], e = rng.next();
-      P.lerpVectors(b.p0, b.p1, e);
-      spark(P, b.x0 + e*b.p0.distanceTo(b.p1), { x: P.x + rng.spread(0.03), z: P.z + rng.spread(0.03), vx: rng.spread(0.6), vy: rng.float(-0.5, 0.4), vz: rng.spread(0.6), grav: 2, drag: 1.5,
-        life: rng.float(0.2, 0.4), s0: 0.022, s1: 0.008, a: ch.k_end });
+    // sparks shed along them
+    for (const b of ch.beams) {
+      const sg = b.seg;
+      if (!sg || sg.len < 0.3 || rng.next() > 0.8) continue;
+      const r = sg.rb[rng.int(0, PIECES - 1)], e = rng.next();
+      P.lerpVectors(r.p0, r.p1, e);
+      spark(P, r.x0 + e*r.p0.distanceTo(r.p1), { x: P.x + rng.spread(0.03), z: P.z + rng.spread(0.03), vx: rng.spread(0.6), vy: rng.float(-0.5, 0.4), vz: rng.spread(0.6), grav: 2, drag: 1.5,
+        life: rng.float(0.2, 0.4), s0: 0.022, s1: 0.008, a: b.k });
     }
-    const c = tint(ch.head, hx);
+    // the light where the first one burns
+    const b0 = ch.beams.find(b => b.phase === 'shoot' || b.phase === 'burn') || ch.beams[0];
+    const c = tint(b0.head, b0.head.distanceTo(TIP));
     light.color.setRGB(0.55 + 0.45*c[0]/2, 0.55 + 0.45*c[1]/2, 0.55 + 0.45*c[2]/2);
-    light.position.copy(ch.head); light.position.y += 0.2;
-    light.intensity = 1.6*ch.k_end*ch.k_on*fl;
-    if (ch.phase === 'end' && ch.pt >= END) {
-      for (const sg of ch.segs) release(sg);
+    light.position.copy(b0.head); light.position.y += 0.2;
+    light.intensity = 1.6*kmax*ch.k_on*fl;
+    if (!live) {
       lich.press(ch.arm, 0);
       ch = null; light.intensity = 0; hand.intensity = 0;
     }
   }
 
-  // after he is posed this tick: the beam leaves his fingertip where it is now
+  // after he is posed this tick: every beam leaves his fingertip where it is now, along his
+  // finger, and bends onto its snake (so several fan out from the one finger)
   function after_pose(t) {
     if (!ch) return;
     lich.fingertip(ch.arm, TIP);
@@ -225,53 +244,52 @@ export function create_beam(ctx) {
     const flick = 1 + 0.12*Math.sin(t*57) + 0.07*Math.sin(t*83 + 1);
     const pop = 1 + 0.6*Math.exp(-ch.t*18) + 0.35*ch.pop;
     const ph0 = (TIP.x*0.45 + TIP.y*0.9 + TIP.z*0.3)*0.55 - t*0.04;      // his bones' field where it leaves him
-    ch.segs.forEach((sg, j) => {
-      const from_finger = j === 0;
-      if (from_finger) sg.p0.copy(TIP);
-      else sg.p0.copy(at(ch.targets[j - 1]));
-      const last = j === ch.segs.length - 1;
-      if (last) sg.p1.copy(ch.head);
-      else sg.p1.copy(at(ch.targets[j]));
-      const w = W1*ch.k_on*ch.k_end*flick*pop;
-      lay(sg, from_finger, from_finger ? Math.min(W0, w) : w, w, ch.k_end, ph0);
-    });
+    for (const b of ch.beams) {
+      const sg = b.seg;
+      if (!sg) continue;
+      sg.p0.copy(TIP);
+      sg.p1.copy(b.phase === 'shoot' ? b.head : at(b));
+      const w = W1*ch.k_on*b.k*flick*pop;
+      lay(sg, true, Math.min(W0, w), w, b.k, ph0);
+    }
     // the fingertip glows at its own size; the beam's light falls on his hand and arm
-    const c = tint(TIP, 0);
-    fx.mote({ x: TIP.x, y: TIP.y, z: TIP.z, life: 0.04, s0: 0.026*ch.k_end*(0.9 + 0.3*ch.pop), s1: 0.024, r: 4, g: 4, b: 4, fin: 0.01 });
-    fx.mote({ x: TIP.x, y: TIP.y, z: TIP.z, life: 0.04, s0: 0.038*ch.k_end, s1: 0.034, r: 0.35*c[0], g: 0.35*c[1], b: 0.35*c[2], fin: 0.01 });
+    const k = ch.kmax ?? 1, c = tint(TIP, 0);
+    fx.mote({ x: TIP.x, y: TIP.y, z: TIP.z, life: 0.04, s0: 0.026*k*(0.9 + 0.3*ch.pop), s1: 0.024, r: 4, g: 4, b: 4, fin: 0.01 });
+    fx.mote({ x: TIP.x, y: TIP.y, z: TIP.z, life: 0.04, s0: 0.038*k, s1: 0.034, r: 0.35*c[0], g: 0.35*c[1], b: 0.35*c[2], fin: 0.01 });
     // the light from the beam's first stretch, 15 cm out: his hand gets about the light of the
     // sunlit pool (where his bones turn most prismatic), his forearm less; nearer, the bones
     // washed out to white
     hand.position.copy(TIP).addScaledVector(FD, 0.15);
     hand.color.setRGB(0.4 + 0.6*c[0]/2, 0.4 + 0.6*c[1]/2, 0.4 + 0.6*c[2]/2);
-    hand.intensity = 0.05*ch.k_on*ch.k_end*(0.9 + 0.1*flick);
+    hand.intensity = 0.05*ch.k_on*k*(0.9 + 0.1*flick);
   }
+
+  // the beams of this cast that have not burnt in yet let their snakes go (they crawl on)
+  const free_unhit = () => { for (const b of ch.beams) if ((b.phase === 'wait' || b.phase === 'shoot') && b.s.fx && b.s.fx.placeholder) b.s.fx = null; };
 
   return {
     name: 'BEAM', gesture: true,
     cooldown: 5.5,
-    // the first target, then as many more as the chain can take
+    // the first target, then as many more as the fan can take
     capacity: p => 1 + Math.round((p - 1)*1.3),
     aim_ring: () => Math.round(N*0.3),
     get look() { return look; },
     set look(m) { look = ((m % BEAM_LOOKS.length) + BEAM_LOOKS.length) % BEAM_LOOKS.length; },
-    // targets[0] is where he points; the rest in the order it reaches them (each time the nearest)
+    // targets[0] is where he points; the others go too if they are within the fan, nearest the
+    // way he points first; the rest are let go for the next gesture
     cast(targets, from, ring, arm = 1) {
-      if (ch) { for (const sg of ch.segs) release(sg); lich.press(ch.arm, 0); }
-      const rest = targets.slice(1), order = [targets[0]];
-      while (rest.length) {
-        const p = order[order.length - 1].spine[20];
-        rest.sort((a, b) => a.spine[20].distanceTo(p) - b.spine[20].distanceTo(p));
-        order.push(rest.shift());
-      }
-      // they stop where they are while the beam comes for them
-      for (const s of order) if (snakes.free(s)) snakes.take(s, { placeholder: true, tick() { } });
+      if (ch) { for (const b of ch.beams) if (b.seg) release(b.seg); free_unhit(); lich.press(ch.arm, 0); }
+      const a0 = yaw_to(targets[0].spine[20]);
+      const fan = targets.filter((s, k) => k === 0 || off_yaw(yaw_to(s.spine[20]), a0) < FAN).sort((p, q) => off_yaw(yaw_to(p.spine[20]), a0) - off_yaw(yaw_to(q.spine[20]), a0));
+      for (const s of targets) if (!fan.includes(s)) s.claim = null;
+      // they stop where they are while the beams come for them
+      for (const s of fan) if (snakes.free(s)) snakes.take(s, { placeholder: true, tick() { } });
       lich.fingertip(arm, TIP);
-      ch = { t: 0, arm, i: 0, phase: 'shoot', pt: 0, head: TIP.clone(), pop: 0, k_on: 0, k_end: 1,
-        targets: order.map((s, k) => ({ s, ring: k === 0 ? ring : hit_ring() })), segs: [] };
-      ch.segs.push(new_seg(TIP));
-      // it fires: the arm is thrown back, the fingertip spits sparks out to the sides
-      lich.kick(arm, 1);
+      ch = { t: 0, arm, a0, pop: 0, k_on: 0, bit: false, kmax: 1,
+        beams: fan.map((s, k) => beam_of(s, k === 0 ? ring : hit_ring(), k*STAGGER_B)) };
+      ch.beams[0].seg = new_seg(TIP);
+      // it fires: the arm is thrown back (a little harder for more beams), the fingertip spits sparks
+      lich.kick(arm, Math.min(1.4, 1 + 0.12*(fan.length - 1)));
       lich.finger_dir(arm, FD);
       for (let k = 0; k < 8; k++) {
         V.set(rng.spread(1), rng.spread(1), rng.spread(1)); V.addScaledVector(FD, -V.dot(FD)).setLength(rng.float(0.6, 1.4)).addScaledVector(FD, rng.float(-0.3, 0.4));
@@ -280,27 +298,31 @@ export function create_beam(ctx) {
     },
     update, after_pose,
     lights: { light, hand },
-    chain: () => (ch ? ch.targets.length : 0),         // tests: how many the live beam is taking
-    // take on more while it channels (a snake about to reach the egg): they join the end of the chain
+    chain: () => (ch ? ch.beams.length : 0),         // tests: how many beams this cast has
+    // something about to reach the egg while the beams are on: one more from the same finger if
+    // it is (near enough) the way he points; returns whether it took any
     extend(more) {
-      if (!ch) return;
+      if (!ch) return false;
+      let took = false;
       for (const s of more) {
-        if (!snakes.free(s) || ch.targets.some(q => q.s === s)) continue;
+        if (!snakes.free(s) || ch.beams.some(b => b.s === s) || off_yaw(yaw_to(s.spine[20]), ch.a0) > FAN_URGENT) continue;
         snakes.take(s, { placeholder: true, tick() { } });
-        ch.targets.push({ s, ring: hit_ring() });
-        if (ch.phase === 'end') { ch.phase = 'shoot'; ch.pt = 0; ch.segs.push(new_seg(ch.head)); }
+        const b = beam_of(s, hit_ring(), 0); b.seg = new_seg(TIP);
+        ch.beams.push(b); took = true;
       }
+      return took;
     },
-    // round 22: he lets go of it (it went behind him): it thins out now; the snakes it was still
-    // coming for crawl on
-    let_go() {
+    // one it can't take (the other way) is about to reach the egg: the beams thin out now, so his
+    // hand is free for it (the snakes already burnt in still burst)
+    cut() {
       if (!ch) return;
-      for (let k = ch.i + (ch.phase === 'dwell' ? 1 : 0); k < ch.targets.length; k++) { const s = ch.targets[k].s; if (s.fx && s.fx.placeholder) s.fx = null; }
-      ch.targets.length = Math.min(ch.targets.length, ch.i + 1);
-      if (ch.phase !== 'end') { ch.phase = 'end'; ch.pt = 0; }
+      free_unhit();
+      for (const b of ch.beams) if (b.phase !== 'gone') { if (b.phase === 'wait' || b.phase === 'shoot') { if (b.seg) release(b.seg); b.seg = null; b.phase = 'gone'; } else if (b.phase === 'burn') { b.phase = 'fade'; b.pt = 0; } }
     },
-    // while it channels his finger stays on the first snake, where the segment from it goes
+    // round 22: he lets go of it (it went behind him): the same
+    let_go() { this.cut(); },
+    // while it channels his finger stays on the first snake
     busy: () => !!ch,
-    aim_point: () => (ch ? at(ch.targets[0]) : null),
+    aim_point: () => (ch ? at(ch.beams[0]) : null),
   };
 }
