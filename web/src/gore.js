@@ -19,6 +19,10 @@ import { smoothstep } from 'game/util.js';
 import { gi_dynamic } from 'game/gi.js';
 
 const GRAV = 9.8;
+// round 23 (owner: "When pulling with lift, it should pull towards where the player currently
+// pulls, not where he was when the lift started"): what bursts is pulled toward where he is now,
+// all the while it flies (PULL_T s, fading), not only thrown toward where he was at the burst
+const PULL_T = 0.7, PULL_A = 6.0;
 const PIECE_LIFE = 5.5, SINK_T = 1.5;
 const MAXR = 36;                                  // rings in one piece, at most
 
@@ -26,6 +30,16 @@ export function create_gore(R, cave, snakes, fx, rng) {
   const N = snakes.RINGS, SIDES = snakes.SIDES, gy = cave.ground_y, GU = cave.GU;
   const lit = (m) => (GU ? gi_dynamic(m, GU) : m);
   const V = new THREE.Vector3(), V2 = new THREE.Vector3(), Q = new THREE.Quaternion(), M = new THREE.Matrix4(), E = new THREE.Euler(), SC = new THREE.Vector3();
+  // where he is (his chest), followed every tick; `tug` = the pull on something at (x, y, z) with
+  // `pl` seconds of pull left, as an acceleration into `out`
+  let follow = null;
+  const TGT = new THREE.Vector3(), TUG = new THREE.Vector3();
+  const tug = (x, y, z, pl) => {
+    if (!follow || pl <= 0) return TUG.set(0, 0, 0);
+    TUG.set(TGT.x - x, (TGT.y - y)*0.5, TGT.z - z);
+    const l = TUG.length();
+    return l < 0.3 ? TUG.set(0, 0, 0) : TUG.multiplyScalar(PULL_A*(pl/PULL_T)/l);
+  };
 
   // ---------------------------------------------------------------- blood on the floor
   // four splash shapes drawn once: a blob with a ragged edge, satellite drops, a few runs
@@ -132,9 +146,9 @@ export function create_gore(R, cave, snakes, fx, rng) {
   const B = [];
   for (let i = 0; i < BN; i++) B.push({ life: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, s: 0, splat: 0 });
   let bnext = 0;
-  function drop(x, y, z, vx, vy, vz, s = 0.012, splat = 0.5) {
+  function drop(x, y, z, vx, vy, vz, s = 0.012, splat = 0.5, pl = 0) {
     const b = B[bnext]; bnext = (bnext + 1) % BN;
-    Object.assign(b, { life: 3, x, y, z, vx, vy, vz, s, splat, dark: rng.float(0.7, 1.15) });
+    Object.assign(b, { life: 3, x, y, z, vx, vy, vz, s, splat, pl, dark: rng.float(0.7, 1.15) });
   }
   function update_blood(dt) {
     for (let i = 0; i < BN; i++) {
@@ -142,6 +156,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
       if (b.life <= 0) { bsize[i] = 0; continue; }
       b.life -= dt;
       b.vy -= GRAV*dt;
+      if (b.pl > 0) { tug(b.x, b.y, b.z, b.pl); b.vx += TUG.x*dt; b.vy += TUG.y*dt; b.vz += TUG.z*dt; b.pl -= dt; }
       const d = 1 - 0.35*dt; b.vx *= d; b.vz *= d;
       b.x += b.vx*dt; b.y += b.vy*dt; b.z += b.vz*dt;
       const g = gy(b.x, b.z);
@@ -276,6 +291,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
       const m = P.m;
       if (P.rest <= 0) {
         P.v.y -= GRAV*dt;
+        if (P.pl > 0) { tug(m.position.x, m.position.y, m.position.z, P.pl); P.v.addScaledVector(TUG, dt); P.pl -= dt; }
         m.position.addScaledVector(P.v, dt);
         const wl = P.w.length();
         if (wl > 1e-4) { Q.setFromAxisAngle(V.copy(P.w).multiplyScalar(1/wl), wl*dt); m.quaternion.premultiply(Q); }
@@ -352,6 +368,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
           d.life -= dt; d.t += dt;
           if (d.rest <= 0) {
             d.vy -= GRAV*dt;
+            if (d.pl > 0) { tug(d.x, d.y, d.z, d.pl); d.vx += TUG.x*dt; d.vy += TUG.y*dt; d.vz += TUG.z*dt; d.pl -= dt; }
             d.x += d.vx*dt; d.y += d.vy*dt; d.z += d.vz*dt;
             d.rx += d.wx*dt; d.ry += d.wy*dt; d.rz += d.wz*dt;
             const g = gy(d.x, d.z) + d.s*0.4;
@@ -405,7 +422,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
   function gut(from, vel, piece, end) {
     const G = GUTS.find(q => !q.on);
     if (!G) return;
-    G.on = true; G.t = 0; G.piece = piece; G.end = end; G.m.visible = true;
+    G.on = true; G.t = 0; G.piece = piece; G.end = end; G.m.visible = true; G.pl = follow_on ? PULL_T : 0;
     G.len = rng.float(0.03, 0.045); G.r = rng.float(0.013, 0.018);
     for (let i = 0; i < GN; i++) {
       G.p[i].copy(from).addScaledVector(vel, i*0.002).add(V.set(rng.spread(0.03), -i*0.012, rng.spread(0.03)));
@@ -416,12 +433,13 @@ export function create_gore(R, cave, snakes, fx, rng) {
   function update_guts(dt) {
     for (const G of GUTS) {
       if (!G.on) continue;
-      G.t += dt;
+      G.t += dt; G.pl -= dt;
       const P = G.p, Q0 = G.q;
       for (let i = 0; i < GN; i++) {
         const vx = (P[i].x - Q0[i].x)*0.985, vy = (P[i].y - Q0[i].y)*0.985, vz = (P[i].z - Q0[i].z)*0.985;
         Q0[i].copy(P[i]);
         P[i].x += vx; P[i].y += vy - GRAV*dt*dt; P[i].z += vz;
+        if (G.pl > 0) { tug(P[i].x, P[i].y, P[i].z, G.pl); P[i].addScaledVector(TUG, dt*dt); }
       }
       // hanging from a piece's torn end while the piece is still there
       const pc = G.piece && G.piece.on ? G.piece : null;
@@ -456,10 +474,13 @@ export function create_gore(R, cave, snakes, fx, rng) {
   // `toward`: round 21 (owner: the pieces and blood "should slightly come in his direction"):
   // part of what bursts is thrown toward that point (his chest), the rest all round
   const TW = new THREE.Vector3();
+  let follow_on = false;
   function burst(s, mid, toward = null) {
     const arc = snakes.arc, c = s.spine[mid].clone(), cm = arc(mid);
     if (toward) { TW.subVectors(toward, c); TW.y = Math.max(TW.y, -0.2*TW.length()); TW.normalize(); } else TW.set(0, 0, 0);
     const pull = (o, lo, hi) => { const k = rng.float(lo, hi); o.x += TW.x*k; o.y += TW.y*k; o.z += TW.z*k; return o; };
+    follow_on = !!toward;
+    const PL = follow_on ? PULL_T : 0;
     // where it tears apart: ~30 cm either side of the middle is torn to meat
     let a = mid, b = mid;
     while (a > 1 && cm - arc(a) < 0.28) a--;
@@ -471,7 +492,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
       out.normalize();
       const sp = rng.float(2.2, 4.2);
       P.v.set(out.x*sp + rng.spread(0.8), rng.float(1.2, 3.0) + out.y*sp*0.3, out.z*sp + rng.spread(0.8));
-      pull(P.v, 0.9, 2.2);
+      pull(P.v, 0.6, 1.5); P.pl = follow_on ? PULL_T : 0;
       P.w.set(rng.spread(1), rng.spread(1), rng.spread(1)).normalize().multiplyScalar(rng.float(4, 11));
       pieces.push(P);
     };
@@ -501,11 +522,11 @@ export function create_gore(R, cave, snakes, fx, rng) {
       const dir = V.set(rng.spread(1), rng.spread(1), rng.spread(1)).normalize();
       const x = p.x + dir.x*r0, y = p.y + dir.y*r0, z = p.z + dir.z*r0;
       const sp = rng.float(o.v0, o.v1);
-      return { x, y, z, vx: dir.x*sp + (p.x - c.x)*1.5, vy: Math.abs(dir.y)*sp*0.8 + rng.float(0.8, 2.4), vz: dir.z*sp + (p.z - c.z)*1.5 };
+      return { x, y, z, vx: dir.x*sp + (p.x - c.x)*1.5, vy: Math.abs(dir.y)*sp*0.8 + rng.float(0.8, 2.4), vz: dir.z*sp + (p.z - c.z)*1.5, pl: PL };
     };
     for (let k = 0; k < 46; k++) {
       const i = rng.int(a, b), o = burst_at(i, s.radii[i]*0.6, { v0: 1.5, v1: 5.0 });
-      const pv = pull({ x: o.vx, y: o.vy, z: o.vz }, 0.6, 2.0); o.vx = pv.x; o.vy = pv.y; o.vz = pv.z;
+      const pv = pull({ x: o.vx, y: o.vy, z: o.vz }, 0.4, 1.3); o.vx = pv.x; o.vy = pv.y; o.vz = pv.z; o.pl = follow_on ? PULL_T : 0;
       meat.spawn(Object.assign(o, { s: rng.float(0.012, 0.035), sx: rng.float(0.7, 1.4), sy: rng.float(0.5, 1.0), sz: rng.float(0.7, 1.5), c: MEAT_C[rng.int(0, MEAT_C.length - 1)], bleed: 0.25 }));
     }
     for (let k = 0; k < 14; k++) {
@@ -532,13 +553,13 @@ export function create_gore(R, cave, snakes, fx, rng) {
       const sp0 = rng.float(3, 6);
       for (let k = 0; k < 26; k++) {
         const sp = sp0*rng.float(0.5, 1.1);
-        drop(c.x, c.y, c.z, d.x*sp + rng.spread(0.5), d.y*sp + rng.spread(0.5), d.z*sp + rng.spread(0.5), rng.float(0.014, 0.028), 0.45);
+        drop(c.x, c.y, c.z, d.x*sp + rng.spread(0.5), d.y*sp + rng.spread(0.5), d.z*sp + rng.spread(0.5), rng.float(0.014, 0.028), 0.45, PL);
       }
     }
     for (let k = 0; k < 80; k++) {
       const i = rng.int(a, b), p = s.spine[i], d = V2.set(rng.spread(1), rng.spread(1), rng.spread(1)).normalize();
       const sp = rng.float(0.8, 4.0);
-      drop(p.x, p.y, p.z, d.x*sp + TW.x*0.9, d.y*sp + 0.8, d.z*sp + TW.z*0.9, rng.float(0.01, 0.022), 0.4);
+      drop(p.x, p.y, p.z, d.x*sp + TW.x*0.9, d.y*sp + 0.8, d.z*sp + TW.z*0.9, rng.float(0.01, 0.022), 0.4, PL);
     }
     for (let k = 0; k < 40; k++) {
       const i = rng.int(Math.max(0, a - 6), Math.min(N - 1, b + 6)), p = s.spine[i];
@@ -554,10 +575,28 @@ export function create_gore(R, cave, snakes, fx, rng) {
     }
   }
 
+  // round 23: a snake crushed by a thrown rock at p: blood bursting out along the way the rock went
+  // and up, meat and skin, a splash under it and one smeared on the way it went, a little mist
+  function crush(p, dir, r = 0.08) {
+    for (let k = 0; k < 60; k++) {
+      const sp = rng.float(1.5, 5.0), d = V2.set(dir.x + rng.spread(0.9), rng.float(0.2, 1.1), dir.z + rng.spread(0.9)).normalize();
+      drop(p.x, p.y + 0.03, p.z, d.x*sp, d.y*sp, d.z*sp, rng.float(0.01, 0.022), 0.5);
+    }
+    for (let k = 0; k < 10; k++) meat.spawn({ x: p.x + rng.spread(r), y: p.y + 0.02, z: p.z + rng.spread(r), vx: dir.x*rng.float(1, 3) + rng.spread(1), vy: rng.float(1, 2.5), vz: dir.z*rng.float(1, 3) + rng.spread(1),
+      s: rng.float(0.012, 0.03), sx: rng.float(0.7, 1.4), sy: rng.float(0.5, 1.0), sz: rng.float(0.7, 1.5), c: MEAT_C[rng.int(0, MEAT_C.length - 1)], bleed: 0.25 });
+    for (let k = 0; k < 3; k++) scraps.spawn({ x: p.x, y: p.y + 0.03, z: p.z, vx: dir.x*rng.float(1, 2.5) + rng.spread(0.8), vy: rng.float(0.8, 2), vz: dir.z*rng.float(1, 2.5) + rng.spread(0.8), s: rng.float(0.03, 0.05), sx: 1, sy: 0.7, sz: 1 });
+    splash(p.x, p.z, rng.float(0.5, 0.8), 0.4);
+    splash(p.x + dir.x*0.45, p.z + dir.z*0.45, rng.float(0.35, 0.5), 0.3, Math.atan2(-dir.z, dir.x), 1.8);
+    for (let k = 0; k < 10; k++) fx.puff({ x: p.x, y: p.y + 0.05, z: p.z, vx: dir.x*0.8 + rng.spread(0.8), vy: rng.float(0, 0.6), vz: dir.z*0.8 + rng.spread(0.8), grav: 0.6, drag: 1.8,
+      life: rng.float(0.6, 1.2), s0: 0.08, s1: 0.3, r: 0.03, g: 0.0025, b: 0.002, a: 0.5, fin: 0.02 });
+  }
+
   return {
-    burst,
+    burst, crush,
+    // round 23: where he is, followed while what bursts flies
+    follow(fn) { follow = fn; },
     pieces: () => PIECES.map((p, i) => (p.on ? { i, t: p.t, p: p.m.position.clone() } : null)).filter(Boolean),     // tests
-    update(t, dt) { update_pieces(dt); meat.update(dt); ribs.update(dt); verts.update(dt); scraps.update(dt); update_guts(dt); update_blood(dt); update_decals(dt); },
+    update(t, dt) { if (follow) { const L = follow(); TGT.set(L.x, L.y + 0.4, L.z); } update_pieces(dt); meat.update(dt); ribs.update(dt); verts.update(dt); scraps.update(dt); update_guts(dt); update_blood(dt); update_decals(dt); },
     set_camera(cam, H) { bmat.uniforms.uScale.value = cam.projectionMatrix.elements[5]*H*0.5; },
   };
 }

@@ -217,7 +217,7 @@ uniform float uSnakeT;`)
         if (s.trail.length > 600) s.trail.length = 600;
         if (Math.hypot(s.x - egg.x, s.z - egg.z) < 1.1) { s.dying = 0; reached++; reach_log.push({ t: +t.toFixed(2), claim: s.claim, until: s.claim_until, leak: +s.leak.toFixed(2), speed: s.speed }); }   // it reached the egg (placeholder: it shrinks away)
       }
-      if (s.leak >= 1.12 && !s.burn && s.sink < 0) { dissolved++; respawn(s); continue; }   // dissolved into nothing
+      if (s.leak >= 1.12 && !s.burn && s.sink < 0) { dissolved++; if (api.on_dissolve) api.on_dissolve(s); respawn(s); continue; }   // dissolved into nothing
       build(s);
     }
   }
@@ -231,7 +231,8 @@ uniform float uSnakeT;`)
     for (let i = 0; i < RINGS; i++) {
       const u = (RINGS - 1 - i)/(RINGS - 1);                     // 0 at the tail: it dissolves tail first
       RK[i] = s.leak > 0 ? smoothstep(f, f + 0.12, u) : 1;
-      GL[i] = s.leak > 0 ? Math.max(s.leak*0.45, Math.exp(-(((u - f)/0.07)**2))) : 0;
+      // round 23: only a faint light at the edge where it is going (the smoke of warped air carries it now)
+      GL[i] = s.leak > 0 ? 0.55*Math.exp(-(((u - f)/0.06)**2)) : 0;
       if (fx) { if (fx.radk) RK[i] *= fx.radk(i); if (fx.glow) GL[i] = Math.max(GL[i], fx.glow(i)); }
     }
     for (let i = 0; i < RINGS; i++) {
@@ -323,5 +324,7 @@ uniform float uSnakeT;`)
   const free = s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0 && !s.fx;
   const live = () => S.filter(free);
   function set_ember(c) { uEmber.value.setRGB(c[0], c[1], c[2]); }
-  return { update, S, ignite, take, live, free, set_ember, respawn, RINGS, SIDES, mat, egg, reach_log, arc: S_AT, ring_at: I_AT, get reached() { return reached; }, get dissolved() { return dissolved; } };
+  const api = { update, S, ignite, take, live, free, set_ember, respawn, RINGS, SIDES, mat, egg, reach_log, arc: S_AT, ring_at: I_AT, get reached() { return reached; }, get dissolved() { return dissolved; },
+    on_dissolve: null };            // round 23: leak.js puffs its last smoke here
+  return api;
 }

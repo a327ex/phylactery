@@ -4,7 +4,7 @@
 // starts with all abilities and the cooldowns of abilities are such that snakes always almost
 // reach the egg but never do, regardless of where the lich is in the cave. As attacks are
 // removed by the player, the remaining attacks increase in frequency to make sure that snakes
-// don't reach." Fire, lift, wind and beam are cast with a hand pointing at the target; the lens
+// don't reach." Fire, lift, rock (wind until round 23) and beam are cast with a hand pointing at the target; the lens
 // is a floating object; leakage happens by itself.
 //
 // How that is kept:
@@ -15,7 +15,7 @@
 //   the power goes off a beat after both are on it (round 19), he holds a moment, lowers. Among the powers that
 //   are ready he uses the one he has used least recently, so all of them show.
 // - With fewer powers, each one left grows by power = 6 / (powers left): cooldowns divide by
-//   it, and what one cast takes multiplies (fire lights several, lift raises several, wind
+//   it, and what one cast takes multiplies (fire lights several, lift raises several, rock
 //   blows several away, the beam chains through many, several lenses form, leakage reaches
 //   further and works faster).
 // - A snake that gets within URGENT of the egg with nothing on it forces a cast now (cooldown
@@ -28,7 +28,7 @@
 //   the set of powers last changed. Something about to reach the egg skips the rotation.
 import * as THREE from 'three';
 import { create_lift } from 'game/lift.js';
-import { create_wind } from 'game/wind.js';
+import { create_rock } from 'game/rock.js';
 import { create_beam } from 'game/beam.js';
 import { create_lens } from 'game/lens.js';
 import { create_leak } from 'game/leak.js';
@@ -70,8 +70,9 @@ export function create_powers(ctx) {
     update() { },
   };
   const later = [];
-  const lift = create_lift(ctx), wind = create_wind(ctx), beam = create_beam(ctx), lens = create_lens(ctx), leak = create_leak(ctx);
-  const ALL = [FIRE, lift, wind, leak, beam, lens];
+  // round 23 (owner): wind is replaced by the rock throw
+  const lift = create_lift(ctx), rock = create_rock(ctx), beam = create_beam(ctx), lens = create_lens(ctx), leak = create_leak(ctx);
+  const ALL = [FIRE, lift, rock, leak, beam, lens];
   const on = new Map(ALL.map(a => [a, true]));
   const next = new Map(ALL.map(a => [a, 1.0])), last = new Map(ALL.map((a, i) => [a, -10 + i]));
   let clock = 0, power = 1;
@@ -82,6 +83,7 @@ export function create_powers(ctx) {
   const count = (a, n) => { uses.set(a, uses.get(a) + 1); took.set(a, took.get(a) + n); fair.set(a, fair.get(a) + 1); };
   const reset_fair = () => { for (const a of ALL) fair.set(a, 0); };
   let quick_lens = 0;                 // tests: lenses fired at once, for something about to reach the egg
+  lens.use_claims(s => unclaimed(s), s => claim(s, 'LENS', 2.0));
   const G = { phase: 'idle', ab: null, targets: [], t: 0, on_t: 0, arm: 1, ring: 0, primary: null, quick: false, w: 0, pw: 0, point: new THREE.Vector3(), must_turn: false };
   let facing = 0, drops = 0, test_old = false;       // test_old: round 21's facing, to compare against
   // where something is from his facing (radians, 0 = straight ahead), and whether it is behind him
@@ -142,10 +144,13 @@ export function create_powers(ctx) {
     // --- the gestured powers, one at a time
     // the next gesture, if there is something to take and a power whose turn it is
     const try_gesture = () => {
-      const th = threats(ENGAGE);
-      if (!(th.length || urgent.size) || !gestured.length) return false;
+      // round 23: a power can take them from further out than ENGAGE (the rock needs its flight time)
+      const far = Math.max(ENGAGE, ...gestured.map(a => a.engage || ENGAGE));
+      const th_all = threats(far);
+      if (!(th_all.length || urgent.size) || !gestured.length) return false;
       const quick = urgent.size > 0;
-      let ready = gestured.filter(a => next.get(a) <= 0 && (quick || turn(a)));
+      const has = a => quick || th_all.some(s => d_egg(s) < (a.engage || ENGAGE));
+      let ready = gestured.filter(a => next.get(a) <= 0 && (quick || turn(a)) && has(a));
       if (!ready.length && quick) {
         // something is about to reach the egg: whichever power is soonest goes now
         const a = gestured.reduce((x, y) => (next.get(x) <= next.get(y) ? x : y));
@@ -154,6 +159,7 @@ export function create_powers(ctx) {
       if (!ready.length) return false;
       // the least used, then the least recently used
       const ab = ready.reduce((x, y) => (fair.get(x) < fair.get(y) || (fair.get(x) === fair.get(y) && last.get(x) <= last.get(y)) ? x : y));
+      const th = th_all.filter(s => d_egg(s) < (ab.engage || ENGAGE));
       const first = quick ? [...urgent].sort((a, b) => d_egg(a) - d_egg(b)) : [];
       // in front of him first (the list is already nearest the egg first)
       const ahead = th.filter(s => !urgent.has(s)).map(s => [s, !test_old && behind(s.spine[Math.round(N*0.3)]) ? 1 : 0]).sort((a, b) => a[1] - b[1]).map(q => q[0]);
@@ -185,7 +191,7 @@ export function create_powers(ctx) {
         if (G.still >= beat || G.t >= (G.quick ? QUICK_MAX : AIM_MAX)) {
           const targets = G.targets.filter(q => snakes.free(q));
           lich.fingertip(G.arm, TIP);
-          G.ab.cast(targets, TIP, G.ring, G.arm);
+          G.ab.cast(targets, TIP, G.ring, G.arm, G.quick);
           count(G.ab, targets.length);
           next.set(G.ab, G.ab.cooldown/power); last.set(G.ab, clock);
           G.phase = 'hold'; G.t = 0;
@@ -273,11 +279,12 @@ export function create_powers(ctx) {
     // --- leakage: always, if he has it; when it is all he has, it takes the urgent ones fast
     leak.update(t, dt, on.get(leak), gestured.length || on.get(lens) ? null : urgent);
     beam.update(t, dt);
+    rock.update(t, dt);
     lens.update(t, dt);
   }
 
   return {
-    ALL, tick, beam, lens,
+    ALL, tick, beam, lens, rock,
     // after he is posed each tick: what leaves his hand follows it (round 18: the beam was a tick behind)
     after_pose(t) { beam.after_pose(t); },
     get power() { return power; },

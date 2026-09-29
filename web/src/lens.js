@@ -131,6 +131,7 @@ export function create_lens(ctx) {
   const active = [];
   let look = 0;
   const cuts = [];                  // tests: where each cut fell (metres from the snout) and on whom
+  const fired = [];                 // tests: where each beam started and landed
 
   function cut_fx(s, c) {
     // the body's direction at the cut, toward the head
@@ -179,21 +180,41 @@ export function create_lens(ctx) {
     return s.spine[c];
   }
 
+  // aim: the middle of the body (round 17, owner: the neck cuts fell too close to the head,
+  // sometimes ahead of it). The body moves on while the beam crosses it, so it aims a little
+  // ahead of where the cut should fall.
+  const aim_ring = () => Math.max(1, Math.round(snakes.ring_at(Math.max(0.05, rng.float(1.7, 2.3) - 0.18))));
+  // round 23 (owner: "the beam is often starting from the egg"): another power can take its snake
+  // before it fires; the focus then stayed at the room's origin, which is the egg (2 of 7 beams in
+  // a 90 s run). Now the focus moves over to the nearest free snake, or with none within reach the
+  // glass dissolves without firing.
+  let unclaimed = (s) => snakes.free(s), claim = () => { };
+  function retarget(q) {
+    let best = null, bd = 1e9;
+    for (const s of snakes.S) {
+      if (!unclaimed(s) || active.some(o => o !== q && o.s === s)) continue;
+      if (Math.hypot(s.x - snakes.egg.x, s.z - snakes.egg.z) > 7) continue;
+      const d = Math.hypot(s.spine[20].x - q.spot.x, s.spine[20].z - q.spot.z);
+      if (d < bd) { bd = d; best = s; }
+    }
+    if (best) { q.s = best; q.ring = aim_ring(); claim(best); return true; }
+    // nothing to cut: it goes, unfired
+    q.fired = true; q.t = FORM + CONVERGE + q.dur + OFF + 1e-3;
+    return false;
+  }
+
   // one lens on one snake
   function spawn(s, k, quick = false) {
     const L = LENSES.find(q => !q.on);
     if (!L) return;
-    // aim: the middle of the body (round 17, owner: the neck cuts fell too close to the head,
-    // sometimes ahead of it). The body moves on while the beam crosses it, so it aims a little
-    // ahead of where the cut should fall.
-    const cut_at = rng.float(1.7, 2.3);
-    const ring = Math.max(1, Math.round(snakes.ring_at(Math.max(0.05, cut_at - 0.18))));
+    const ring = aim_ring();
     const h = rng.float(3.8, 6.0) + k*0.4;
     const pos = axis_at(h).add(new THREE.Vector3(rng.spread(0.8), 0, rng.spread(0.8)));
-    const q = { L, s, ring, t: quick ? FORM + CONVERGE - 0.12 : 0, pos, side: rng.sign(),
+    const q = { L, s, ring, t: quick ? FORM + CONVERGE - 0.12 : 0, t0q: quick, pos, side: rng.sign(),
       spot: new THREE.Vector3(), a: new THREE.Vector3(), b: new THREE.Vector3(), fired: false, core: null, flare: 0,
       light: LIGHTS.find(x => !x.lens), dur: SWEEP/SPEED };
     if (q.light) q.light.lens = q;
+    beside(q, q.spot);                // the focus starts beside it (never at the origin)
     L.on = true;
     L.m.position.copy(pos); L.m.scale.setScalar(0.001); L.m.visible = true; L.sh.visible = true;
     active.push(q);
@@ -226,13 +247,16 @@ export function create_lens(ctx) {
       // it drifts a little
       m.position.copy(q.pos).add(new THREE.Vector3(Math.sin(t*0.9 + i)*0.04, Math.sin(t*1.3 + i*2)*0.05, Math.cos(t*0.8 + i)*0.04));
       const lp = m.position.clone();
+      // its snake taken by another power before it fires: another, or it goes unfired
+      if (!q.fired && !snakes.free(q.s)) retarget(q);
       // the focus: beside the snake while it forms and converges, then the sweep across it
-      if (sweep_t < 0) beside(q, q.spot);
-      else {
+      const st = q.t - FORM - CONVERGE;
+      if (st < 0) beside(q, q.spot);
+      else if (!q.fired || q.core || st <= q.dur + OFF) {
         if (!q.fired) {
           // the sweep: from LEAD beside the body, across it, and on
           q.fired = true;
-          beside(q, q.a);
+          q.a.copy(q.spot); beside(q, q.a);
           const p = frame_at(q.s, q.ring);
           const dir = new THREE.Vector3().subVectors(p, q.a).setY(0).normalize();
           q.b.copy(q.a).addScaledVector(dir, SWEEP);
@@ -285,6 +309,7 @@ export function create_lens(ctx) {
         const flick = 1 + 0.12*Math.sin(t*57 + i) + 0.07*Math.sin(t*83 + i*3);
         if (!q.core) {
           q.core = fx.ribbon(lp, q.spot, { held: true, style: look === 0 ? 2 : 3, w: 2, w0: 0.1, w1: 0.1 });
+          fired.push({ lp: lp.toArray().map(v => +v.toFixed(2)), spot: q.spot.toArray().map(v => +v.toFixed(2)), quick: q.t0q, size: +m.scale.x.toFixed(3) });
           // as it fires the glass flares (its rim and body light up a moment), and the focal
           // point ignites: a spit of sparks and a puff, no flash discs (owner, round 16)
           q.flare = 1;
@@ -349,6 +374,8 @@ export function create_lens(ctx) {
     get look() { return look; },
     set look(v) { look = ((v % LENS_LOOKS.length) + LENS_LOOKS.length) % LENS_LOOKS.length; },
     free_lenses: () => LENSES.filter(q => !q.on).length,
-    cuts,
+    use_claims(is_unclaimed, do_claim) { unclaimed = is_unclaimed; claim = do_claim; },
+    cuts, fired,
+    active,
   };
 }

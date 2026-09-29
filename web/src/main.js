@@ -19,6 +19,7 @@ import { create_fire } from 'game/fire.js';
 import { create_fx } from 'game/fx.js';
 import { create_powers, FACINGS } from 'game/powers.js';
 import { create_gore } from 'game/gore.js';
+import { create_warp } from 'game/warp.js';
 import { BEAM_LOOKS } from 'game/beam.js';
 import { LENS_LOOKS } from 'game/lens.js';
 import { build_nav } from 'game/nav.js';
@@ -69,8 +70,10 @@ G.mover = mover; G.snakes = snakes; G.fire = fire;
 // switch each off and on (testing the removal the ending is about).
 const fx = create_fx(R, cave);
 const gore = create_gore(R, cave, snakes, fx, make_rng(41));        // round 20: what a burst snake becomes
-const powers = create_powers({ R, cave, snakes, fx, gore, fire, lich, mover, egg: EGG, get_L: () => L, rng: make_rng(29) });
-G.powers = powers; G.fx = fx; G.gore = gore;
+const warp = create_warp(R);                                          // round 23: air that bends the light
+const powers = create_powers({ R, cave, snakes, fx, gore, warp, fire, lich, mover, egg: EGG, get_L: () => L, rng: make_rng(29) });
+G.powers = powers; G.fx = fx; G.gore = gore; G.warp = warp;
+gore.follow(() => L);
 const POWER_KEYS = ['5', '6', '7', '8', '9', '0'];
 
 // ------------------------------------------------------------------ cameras
@@ -281,12 +284,14 @@ function tick() {
   fire.update(G.t, DT);
   fx.update(G.t, DT);
   gore.update(G.t, DT);
+  warp.update(G.t, DT);
 }
 function render(dt) {
   place_camera(0);
   fire.set_camera(R.world_camera, R.H);
   fx.set_camera(R.world_camera, R.H);
   gore.set_camera(R.world_camera, R.H);
+  warp.set_camera(R.world_camera, R.H);
   draw_hud();
   R.render(dt);
 }

@@ -73,6 +73,13 @@ In order of what blocks the port most:
    renders the opaque scene into a texture and the glass samples it bent). With item 1 plus a grab
    texture the glass is a small shader. Also: the glass must not write depth (`mesh3_set_transparent`
    covers that), otherwise the shaft's haze stops at it (round 14's "dark stone").
+   Round 23 adds a second use: **the warp layer** (`web/src/warp.js`, `render.js`): leakage, the
+   rock's telekinesis and its wake are air that bends the light. Streaks and puffs are drawn with
+   the world camera into their own half-float target as *signed* screen-space shifts (additive,
+   ONE/ONE, negative values allowed), each fragment tested by hand against the world's depth
+   texture; the final pass samples the world at the shifted position, the three channels shifted
+   by different amounts (the prismatic split). Anchor needs: a float target with signed additive
+   blending, the world depth readable in a custom shader, and the final pass able to read both.
 6. **3D textures (or probe arrays as uniforms)** for the baked bounce light on moving things (the
    lich, the snakes, the chunks sample an up/down irradiance probe grid). Static geometry carries
    its bake per vertex (item 1's vertex colours). A cheaper port: a handful of probes as uniforms.
