@@ -18,9 +18,17 @@
 import * as THREE from 'three';
 import { smoothstep } from 'game/util.js';
 import { K } from 'game/warp.js';
+import { spectrum } from 'game/fx.js';
 
+// Round 25 (owner: "the disappear effect needs to be more... visual, interesting, somehow";
+// "the transparent lines coming out from the lich also look cool but they could be a bit more
+// visible and prismatic, just a tad more"; and the dissolving went the wrong way): it goes from
+// where the snake is nearest him outward (snakes.js); ahead of its edge the flesh turns glassy
+// and prismatic, and at the edge the body breaks into flakes that swirl up, burning into his
+// colours as they rise, and go to warped air; the wind lines a little stronger, a little more
+// split into colour.
 export function create_leak(ctx) {
-  const { snakes, warp, lich, rng, egg, get_L, cave } = ctx;
+  const { R, snakes, warp, lich, rng, egg, get_L, cave, GU } = ctx;
   const N = snakes.RINGS;
   const H = new THREE.Vector3();
   let ring_t = 0, emit = 0;
@@ -46,7 +54,7 @@ export function create_leak(ctx) {
       if (q.y < g) { q.y = g; e = Math.max(e, 0); }             // it skims the floor rather than going into it
       path.push(q.clone());
     }
-    s.w = rng.float(0.07, 0.13); s.amp = rng.float(2.4, 3.6)*(0.85 + Math.min(1, reach/10)*0.4); s.chroma = rng.float(0.6, 0.9);
+    s.w = rng.float(0.08, 0.15); s.amp = rng.float(3.1, 4.6)*(0.85 + Math.min(1, reach/10)*0.4); s.chroma = rng.float(0.85, 1.15);
     streaks.push({ s, path, sp, len, life, t: 0 });
   }
   const at = (path, d, out) => {
@@ -84,6 +92,56 @@ export function create_leak(ctx) {
       if (u >= 1) { warp.release(q.s); rings.splice(i, 1); }
     }
   }
+  // ---------------------------------------------------------------- flakes
+  // small plates of it, breaking off at the edge where it is going: its own dark skin, a faint
+  // sheen of his colours coming into it as it swirls up, and each one going to warped air (not
+  // glowing: the owner moved the prismatic away from glitter, round 23)
+  const FN = 700;
+  const fgeo = new THREE.CircleGeometry(1, 5);
+  const fmat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  const fmesh = new THREE.InstancedMesh(fgeo, fmat, FN);
+  fmesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(FN*3), 3);
+  fmesh.frustumCulled = false;
+  R.world_scene.add(fmesh);
+  const FL = [];
+  for (let i = 0; i < FN; i++) { FL.push({ life: 0 }); fmesh.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0)); }
+  let fnext = 0;
+  const M4 = new THREE.Matrix4(), QQ = new THREE.Quaternion(), EE = new THREE.Euler(), SV = new THREE.Vector3(), PV = new THREE.Vector3(), OP = [1, 1, 1];
+  const opal = (h) => { const c = spectrum(h).map(v => v*v*(3 - 2*v)); for (let i = 0; i < 3; i++) c[i] = c[i]*0.84 + 0.08; const m = Math.max((c[0] + c[1] + c[2])/3, 0.2); OP[0] = c[0]/m; OP[1] = c[1]/m; OP[2] = c[2]/m; return OP; };
+  function flake(p, r) {
+    const f = FL[fnext]; fnext = (fnext + 1) % FN;
+    const a = rng.float(0, 6.28);
+    Object.assign(f, { life: rng.float(0.9, 1.5), t: 0, x: p.x + Math.cos(a)*r, y: p.y + rng.spread(r), z: p.z + Math.sin(a)*r, cx: p.x, cz: p.z,
+      vx: Math.cos(a)*rng.float(0.1, 0.35), vy: rng.float(0.25, 0.6), vz: Math.sin(a)*rng.float(0.1, 0.35), s: rng.float(0.018, 0.04),
+      rx: rng.float(0, 6), ry: rng.float(0, 6), rz: rng.float(0, 6), wx: rng.spread(9), wy: rng.spread(9), wz: rng.spread(9), hue: rng.next(), curl: rng.sign()*rng.float(1.2, 2.4), puffed: false });
+    f.max = f.life;
+  }
+  function update_flakes(t, dt) {
+    for (let i = 0; i < FN; i++) {
+      const f = FL[i];
+      if (f.life <= 0) continue;
+      f.life -= dt; f.t += dt;
+      const u = f.t/f.max;
+      // up, and round the line it rose from (the swirl widens as it goes)
+      const dx = f.x - f.cx, dz = f.z - f.cz;
+      f.vx += -dz*f.curl*dt*2.2; f.vz += dx*f.curl*dt*2.2;
+      f.vy += 0.5*dt;
+      const d = 1 - 0.9*dt; f.vx *= d; f.vz *= d;
+      f.x += f.vx*dt; f.y += f.vy*dt; f.z += f.vz*dt;
+      f.rx += f.wx*dt; f.ry += f.wy*dt; f.rz += f.wz*dt;
+      // its skin burning into his colours, brighter, then gone
+      const b = smoothstep(0.1, 0.6, u), g = opal(f.hue + t*0.15);
+      const k = 0.012*b;
+      fmesh.instanceColor.setXYZ(i, 0.034 + g[0]*k, 0.03 + g[1]*k, 0.022 + g[2]*k);
+      const sc = f.s*(1 - smoothstep(0.6, 1, u));
+      EE.set(f.rx, f.ry, f.rz); QQ.setFromEuler(EE);
+      M4.compose(PV.set(f.x, f.y, f.z), QQ, SV.set(sc, sc, sc));
+      fmesh.setMatrixAt(i, f.life > 0 ? M4 : M4.makeScale(0, 0, 0));
+      if (!f.puffed && u > 0.6) { f.puffed = true; warp.puff({ x: f.x, y: f.y, z: f.z, vx: f.vx*0.5, vy: 0.35, vz: f.vz*0.5, life: rng.float(0.6, 1.0), s0: 0.08, s1: 0.3, amp: 3.6, spin: rng.spread(3) }); }
+    }
+    fmesh.instanceMatrix.needsUpdate = true; fmesh.instanceColor.needsUpdate = true;
+  }
+
   // warped smoke from where a snake is coming apart
   // (a billowing column: each puff swells as it rises, turning over)
   const smoke = (p, big = 1) => warp.puff({ x: p.x + rng.spread(0.08), y: p.y + rng.spread(0.04), z: p.z + rng.spread(0.08),
@@ -110,17 +168,27 @@ export function create_leak(ctx) {
         let d = 1e9;
         for (let i = 0; i < N; i += 6) d = Math.min(d, Math.hypot(s.spine[i].x - L.x, s.spine[i].z - L.z));
         if (on && d < reach) {
+          // it starts from the part of it nearest him
+          if (s.leak_at == null || s.leak <= 0) {
+            let bi = 0, bd = 1e9;
+            for (let i = 0; i < N; i += 2) { const e = Math.hypot(s.spine[i].x - L.x, s.spine[i].z - L.z); if (e < bd) { bd = e; bi = i; } }
+            s.leak_at = bi;
+          }
           // closer to him, faster; a snake about to reach the egg is taken much faster
           const k = 1 - 0.5*d/reach;
           s.leak += rate*k*dt*(urgent && urgent.has(s) ? 4 : 1);
-          // warped smoke from the edge where it is going
-          if (rng.next() < 0.4) {
-            const u = Math.min(0.999, s.leak*1.12), i = Math.round((1 - u)*(N - 1));
-            smoke(s.spine[Math.max(0, Math.min(N - 1, i))]);
+          // its two edges (toward the head, toward the tail): flakes breaking off, and smoke
+          const LEN = snakes.LEN, ac = snakes.arc(s.leak_at), ext = Math.max(ac, LEN - ac, 0.5), fr = Math.min(1.12, s.leak*1.12)*ext;
+          for (const e of [ac - fr, ac + fr]) {
+            if (e < 0 || e > LEN) continue;
+            const i = Math.max(0, Math.min(N - 1, Math.round(snakes.ring_at(e))));
+            const p = s.spine[i], r = s.radii[i] || 0.06;
+            for (let m = 0; m < 2; m++) if (rng.next() < 0.3) flake(p, r);
+            if (rng.next() < 0.4) smoke(p);
           }
-        } else if (s.leak > 0) s.leak = Math.max(0, s.leak - 0.06*dt);
+        } else if (s.leak > 0) { s.leak = Math.max(0, s.leak - 0.06*dt); if (s.leak <= 0) s.leak_at = null; }
       }
-      update_streaks(dt); update_rings(dt);
+      update_streaks(dt); update_rings(dt); update_flakes(t, dt);
       if (!on) return;
       // from his skull: wind lines curling out, more the further it reaches
       lich.head_pos(H);

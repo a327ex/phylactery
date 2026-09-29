@@ -257,7 +257,7 @@ export function create_powers(ctx) {
       // or he is already aiming at another; a hold or a lowering gives way to it, a channel
       // takes it on): a lens that fires at once
       const busy_hand = G.phase === 'aim';
-      const rush = (lone || busy_hand) && [...urgent].filter(s => !(s.claim === 'LENS-QUICK' && s.claim_until > clock) && !(busy_hand && G.targets.includes(s)));
+      const rush = (lone || busy_hand) && [...urgent].filter(s => !(s.claim && s.claim_until > clock && /QUICK/.test(s.claim)) && !(busy_hand && G.targets.includes(s)));
       if (rush && rush.length) {
         const targets = rush.slice(0, lens.free_lenses());
         for (const s of targets) claim(s, 'LENS-QUICK', 1.2);
@@ -276,8 +276,32 @@ export function create_powers(ctx) {
         }
       }
     }
+    // --- the rock (round 25: no gesture; his mind alone): its turn in the rotation, like the lens;
+    // and for something about to reach the egg that nothing else is taking, a quick one
+    if (on.get(rock)) {
+      const busy_hand = G.phase === 'aim';
+      const rush = (!gestured.length || busy_hand) && [...urgent].filter(s => !(s.claim && s.claim_until > clock && /QUICK/.test(s.claim)) && !(busy_hand && G.targets.includes(s)));
+      if (rush && rush.length && rock.free_rocks() > 0) {
+        const targets = rush.slice(0, Math.min(2, rock.free_rocks()));
+        for (const s of targets) claim(s, 'ROCK-QUICK', 1.2);
+        rock.cast(targets, null, 0, 1, true);
+        count(rock, targets.length);
+      } else if (next.get(rock) <= 0 && turn(rock) && rock.free_rocks() > 0) {
+        const th = threats(rock.engage);
+        const n = Math.min(rock.capacity(power), rock.free_rocks(), th.length);
+        if (n > 0) {
+          const targets = th.slice(0, n);
+          for (const s of targets) claim(s, 'ROCK', 2.6);
+          rock.cast(targets);
+          count(rock, targets.length);
+          next.set(rock, rock.cooldown/power); last.set(rock, clock);
+          // he glances at it as it rises
+          const p = rock.hold_at(); if (p && G.w < 0.05) { LOOK.p.copy(p); LOOK.t = 0; }
+        }
+      }
+    }
     // --- leakage: always, if he has it; when it is all he has, it takes the urgent ones fast
-    leak.update(t, dt, on.get(leak), gestured.length || on.get(lens) ? null : urgent);
+    leak.update(t, dt, on.get(leak), gestured.length || on.get(lens) || on.get(rock) ? null : urgent);
     beam.update(t, dt);
     rock.update(t, dt);
     lens.update(t, dt);

@@ -74,7 +74,7 @@ export function create_warp(R) {
         float rip = 0.7 + 0.3*sin(vU*19.0 - uTime*15.0 + vPh) + 0.15*(n1(vU*9.0 + vPh*3.0 - uTime*6.0) - 0.5);
         float k = vAmp*env*rip*vA;
         vec2 off = vN*g*k + vT*exp(-x*x*2.0)*k*0.35;        // and dragged a little along it, like wind
-        gl_FragColor = vec4(off, vCh*env*exp(-x*x*1.5)*vA, 0.22*exp(-x*x*2.0)*env*vA); }`,
+        gl_FragColor = vec4(off, vCh*env*exp(-x*x*1.5)*vA, 0.32*exp(-x*x*2.0)*env*vA); }`,
   });
   const smesh = new THREE.Mesh(sg, smat); smesh.frustumCulled = false;
   R.warp_scene.add(smesh);

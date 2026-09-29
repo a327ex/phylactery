@@ -167,7 +167,7 @@ uniform float uSnakeT;`)
     for (let i = 0; i < 400; i++) s.trail.push([s.x - Math.cos(s.dir)*i*0.01, s.z - Math.sin(s.dir)*i*0.01]);
     s.dying = -1; s.delay = delay; s.scale = 1; s.dist = 0;
     s.burn = null; s.sag = 0; s.sink = -1; s.burnt = false;
-    s.fx = null; s.leak = 0; s.claim = null;
+    s.fx = null; s.leak = 0; s.leak_at = null; s.claim = null;
     s.m.geometry.attributes.aBurn.array.fill(0); s.m.geometry.attributes.aBurn.needsUpdate = true;
   };
   for (let i = 0; i < count; i++) { const s = make_mesh(); spawn(s, i*1.6); S.push(s); }
@@ -226,13 +226,17 @@ uniform float uSnakeT;`)
   function build(s) {
     let acc = 0, ti = 0;
     const sc = s.scale, fx = s.fx;
-    // per ring: radius factor (cuts, dissolving, swelling) and prismatic glow
+    // per ring: radius factor (cuts, dissolving, swelling) and prismatic glow.
+    // Leakage (round 25, owner: "the snakes disappear from outwards inwards and that looks wrong,
+    // need to be reversed"; it went tail first, the far end first): it goes from the part of it
+    // nearest him (s.leak_at, set by leak.js) outward both ways along the body. Ahead of the edge
+    // the flesh turns glassy and prismatic, like his bones, a band that the edge eats into.
     const f = s.leak*1.12;
+    const ac = S_AT(s.leak_at ?? 0), ext = Math.max(ac, LEN - ac, 0.5);
     for (let i = 0; i < RINGS; i++) {
-      const u = (RINGS - 1 - i)/(RINGS - 1);                     // 0 at the tail: it dissolves tail first
-      RK[i] = s.leak > 0 ? smoothstep(f, f + 0.12, u) : 1;
-      // round 23: only a faint light at the edge where it is going (the smoke of warped air carries it now)
-      GL[i] = s.leak > 0 ? 0.55*Math.exp(-(((u - f)/0.06)**2)) : 0;
+      const u = Math.abs(S_AT(i) - ac)/ext;                        // 0 nearest him, 1 at the far end
+      RK[i] = s.leak > 0 ? smoothstep(f, f + 0.1, u) : 1;
+      GL[i] = s.leak > 0 ? Math.min(1, 0.62*Math.exp(-(((u - f)/0.04)**2)) + 0.4*(1 - smoothstep(f, f + 0.12, u))*Math.min(1, s.leak*4)) : 0;
       if (fx) { if (fx.radk) RK[i] *= fx.radk(i); if (fx.glow) GL[i] = Math.max(GL[i], fx.glow(i)); }
     }
     for (let i = 0; i < RINGS; i++) {
@@ -252,6 +256,7 @@ uniform float uSnakeT;`)
       SH[0] = SH[1] = SH[2] = 0;
       if (fx) { if (fx.sag !== undefined) lift *= 1 - fx.sag; if (fx.lift) lift += fx.lift(i); if (fx.shift) fx.shift(i, SH); }
       P[i].set(x + SH[0], cave.ground_y(x, z) + R0*radius_at(target)*sc*flat_at(target) + lift + SH[1] - sink_depth(s), z + SH[2]);
+      if (fx && fx.place) fx.place(i, P[i]);                    // round 25: a body the fx moves itself (knocked by a rock)
       s.spine[i].copy(P[i]); s.radii[i] = r;
     }
     // how burnt each ring is, how its cracks glow, how it glows with prismatic light
@@ -324,7 +329,7 @@ uniform float uSnakeT;`)
   const free = s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0 && !s.fx;
   const live = () => S.filter(free);
   function set_ember(c) { uEmber.value.setRGB(c[0], c[1], c[2]); }
-  const api = { update, S, ignite, take, live, free, set_ember, respawn, RINGS, SIDES, mat, egg, reach_log, arc: S_AT, ring_at: I_AT, get reached() { return reached; }, get dissolved() { return dissolved; },
+  const api = { update, S, ignite, LEN, take, live, free, set_ember, respawn, RINGS, SIDES, mat, egg, reach_log, arc: S_AT, ring_at: I_AT, get reached() { return reached; }, get dissolved() { return dissolved; },
     on_dissolve: null };            // round 23: leak.js puffs its last smoke here
   return api;
 }

@@ -12,6 +12,13 @@
 // else lies in its way; the throw is aimed along the line that takes the most snakes ("when it
 // makes sense"). Then it lies there a while and sinks into the ground.
 // With fewer powers left one gesture raises several rocks, thrown one after another.
+// Round 25 (owner: "Rock doesn't need the hand to point or follow at all, and then the snakes
+// should respond physically to the rock hitting them by behaving like a physical object would in
+// that circumstance"): his mind alone does it (no gesture; like the lens, it takes its turn in the
+// rotation and he only glances at it), and a snake it strikes is a loose heavy body (a rope of
+// its own rings: gravity, the floor, friction, a little stiffness), knocked along by the rock's
+// momentum where it hit, the rest of it whipping after, tumbling and sliding to a stop, twitching
+// as it dies; then into the floor.
 // Round 24 (owner: "The hand should follow the rock, the rock's movement should be more natural,
 // not so flat, like floating a bit, not stopping so abruptly, not starting so abruptly, imagine it
 // is being controlled by someone's mind who isn't precise like a computer"): nothing moves it by
@@ -66,25 +73,64 @@ export function create_rock(ctx) {
   const V = new THREE.Vector3(), V2 = new THREE.Vector3(), Q = new THREE.Quaternion(), A = new THREE.Vector3(), TG = new THREE.Vector3();
 
   // ---------------------------------------------------------------- crushed
-  function crush_fx(s, c, dir) {
-    const side = new THREE.Vector3(-dir.z, 0, dir.x), ph = rng.float(0, 6);
+  // struck: its own rings become a rope with weight. Where the rock hit takes most of the rock's
+  // momentum (and a little lift), the rest is dragged after it; it falls, hits the floor, slides
+  // with friction, the body keeping a little of its stiffness; nerves twitch in it a while; then it
+  // goes into the floor like the others. Flattened where it was hit.
+  function crush_fx(s, c, dir, vel) {
+    const n = N, P = s.spine.map(p => p.clone()), O = P.map(p => p.clone());
+    const L1 = [], L2 = [];
+    for (let i = 0; i < n - 1; i++) L1.push(P[i].distanceTo(P[i + 1]));
+    for (let i = 0; i < n - 2; i++) L2.push(P[i].distanceTo(P[i + 2]));
+    const sp = Math.min(9, vel.length())*rng.float(0.55, 0.75), up = rng.float(0.8, 1.8), h = 1/60;
+    for (let i = 0; i < n; i++) {
+      const w = Math.exp(-(((i - c)/5)**2));
+      O[i].x -= (dir.x*sp*w)*h; O[i].z -= (dir.z*sp*w)*h; O[i].y -= up*w*h;
+    }
+    const rad = s.radii.slice();
     const f = {
       t: 0, sag: 0,
-      // flattened where it hit
       radk(i) { return 1 - 0.55*Math.exp(-(((i - c)/3.5)**2)); },
-      shift(i, out) {
-        // kinked along the way the rock went, then twitching as it dies, then into the floor
-        const k = Math.exp(-(((i - c)/6)**2))*0.16*(1 - Math.exp(-f.t*25));
-        const tw = Math.exp(-f.t*1.6)*Math.sin(f.t*17 + i*0.22 + ph)*0.045*Math.min(1, Math.abs(i - c)/10);
-        out[0] += dir.x*k + side.x*tw; out[2] += dir.z*k + side.z*tw;
-        out[1] -= 0.05*Math.exp(-(((i - c)/3)**2));
-        if (f.t > 2.0) out[1] -= 0.34*smoothstep(2.0, 3.2, f.t);
-      },
       char(i) { return 0.35*Math.exp(-(((i - c)/2.5)**2)); },
+      place(i, out) { out.copy(P[i]); },
       tick(dt) {
         f.t += dt;
-        f.sag = smoothstep(0, 0.3, f.t);
-        if (f.t > 3.25) return 'done';
+        const sinking = f.t > 2.3;
+        // move: what it had, and gravity
+        for (let i = 0; i < n; i++) {
+          const vx = (P[i].x - O[i].x)*0.995, vy = (P[i].y - O[i].y)*0.995, vz = (P[i].z - O[i].z)*0.995;
+          O[i].copy(P[i]);
+          P[i].x += vx; P[i].y += vy - (sinking ? 0 : 9.8*dt*dt); P[i].z += vz;
+          if (sinking) P[i].y -= 0.3/1.2*dt;
+        }
+        // nerves: small kicks along it, dying away
+        if (!sinking && f.t < 1.8 && rng.next() < 0.5*Math.exp(-f.t*1.5)) {
+          const j = rng.int(4, n - 4), k = 0.02*Math.exp(-f.t*1.2);
+          for (let m = -3; m <= 3; m++) { const q = P[j + m]; if (q) { q.x += rng.spread(k); q.y += Math.abs(rng.spread(k))*0.5; q.z += rng.spread(k); } }
+        }
+        for (let it = 0; it < 5; it++) {
+          // its length, and a little of its stiffness
+          for (let i = 0; i < n - 1; i++) {
+            const a = P[i], b = P[i + 1];
+            const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz) || 1e-6, k = (d - L1[i])/d*0.5;
+            a.x += dx*k; a.y += dy*k; a.z += dz*k; b.x -= dx*k; b.y -= dy*k; b.z -= dz*k;
+          }
+          for (let i = 0; i < n - 2; i++) {
+            const a = P[i], b = P[i + 2];
+            const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz) || 1e-6, k = (d - L2[i])/d*0.5*0.12;
+            a.x += dx*k; a.y += dy*k; a.z += dz*k; b.x -= dx*k; b.y -= dy*k; b.z -= dz*k;
+          }
+          // the floor, with friction
+          if (!sinking) for (let i = 0; i < n; i++) {
+            const g = cave.ground_y(P[i].x, P[i].z) + rad[i]*0.8;
+            if (P[i].y < g) {
+              P[i].y = g;
+              O[i].x = P[i].x - (P[i].x - O[i].x)*0.9; O[i].z = P[i].z - (P[i].z - O[i].z)*0.9;
+              if (O[i].y < P[i].y - 0.02) O[i].y = P[i].y - (P[i].y - O[i].y)*0.3;
+            }
+          }
+        }
+        if (f.t > 3.5) return 'done';
       },
     };
     return f;
@@ -153,8 +199,8 @@ export function create_rock(ctx) {
     const off = (k - 0.5*(k > 0 ? 1 : 0))*0.45*(k % 2 ? 1 : -1);
     const from = L.clone().addScaledVector(dir, 1.15).addScaledVector(side, off*1.2);
     from.y = cave.ground_y(from.x, from.z) - q.r*0.8;
-    const hold = L.clone().addScaledVector(dir, 0.85).addScaledVector(side, 0.35*(arm ? 1 : -1) + off);
-    hold.y = L.y + 0.35 + k*0.12;
+    const hold = L.clone().addScaledVector(dir, 1.0).addScaledVector(side, off);
+    hold.y = L.y + 0.45 + k*0.12;
     Object.assign(q, { on: true, phase: 'rip', t: -k*STAGGER*(quick ? 0.4 : 1), quick, hold_t: quick ? 0.05 : HOLD, speed: quick ? SPEED*1.45 : SPEED,
       accel: quick ? ACCEL*2.2 : ACCEL, ramp: 0, ph: [rng.float(0, 6.28), rng.float(0, 6.28), rng.float(0, 6.28), rng.float(0, 6.28)], ctrl: true,
       torn: false, hits: 0, from, hold, target, arm, hit: [], v: new THREE.Vector3(), w: new THREE.Vector3(),
@@ -235,7 +281,6 @@ export function create_rock(ctx) {
           q.phase = 'fly'; q.ft = 0; q.ramp = 0.35; q.s_cmd = q.v.length(); q.l0 = m.position.clone();
           q.h0 = q.target ? Math.max(1, Math.hypot(q.target.spine[mid].x - m.position.x, q.target.spine[mid].z - m.position.z)) : 4;
           stats.thrown++;
-          lich.kick(q.arm, 0.2);
           for (let k = 0; k < 4; k++) aura(m.position, 1.3);
         }
       } else if (q.phase === 'fly') {
@@ -279,7 +324,7 @@ export function create_rock(ctx) {
         // what it goes through is crushed; it loses a little each time
         hits(q, (s, j) => {
           const dir = V2.copy(q.v).setY(0).normalize().clone();
-          snakes.take(s, crush_fx(s, Math.max(3, j), dir));
+          snakes.take(s, crush_fx(s, Math.max(3, j), dir, q.v));
           s.claim = null;
           q.hit.push(s);
           gore.crush(s.spine[j], dir, s.radii[j]);
@@ -316,7 +361,7 @@ export function create_rock(ctx) {
   }
 
   return {
-    name: 'ROCK', gesture: true,
+    name: 'ROCK', gesture: false,
     cooldown: 5.0,
     engage: 5.6,                      // it needs the time to rise and fly: it takes them further out
     capacity: p => Math.ceil(p/1.5),
@@ -324,11 +369,11 @@ export function create_rock(ctx) {
     aim_ring: () => mid,
     cast(targets, from, ring, arm = 1, quick = false) { targets.forEach((s, k) => raise(s, k, arm, quick)); },
     update,
-    // something about to reach the egg while he holds a rock: another tears out for it at once
-    extend(more, arm = 1) { more.filter(s => snakes.free(s) && !claimed(s, null)).slice(0, 2).forEach((s, k) => raise(s, k, arm, true)); },
-    // his hand is on it (round 24: it follows the rock) until the last he holds has struck or gone
-    busy: () => live.some(q => q.t < 0 || q.phase === 'rip' || q.phase === 'hold' || (q.phase === 'fly' && q.ctrl)),
-    aim_point: () => { const q = live.find(q => q.t >= 0 && (q.phase === 'rip' || q.phase === 'hold' || (q.phase === 'fly' && q.ctrl))); return q ? q.m.position : null; },
+    // tests / the director: how many it is holding or throwing now
+    get busy() { return live.filter(q => q.phase !== 'rest').length; },
+    free_rocks: () => POOL.filter(p => !p.on).length,
+    // where the first it raises will be held (he glances at it)
+    hold_at: () => { const q = live.find(q => q.phase === 'rip' || q.phase === 'hold'); return q ? q.hold : null; },
     stats,
     // tests
     debug: () => live.map(q => [q.phase, q.hits || 0, +q.m.position.x.toFixed(2), +q.m.position.y.toFixed(2), +q.m.position.z.toFixed(2),

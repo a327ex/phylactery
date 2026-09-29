@@ -220,7 +220,7 @@ void main(){
     float ch = clamp(wp.z, 0.0, 1.5);
     world = vec3(world_bl(uv + o*(1.0 + ch)).r, world_bl(uv + o).g, world_bl(uv + o*(1.0 - ch)).b);
   }
-  world *= 1.0 + 0.12*clamp(wp.w, 0.0, 1.0);
+  world *= 1.0 + 0.16*clamp(wp.w, 0.0, 1.0);
   float z = texture2D(tDepth, uv).x;
   float sky = step(0.999999, z);
   vec4 vp = uProjInv*vec4(uv*2.0 - 1.0, z*2.0 - 1.0, 1.0);
