@@ -16,7 +16,7 @@
 // read from the same functions.
 import * as THREE from 'three';
 import { mesh_sdf, smax, largest_piece } from 'game/sdf.js';
-import { cells2, fbm3, sstep, vertex_mr } from 'game/shape_noise.js';
+import { cells2, fbm3, sstep, rand, vertex_mr } from 'game/shape_noise.js';
 
 const T = 0.0055;                 // shell thickness, m
 const GROOVE = 0.0026;            // how far the slits sit below the face
@@ -67,59 +67,104 @@ function slit(x, y) {
   for (const s of [-1, 1]) best = Math.max(best, bar(x, y, s*0.046, EY, 0.0235, 0.0041));
   return Math.max(best, bar(x, y, 0, EY - 0.065, 0.0168, 0.0029));
 }
-// the claws: three gouges down the middle of the face, from the brow to the chin, slanting a
-// little and curving together (through the mouth); each shallow where the claw went in, deepest
-// past its middle, tapering out; the material shoved up in a lip along each edge
-const CLAW = { a: [-0.017, EY + 0.08], b: [0.014, EY - 0.112], bow: -0.007, off: [-0.0125, 0, 0.0128], span: [[0.06, 0.82], [0.0, 0.93], [0.12, 0.88]], w: [0.0017, 0.0021, 0.0018] };
+// the claws (round 33: along the two lines the owner drew): two long gouges from high on the brow
+// at the viewer's left, down across that eye's slit, bending toward the mouth, spreading apart as
+// they go; shallow where the claw went in, deepest past the middle, tapering out; the material
+// shoved up in a lip along each edge
+const CLAW_LINES = [
+  { pts: [[-0.0409, EY + 0.0463], [-0.0357, EY + 0.0041], [-0.0175, EY - 0.0468]], w: 0.0024 },
+  { pts: [[-0.0293, EY + 0.062], [-0.0252, EY + 0.0179], [-0.0142, EY - 0.0152], [0.0106, EY - 0.0744]], w: 0.0027 },
+];
+// each line sampled densely along a Catmull-Rom curve through its points: [x, y, t along it]
+const CLAW_PATHS = CLAW_LINES.map(({ pts, w }) => {
+  const P = pts, out = [], n = 48;
+  const at = (i) => P[Math.max(0, Math.min(P.length - 1, i))];
+  for (let k = 0; k <= n; k++) {
+    const u = k/n*(P.length - 1), i = Math.min(P.length - 2, Math.floor(u)), f = u - i;
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+    const c = (j) => 0.5*((2*p1[j]) + (-p0[j] + p2[j])*f + (2*p0[j] - 5*p1[j] + 4*p2[j] - p3[j])*f*f + (-p0[j] + 3*p1[j] - 3*p2[j] + p3[j])*f*f*f);
+    out.push([c(0), c(1), k/n]);
+  }
+  return { pts: out, w };
+});
 function claws(x, y) {
-  const ax = CLAW.a[0], ay = CLAW.a[1], dx = CLAW.b[0] - ax, dy = CLAW.b[1] - ay, L = Math.hypot(dx, dy);
-  const ux = dx/L, uy = dy/L, nx = -uy, ny = ux;
-  const t = ((x - ax)*ux + (y - ay)*uy)/L;
-  const across0 = (x - ax)*nx + (y - ay)*ny - CLAW.bow*Math.sin(Math.PI*Math.min(1, Math.max(0, t)));
   let depth = 0, lip = 0, inside = 0;
-  for (let k = 0; k < 3; k++) {
-    const [t0, t1] = CLAW.span[k];
-    if (t < t0 || t > t1) continue;
-    const u = (t - t0)/(t1 - t0);
-    const taper = Math.pow(Math.sin(Math.PI*Math.min(1, u*1.25)), 0.6)*(u > 0.8 ? sstep(1.0, 0.8, u) : 1);
-    const w = CLAW.w[k]*(0.55 + 0.45*taper);
-    const a = Math.abs(across0 - CLAW.off[k]*(1 - 0.18*t));      // they converge a little toward the end
-    if (a < w) { const q = 1 - (a/w)*(a/w); depth = Math.max(depth, 0.0024*taper*q); inside = Math.max(inside, taper*q); }
-    lip = Math.max(lip, 0.00032*taper*Math.exp(-(((a - w*1.35)/(w*0.45))**2)));
+  for (const { pts, w: w0 } of CLAW_PATHS) {
+    // nearest point on the curve: distance across, and how far along
+    let best = 1e9, tt = 0;
+    for (let k = 0; k < pts.length - 1; k++) {
+      const [ax, ay, at] = pts[k], [bx, by, bt] = pts[k + 1];
+      const dx = bx - ax, dy = by - ay, L2 = dx*dx + dy*dy;
+      const u = Math.max(0, Math.min(1, ((x - ax)*dx + (y - ay)*dy)/L2));
+      const d = Math.hypot(x - ax - dx*u, y - ay - dy*u);
+      if (d < best) { best = d; tt = at + (bt - at)*u; }
+    }
+    if (best > 0.008) continue;
+    const taper = Math.pow(Math.sin(Math.PI*Math.min(1, tt*1.2)), 0.6)*(tt > 0.82 ? sstep(1.0, 0.82, tt) : 1);
+    const w = w0*(0.55 + 0.45*taper);
+    if (best < w) { const q = 1 - (best/w)*(best/w); depth = Math.max(depth, 0.0028*taper*q); inside = Math.max(inside, taper*q); }
+    lip = Math.max(lip, 0.00034*taper*Math.exp(-(((best - w*1.35)/(w*0.45))**2)));
   }
   return { depth, lip, inside };
 }
-// the pierce: the wearer's left eye, an irregular round hole; around it the face crushed in; five
-// cracks running out from it
-const HOLE = [0.047, EY + 0.0008];
+// the pierce: the wearer's left eye (the viewer's right), where the owner drew it: an irregular
+// hole, wider than tall, taking most of that eye's slit; around it the face crushed in; cracks
+// running out from it
+const HOLE = [0.038, EY + 0.001], HRX = 0.0235, HRY = 0.0175;
 function pierce(x, y) {
-  const dx = x - HOLE[0], dy = y - HOLE[1], r = Math.hypot(dx, dy), th = Math.atan2(dy, dx);
-  const R = 0.0118 + 0.0022*(fbm3(Math.cos(th)*2.2 + 3.1, Math.sin(th)*2.2, 0.7, 91, 3) - 0.5)*2 + 0.0007*(fbm3(Math.cos(th)*9, Math.sin(th)*9, 1.9, 93, 2) - 0.5)*2;
-  const crush = sstep(R + 0.0085, R, r);
+  const dx = (x - HOLE[0])/HRX, dy = (y - HOLE[1])/HRY, re = Math.hypot(dx, dy), th = Math.atan2(dy, dx);
+  const Re = 1 + 0.2*(fbm3(Math.cos(th)*1.8 + 3.1, Math.sin(th)*1.8, 0.7, 91, 3) - 0.5)*2 + 0.07*(fbm3(Math.cos(th)*7, Math.sin(th)*7, 1.9, 93, 2) - 0.5)*2;
+  const k = (HRX + HRY)*0.5;                                  // to metres, roughly
+  const r = re*k, R = Re*k;
+  const crush = sstep(R + 0.009, R, r);
   let crack = 0;
-  const RAYS = [[0.35, 0.026], [1.4, 0.014], [2.45, 0.021], [3.6, 0.011], [4.9, 0.03]];
+  const RAYS = [[0.35, 0.03], [1.25, 0.016], [2.2, 0.024], [3.05, 0.012], [3.9, 0.02], [4.9, 0.034], [5.7, 0.014]];
+  const tw = Math.atan2(y - HOLE[1], x - HOLE[0]);
   for (const [a0, len] of RAYS) {
     const a = a0 + 0.12*Math.sin(r*420 + a0*5);
-    let dd = Math.abs(Math.atan2(Math.sin(th - a), Math.cos(th - a)))*r;
+    const dd = Math.abs(Math.atan2(Math.sin(tw - a), Math.cos(tw - a)))*Math.hypot(x - HOLE[0], y - HOLE[1]);
     const u = (r - R)/len;
     if (u > 0 && u < 1) crack = Math.max(crack, sstep(0.0007*(1 - u) + 0.0002, 0.0, dd));
   }
   return { r, R, crush, crack, in_hole: r < R };
 }
-// the blood: runs down from the hole's lower edge (four, of different lengths), a smear round it
-const DRIPS = [[-0.0065, 0.044, 0.0016], [0.0005, 0.078, 0.0022], [0.0072, 0.03, 0.0014]];
-function blood(x, y, p) {
-  let m = 0;
-  if (p.r < p.R + 0.0045 && y < HOLE[1] + 0.003) m = sstep(p.R + 0.0045, p.R + 0.001, p.r)*0.9;
-  for (const [ox, len, w0] of DRIPS) {
-    const y0 = HOLE[1] - 0.009, v = (y0 - y)/len;             // 0 at its start, 1 at its end
-    if (v < -0.1 || v > 1.15) continue;
-    const cx = HOLE[0] + ox + 0.0007*Math.sin(y*230 + ox*900) + 0.0004*Math.sin(y*690 + ox*300);
-    const w = w0*(1 - 0.55*Math.min(1, Math.max(0, v)));
-    const bulb = Math.hypot(x - cx, (y - (y0 - len))*0.8) < w*1.35 ? 1 : 0;
-    m = Math.max(m, (Math.abs(x - cx) < w && v >= 0 && v <= 1 ? 1 : 0), bulb);
+// the blood (round 33: burned, not red; one run, the rest a spray from the violence of it): one run
+// down the cheek from the hole's lower edge, a coat round the rim, and a spray flung out from the
+// break: drops, most small, stretched along the way they flew, thicker near the hole
+const SPRAY = (() => {
+  const R = rand(4242), out = [];
+  for (let i = 0; i < 150; i++) {
+    const a = R.f(0, 6.283) + 0.35*Math.sin(i*1.7), far = Math.pow(R.next(), 1.8);
+    const d = 0.004 + far*0.055;
+    const size = (0.0022 - 0.0016*far)*R.f(0.35, 1.0);
+    const ex = HOLE[0] + Math.cos(a)*(HRX + d), ey = HOLE[1] + Math.sin(a)*(HRY + d*0.85);
+    out.push([ex, ey, Math.cos(a), Math.sin(a), size, 1 + far*2.6 + R.f(0, 0.8)]);
   }
-  return m;
+  return out;
+})();
+function blood(x, y, p) {
+  let m = 0, rim = 0;
+  if (p.r < p.R + 0.0035) { m = sstep(p.R + 0.0035, p.R + 0.0008, p.r)*0.85; rim = sstep(p.R + 0.001, p.R + 0.003, p.r); }
+  // the one run
+  {
+    const y0 = HOLE[1] - HRY*0.9, len = 0.064, v = (y0 - y)/len;
+    if (v >= -0.05 && v <= 1.12) {
+      const cx = HOLE[0] - 0.004 + 0.0008*Math.sin(y*230) + 0.0004*Math.sin(y*690);
+      const w = 0.0024*(1 - 0.5*Math.min(1, Math.max(0, v)));
+      const a = v <= 1 ? Math.abs(x - cx)/w : 9, bq = Math.hypot(x - cx, (y - (y0 - len))*0.8)/(w*1.4), q = Math.min(a, bq);
+      if (q < 1) { m = 1; rim = sstep(0.55, 0.95, q); }
+    }
+  }
+  // the spray
+  if (m < 1) for (const [ex, ey, ux, uy, sz, el] of SPRAY) {
+    const dx = x - ex, dy = y - ey;
+    if (Math.abs(dx) > sz*el*1.6 || Math.abs(dy) > sz*el*1.6) continue;
+    const along = dx*ux + dy*uy, across = -dx*uy + dy*ux;
+    // a drop with a tail pointing on the way it flew
+    const q = Math.hypot(along/(sz*(along > 0 ? el : 1)), across/sz);
+    if (q < 1) { m = 1; rim = Math.max(rim, sstep(0.5, 0.95, q)); break; }
+  }
+  return { m, rim };
 }
 // the burn: the shell warped by the heat; blisters where the surface lifted; a grain; soot in
 // tongues where the flames licked up it (colour only, below)
@@ -154,7 +199,7 @@ function field(x, y, z) {
   const s = slit(x, y), bu = burn(x, y), cl = claws(x, y), p = pierce(x, y);
   const bl = blood(x, y, p);
   let front = f + bu.disp*(s > 0 ? 0.5 : 1) - (s > 0 ? GROOVE*Math.min(1, s*3) : 0);
-  front += -cl.depth + cl.lip - 0.0019*p.crush - 0.0006*p.crack + 0.00022*bl;
+  front += -cl.depth + cl.lip - 0.0019*p.crush - 0.0006*p.crack + 0.00035*bl.m*(1 - 0.5*bl.rim);
   // the back: the same warped shell; spalled off round the hole's exit
   const back = f + bu.warp - T + 0.0022*sstep(p.R + 0.011, p.R, p.r);
   let d = Math.max(z - front, back - z);
@@ -208,10 +253,12 @@ function geometry() {
       r += (0.05 - r)*p.crush*0.7; gg += (0.043 - gg)*p.crush*0.7; bb += (0.036 - bb)*p.crush*0.7;
       r *= 1 - 0.6*p.crack; gg *= 1 - 0.6*p.crack; bb *= 1 - 0.6*p.crack;
       // the blood: dried, then cooked by the fire: a near-black red crust, glossier where thick
-      if (bl > 0) {
-        // old blood, cooked: a dark reddish-brown crust, duller at the thin ends
-        const k = bl*(0.8 + 0.2*t);
-        r += (0.05 - r)*k; gg += (0.009 - gg)*k; bb += (0.0065 - bb)*k; rough += (0.6 - rough)*k;
+      if (bl.m > 0) {
+        // blood that burned (round 33: not red): a crust of dark maroon-brown, rust at its thin
+        // edges, a little glossy, standing off the dead black of the char
+        const k = bl.m*(0.85 + 0.15*t);
+        const cr = 0.028 + 0.02*bl.rim, cg = 0.0085 + 0.011*bl.rim, cb = 0.0055 + 0.005*bl.rim;
+        r += (cr - r)*k; gg += (cg - gg)*k; bb += (cb - bb)*k; rough += (0.4 + 0.25*bl.rim - rough)*k;
       }
     }
     // the hole's wall: the core, charred through
