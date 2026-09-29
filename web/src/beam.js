@@ -44,7 +44,7 @@ const opal = (h, full, out) => {
 };
 
 export function create_beam(ctx) {
-  const { R, snakes, fx, rng, lich } = ctx;
+  const { R, snakes, fx, rng, lich, warp, gore } = ctx;
   const N = snakes.RINGS;
   const light = new THREE.PointLight(0xffffff, 0, 5, 2);        // where it burns
   const hand = new THREE.PointLight(0xffffff, 0, 1.8, 2);       // on his hand and arm
@@ -81,18 +81,31 @@ export function create_beam(ctx) {
     };
     return f;
   }
+  // round 26 (owner: "Instead of exploding into glitter, let's make the beamed snakes explode into
+  // more aggressive streaks of transparent prism like in leakage, except more aggressive and
+  // messy, perhaps with some slight gore as well"): the light it filled with bursts out of it as
+  // warped air (warp.js): streaks flung out from all along it, fast, twisting and tangling, gone in
+  // half a second; a blast of warped air where it was; and a little blood and meat (gore.spatter).
+  // No shards, no motes.
+  const DIR = new THREE.Vector3(), AX = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
   function shatter(s) {
-    for (let k = 0; k < 46; k++) {
-      const p = s.spine[rng.int(0, N - 1)];
-      fx.shard({ x: p.x + rng.spread(0.05), y: p.y + rng.spread(0.04), z: p.z + rng.spread(0.05),
-        vx: rng.spread(1.8), vy: rng.float(0.4, 2.6), vz: rng.spread(1.8), grav: 3.5, drag: 0.8,
-        life: rng.float(0.6, 1.2), s0: rng.float(0.05, 0.09), s1: 0.02, r: 2.4, g: 2.4, b: 2.6, hue: rng.next(), hr: 0.8, fin: 0.02 });
+    const pts = [];
+    for (let i = 2; i < N - 2; i += 3) pts.push(s.spine[i].clone());
+    for (let k = 0; k < 20; k++) {
+      const i = rng.int(2, N - 3), p = s.spine[i];
+      // out from the body: across it, up, and a little along
+      AX.subVectors(s.spine[Math.max(0, i - 2)], s.spine[Math.min(N - 1, i + 2)]).normalize();
+      DIR.set(rng.spread(1), rng.float(-0.2, 1), rng.spread(1)).normalize();
+      DIR.addScaledVector(AX, -DIR.dot(AX)*0.7).normalize();
+      warp.fling({ p, dir: DIR, speed: rng.float(6, 12), life: rng.float(0.35, 0.65), len: rng.float(0.5, 1.1), curl: rng.spread(7), jitter: rng.float(1.5, 3.5),
+        w: rng.float(0.1, 0.2), amp: rng.float(7, 10), chroma: rng.float(1.25, 1.6) });
     }
-    for (let k = 0; k < 30; k++) {
-      const p = s.spine[rng.int(0, N - 1)];
-      fx.mote({ x: p.x, y: p.y, z: p.z, vx: rng.spread(0.5), vy: rng.float(0.2, 0.9), vz: rng.spread(0.5), drag: 1.0,
-        life: rng.float(0.8, 1.6), s0: 0.035, s1: 0.01, r: 1.6, g: 1.6, b: 1.8, hue: rng.next(), hr: 0.5 });
+    for (let k = 0; k < 14; k++) {
+      const p = pts[rng.int(0, pts.length - 1)];
+      warp.puff({ x: p.x, y: p.y + 0.05, z: p.z, vx: rng.spread(1.6), vy: rng.float(0.2, 1.4), vz: rng.spread(1.6), drag: 2.5, rise: 0.2,
+        life: rng.float(0.45, 0.85), s0: 0.2, s1: rng.float(0.7, 1.1), amp: rng.float(5, 6.5), spin: rng.spread(6) });
     }
+    gore.spatter(pts);
   }
   // where it goes in: a point on the front half of the body
   const hit_ring = () => rng.int(Math.round(N*0.12), Math.round(N*0.55));

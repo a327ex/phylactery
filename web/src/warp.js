@@ -32,7 +32,7 @@ export function create_warp(R) {
   const U = { uRes: { value: new THREE.Vector2(R.W, R.H) }, uProj: { value: 400 }, uTime: { value: 0 }, tDepth: { value: R.targets.rt_world.depthTexture }, uNoDepth: { value: 0 } };
 
   // ---------------------------------------------------------------- streaks
-  const NS = 64, NV = NS*K*2;
+  const NS = 200, NV = NS*K*2;                 // (round 26: bursts fling many at once)
   const pos = new Float32Array(NV*3), prv = new Float32Array(NV*3), nxt = new Float32Array(NV*3);
   const side = new Float32Array(NV), along = new Float32Array(NV), prm = new Float32Array(NV*4), fade = new Float32Array(NV);
   for (let s = 0; s < NS; s++) for (let k = 0; k < K; k++) for (let e = 0; e < 2; e++) { const v = (s*K + k)*2 + e; side[v] = e ? 1 : -1; along[v] = k/(K - 1); }
@@ -113,6 +113,47 @@ export function create_warp(R) {
   for (let i = 0; i < NP; i++) P.push({ life: 0 });
   let pnext = 0;
 
+  // ---------------------------------------------------------------- flung streaks
+  // round 26: a streak thrown out of something bursting: a path that turns as it goes (curl, and
+  // a messy jitter), the streak covering a stretch of it that races out along it and thins away
+  const FL = [], DS = 0.06, TMP = new THREE.Vector3();
+  function fling(o) {
+    const s = S.find(q => !q.on);
+    if (!s) return;
+    s.on = true; s.a = 0; s.w = o.w ?? 0.12; s.amp = o.amp ?? 5; s.chroma = o.chroma ?? 1.2; s.ph = Math.random()*6.28;
+    const sp = o.speed ?? 6, life = o.life ?? 0.5, len = o.len ?? 0.8, jit = o.jitter ?? 1.5;
+    const d = o.dir.clone().normalize(), q = o.p.clone(), path = [q.clone()];
+    const ax = new THREE.Vector3().crossVectors(d, Math.abs(d.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize();
+    const total = sp*life + len;
+    let curl = o.curl ?? 3;
+    for (let t = 0; t < total; t += DS) {
+      // it turns about an axis across it, and the axis itself wanders (messy)
+      TMP.copy(ax).applyAxisAngle(d, (Math.random() - 0.5)*jit*DS*6);
+      ax.copy(TMP).normalize();
+      d.applyAxisAngle(ax, curl*DS + (Math.random() - 0.5)*jit*DS*3).normalize();
+      d.y -= 0.35*DS; d.normalize();                                   // it droops a little, like a thrown thing
+      q.addScaledVector(d, DS);
+      path.push(q.clone());
+    }
+    FL.push({ s, path, sp, len, life, t: 0 });
+  }
+  const at = (path, d, out) => {
+    const f = Math.max(0, Math.min(path.length - 1.001, d/DS)), i = Math.floor(f);
+    return out.lerpVectors(path[i], path[i + 1], f - i);
+  };
+  function update_flings(dt) {
+    for (let i = FL.length - 1; i >= 0; i--) {
+      const q = FL[i];
+      q.t += dt;
+      // fast out, slowing (the burst's force spent)
+      const u = q.t/q.life, head = q.sp*q.life*(1 - Math.pow(1 - Math.min(1, u), 2)) + q.len*Math.min(1, q.t/0.08);
+      const tail = Math.max(0, head - q.len*(1 - 0.5*u));
+      for (let k = 0; k < K; k++) at(q.path, tail + (head - tail)*k/(K - 1), q.s.pts[k]);
+      q.s.a = smoothstep(0, 0.05, q.t)*(1 - smoothstep(0.55, 1, u));
+      if (q.t >= q.life) { q.s.on = false; q.s.a = 0; FL.splice(i, 1); }
+    }
+  }
+
   return {
     // a streak for the caller to move: set .pts (K points, first = tail), .w (m), .amp (px), .chroma, .a (0..1)
     streak() {
@@ -128,8 +169,10 @@ export function create_warp(R) {
       Object.assign(p, { vx: 0, vy: 0, vz: 0, drag: 0.8, rise: 0, spin: 1, rot: Math.random()*6.28, amp: 3.5, s0: 0.15, s1: 0.5 }, o, { max: o.life });
       return p;
     },
+    fling,
     update(t, dt) {
       U.uTime.value = t;
+      update_flings(dt);
       S.forEach((s, i) => {
         for (let k = 0; k < K; k++) {
           const p = s.pts[k], a = s.pts[Math.max(0, k - 1)], b = s.pts[Math.min(K - 1, k + 1)];
