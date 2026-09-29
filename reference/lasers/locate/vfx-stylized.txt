@@ -1,0 +1,15 @@
+```json
+{
+  "best": {
+    "start": "10:11",
+    "end": "10:15"
+  },
+  "alt": {
+    "start": "10:17",
+    "end": "10:21"
+  },
+  "duration": "10:27",
+  "notes": "The orange beam at 10:11 features a bright white core with stylized orange/yellow scrolling textures, high-velocity sparks, and a pulsing impact point. The purple alternative shows similar motion with a more jagged, lightning-like distortion.",
+  "quality": 5
+}
+```

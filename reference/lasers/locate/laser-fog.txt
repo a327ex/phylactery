@@ -1,0 +1,15 @@
+```json
+{
+ "best": {
+  "start": "8:57",
+  "end": "9:03"
+ },
+ "alt": {
+  "start": "9:31",
+  "end": "9:37"
+ },
+ "duration": "10:01",
+ "notes": "A set of four vibrant laser beams (red, yellow, blue, and green) are projected through thick fog, creating a sharp volumetric effect. The beams originate from single points and sweep through the air, forming cones and lines.",
+ "quality": 5
+}
+```

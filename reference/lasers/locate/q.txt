@@ -1,0 +1,4 @@
+You are finding the best moment of a beam/laser visual effect in this video, for an art reference board.
+Find where the beam/laser effect (%s) is most clearly visible: large on screen, continuous, little UI/text/facecam covering it.
+Answer ONLY with JSON: {"best": {"start": "m:ss", "end": "m:ss"}, "alt": {"start": "m:ss", "end": "m:ss"}, "duration": "m:ss (the video's length)", "notes": "one or two sentences: what the beam looks like there (core, colours, motion along it, start/impact effects)", "quality": 1-5 (how good a reference this moment is)}.
+Windows 4 to 8 seconds long. If the beam never clearly appears, say so in notes and set quality 0.

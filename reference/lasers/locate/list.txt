@@ -1,0 +1,16 @@
+last-prism https://www.youtube.com/watch?v=ovWxzlEKMjw Terraria:_Last_Prism
+disintegrate https://www.youtube.com/watch?v=agknSbF9tAE Diablo_3:_Disintegrate
+divinity https://www.youtube.com/watch?v=L3c9rXdUN-Y Destiny_2:_Divinity
+zarya https://www.youtube.com/watch?v=x4Wd9KMD9J4 Overwatch:_Zarya's_particle_beam
+prism-real https://www.youtube.com/watch?v=9eEyTw4wylk Real:_white_light_through_a_prism
+returnal-phrike https://www.youtube.com/watch?v=RmRxaIjsSjk Returnal:_Phrike's_lasers
+prometheus https://www.youtube.com/watch?v=rxnNdAai7PU Destiny_2:_Prometheus_Lens
+stone-titan https://www.youtube.com/watch?v=d5oPQamOt6g Risk_of_Rain_2:_Stone_Titan's_laser
+incinerate https://www.youtube.com/watch?v=eKJXTKz1x7s Diablo_4:_Incinerate
+scorching-ray https://www.youtube.com/watch?v=au45-m4fzxg Path_of_Exile:_Scorching_Ray
+magnified-fire https://www.youtube.com/watch?v=Ko_2BFGuudk Real:_sunlight_through_a_lens,_burning_wood
+ramiel https://www.youtube.com/watch?v=GCe-D6sTLoc Evangelion:_Ramiel's_beam
+sleeper https://www.youtube.com/watch?v=LeXf7h3fBhw Destiny_2:_Sleeper_Simulant
+vfx-stylized https://www.youtube.com/watch?v=_SaBXY-Ejqo Tutorial:_stylized_laser_beam_(Unity_VFX_Graph)
+vfx-vertical https://www.youtube.com/watch?v=NbbFytz-JDk Tutorial:_vertical_beam_from_the_sky_(Unreal_Niagara)
+laser-fog https://www.youtube.com/watch?v=nxc_ZuiaMSU Real:_laser_beams_in_fog
