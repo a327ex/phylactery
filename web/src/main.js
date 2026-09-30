@@ -113,10 +113,18 @@ function toggle_power(i) {
 // hurt: he points at the egg with his casting hand while the rest of him arches back (lich.js
 // HURT), jolted as each one grips, shaking and sinking as the egg is covered. When it is covered
 // (snakes.WIN of the shell) the game is won. He still floats where he is sent, slower, facing it.
-const END = { w: 0, level: 0, grips: 0, spasm: 2, won: false, queue: [], queue_t: 0, hand: 0 };
+const END = { w: 0, level: 0, grips: 0, spasm: 2, won: false, over: -1, queue: [], queue_t: 0, hand: 0 };
 G.END = END;
 snakes.on_grip = () => { END.grips++; lich.hit(0.5 + 0.1*Math.min(END.grips, 6) + (END.grips === 1 ? 0.5 : 0)); };
-snakes.on_won = () => { END.won = true; lich.hit(1.7); };
+snakes.on_won = () => { END.won = true; END.over = 0; held.clear(); mouse.down = false; goal = null; lich.hit(1.7); };
+// Round 37 (owner: "After the win, the game should end. The screen turns black and a message is
+// written in the center, most likely, message to be defined still. The camera can remain as it
+// is"): from the win nothing answers the player; the last jolt plays out for OVER.hold s, the
+// screen fades to black over OVER.fade s, the game stops, and the message fades in. (On the site
+// this is where site_unlock_posts('lich-survivors', { ending = 'egg', powers = 0 }) goes.)
+const OVER = { hold: 1.8, fade: 2.2, text_at: 0.8, text_in: 1.4 };
+const MESSAGE = ['[ YOUR MESSAGE ]'];                  // his to write; one entry per line
+const over_black = () => END.won && END.over >= OVER.hold + OVER.fade;
 const end_rng = make_rng(77);
 function remove_all() {
   END.queue = powers.ALL.map((a, i) => i).filter(i => powers.is_on(powers.ALL[i]));
@@ -240,6 +248,7 @@ const pick_goal = () => { const [gx, gy] = R.to_game_px(mouse.px, mouse.py); set
 // camera-relative: W is up the screen, D is right
 const cf = new THREE.Vector3();
 function wanted_velocity() {
+  if (END.won) return { x: 0, z: 0 };                 // round 37: the game is over
   const keys = script_keys ?? [...held].join('');
   let ix = 0, iz = 0;
   if (keys.includes('w')) iz += 1;
@@ -268,6 +277,7 @@ function wanted_velocity() {
 }
 
 addEventListener('keydown', (e) => {
+  if (END.won) return;                                 // round 37: the game is over
   // the inspect view takes the keys while it is up
   if (inspect.S.active) {
     if (e.code === 'KeyI' || e.code === 'Escape' || e.code === 'KeyE') inspect.close();
@@ -307,7 +317,7 @@ let drag = null;
 R.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 R.canvas.addEventListener('pointerdown', (e) => {
   try { R.canvas.setPointerCapture(e.pointerId); } catch { }
-  if (inspect.S.active) return;
+  if (inspect.S.active || END.won) return;
   if (e.button === 0) { mouse.down = true; mouse.px = e.clientX; mouse.py = e.clientY; pick_goal(); }   // picked now: a quick click never falls between ticks
   if (e.button === 2 && (G.cam === CAM_FREE || G.cam === CAM_EGG)) drag = [e.clientX, e.clientY];
 });
@@ -374,8 +384,23 @@ function draw_hud() {
   draw_text(hud, '1-4 Y CAMERA   U N Z M O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
 }
 
+// round 37: the end: black over everything, then the message in the centre
+const ss = (a, b, x) => { const t = clamp((x - a)/(b - a), 0, 1); return t*t*(3 - 2*t); };
+function draw_over() {
+  if (!END.won) return;
+  const k = ss(OVER.hold, OVER.hold + OVER.fade, END.over);
+  if (k > 0) { hud.fillStyle = `rgba(0,0,0,${k.toFixed(3)})`; hud.fillRect(0, 0, R.W, R.H); }
+  const t0 = OVER.hold + OVER.fade + OVER.text_at, a = ss(t0, t0 + OVER.text_in, END.over);
+  if (a <= 0) return;
+  hud.globalAlpha = a;
+  const LH = 18, y0 = Math.round(R.H/2 - (MESSAGE.length*LH)/2);
+  MESSAGE.forEach((line, i) => draw_text(hud, line, R.W/2, y0 + i*LH, '#f2e3c2', 2, 'center'));
+  hud.globalAlpha = 1;
+}
+
 // ------------------------------------------------------------------ sim + render
 function tick() {
+  if (END.won) { END.over += DT; if (over_black()) return; }   // round 37: once it is black, the game has stopped
   if (inspect.S.active) { inspect.tick(DT); return; }       // the game waits while he looks
   G.tick++;
   G.t += DT;
@@ -402,6 +427,7 @@ function render(dt) {
   gore.set_camera(R.world_camera, R.H);
   warp.set_camera(R.world_camera, R.H);
   draw_hud();
+  draw_over();
   R.render(dt);
 }
 
@@ -501,7 +527,7 @@ window.GAME = {
   // tests: hurt him without snakes (grips > 0), at a given level (null = the coverage)
   hurt(level = null) { END.grips = Math.max(1, END.grips); END.force_level = level; return true; },
   ending() {
-    return { w: r3(END.w), level: r3(END.level), grips: END.grips, won: END.won, won_t: snakes.won_t, coverage: r3(snakes.coverage), reached: snakes.reached,
+    return { w: r3(END.w), level: r3(END.level), grips: END.grips, won: END.won, won_t: snakes.won_t, over: r3(END.over), black: over_black(), coverage: r3(snakes.coverage), reached: snakes.reached,
       coiled: snakes.coiled.map(s => ({ phase: s.coil.phase, h: r3(s.coil.h), of: r3(s.coil.Qlen), turns: s.coil.band.turns ? r3(s.coil.band.turns) : null, axis: s.coil.band.axis.map(r3), lift_max: r3(Math.max(...s.coil.lift)) })),
       crawling: snakes.S.filter(s => snakes.free(s)).length, snakes: snakes.S.length };
   },
