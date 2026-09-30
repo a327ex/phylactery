@@ -515,7 +515,7 @@ export function build_cave(R, seed = 7, opts = {}) {
     update(t, dt) {
       update_dust(t, dt);
       const shell = egg.userData.shell;
-      const k = Math.max(0, Math.sin(t*0.9)*Math.sin(t*2.3) - 0.55)*1.6;
+      const k = Math.max(0, Math.sin(t*0.9)*Math.sin(t*2.3) - 0.55)*1.6*(1 - (egg.userData.still || 0));   // round 36: held still by the coils
       shell.rotation.z = Math.sin(t*38)*0.035*k;
       shell.rotation.x = Math.cos(t*31)*0.025*k;
     },

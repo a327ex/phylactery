@@ -164,7 +164,7 @@ export function create_leak(ctx) {
     update(t, dt, on, urgent) {
       const L = get_L();
       for (const s of snakes.S) {
-        if (s.delay > 0 || s.dying >= 0 || s.burn || s.sink >= 0 || s.fx) continue;
+        if (s.delay > 0 || s.dying >= 0 || s.burn || s.sink >= 0 || s.fx || s.coil) continue;   // (round 36: not one coiled round the egg)
         let d = 1e9;
         for (let i = 0; i < N; i += 6) d = Math.min(d, Math.hypot(s.spine[i].x - L.x, s.spine[i].z - L.z));
         if (on && d < reach) {

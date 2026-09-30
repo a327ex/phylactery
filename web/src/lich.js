@@ -143,6 +143,18 @@ export function create_lich(R, opts = {}) {
   // round 18 verdict (owner): HEAVY
   const RECOILS = [{ name: 'HEAVY', gain: 1.7 }, { name: 'MEDIUM', gain: 1 }, { name: 'LIGHT', gain: 0.5 }, { name: 'OFF', gain: 0 }];
   let recoil = 0;
+  // HURT (round 36, the ending; owner: "the lich should make a pose of being weaker, like he's
+  // being damaged, kind of like the image I posted, pointing at the egg, making motions consistent
+  // with this pose and being hurt"; the image: a figure arched backwards, head thrown back and
+  // tilted away, one arm flung out with the hand splayed and clawed, the other hanging with its
+  // hand clawed, knees bent, the whole body a diagonal falling back). main.js sets w (how far into
+  // it, 0..1) and level (how much of the egg is covered); lich.hit() is a jolt (a snake grips the
+  // egg). His casting arm points at the egg (main.js hands pose() the egg as m.point); the rest
+  // arches back from it. As the egg is covered: more arched, lower, weaker, shaking harder.
+  // hand: 0 = OPEN (splayed and clawed, as in the image), 1 = POINTING (his casting hand)
+  const HURT = { w: 0, level: 0, hand: 0, drop: SP(), clench: SP(), legs: SP() };
+  const HANDS = ['OPEN, CLAWED (THE IMAGE)', 'POINTING (HIS CASTING HAND)'];
+  const CLAW = [0.12, 0.62, 0.7];             // a splayed hand's finger joints, knuckle to tip
   let fq = 1, dz = 1;
   // one step of a damped spring toward `target` (radians), `f` Hz, damping ratio `z`, plus a
   // force (rad/s^2); keeps its acceleration for the parts hanging below it
@@ -163,7 +175,7 @@ export function create_lich(R, opts = {}) {
 
   const lich = {
     root, body, mat, light, MODES, build_ms, tris, nodes: { pelvis, spine, chest, neck, head, jaw, arms, legs },
-    JUICE, springs: S, GLOWS, PATTERNS, rc: RC,
+    JUICE, springs: S, GLOWS, PATTERNS, rc: RC, hurt: HURT, HANDS,
     get pattern() { return GU.uPattern.value; },
     set pattern(i) { GU.uPattern.value = ((i % PATTERNS.length) + PATTERNS.length) % PATTERNS.length; },
     get glow() { return glow; },
@@ -179,6 +191,15 @@ export function create_lich(R, opts = {}) {
       const [ax, ay, az] = m.a, [vx, , vz] = m.v, [px, pz] = m.push;
       const ya = m.yaw_a, speed = Math.hypot(vx, vz), still = 1 - clamp(speed/0.6, 0, 1);
       const fwd = clamp(vz/2.6, 0, 1), side = clamp(vx/2.6, -1, 1);
+      // hurt (round 36): each part's target moves toward the hurt pose by hw; slow writhing
+      // (never repeating) turns in it, and a shake that grows as the egg is covered
+      const hw = HURT.w, lv = HURT.level;
+      const H = (normal, hurt) => (hw > 0 ? mix(normal, hurt, hw) : normal);
+      const wr1 = Math.sin(t*0.83)*0.6 + Math.sin(t*1.61 + 1.3)*0.4, wr2 = Math.sin(t*0.71 + 2.1)*0.55 + Math.sin(t*1.93 + 0.4)*0.45, wr3 = Math.sin(t*0.57 + 4.0)*0.6 + Math.sin(t*1.37 + 2.6)*0.4;
+      const shk = hw*(0.01 + 0.035*lv);
+      const trem = (k) => shk*(Math.sin(t*47.1 + k*1.7)*0.5 + Math.sin(t*61.3 + k*2.9)*0.3 + Math.sin(t*83.7 + k*0.7)*0.2);
+      spring(HURT.drop, 0, 1.6, 0.45, 0, dt);
+      spring(HURT.clench, 0, 3.0, 0.5, 0, dt);
       // recoil: a kick jolts the casting shoulder back (the chest turns away from the beam), the
       // chest and head back a little; the arm's share goes into its recoil springs
       RC.forEach((rc, k) => {
@@ -203,20 +224,20 @@ export function create_lich(R, opts = {}) {
       const gz = m.gaze_w || 0;
       // ... unless he is looking at a snake he means to burn (rounds 9-10): the head turns and
       // tilts down to the spot first, the chest follows a little
-      spring(S.hp, mix(clamp((0.26*pz - 0.2*(S.bp.x + S.cp.x))*g, -0.12, 0.3), clamp((m.gaze_p || 0) - 0.27, -0.7, 0.55), gz), 2.4, 0.6, air(t, 5, 2.4, 0.03*g), dt);
-      spring(S.hr, clamp((-0.22*px - 0.2*(S.br.x + S.cr.x))*g, -0.25, 0.25), 2.4, 0.6, air(t, 6, 2.4, 0.025*g), dt);
+      spring(S.hp, H(mix(clamp((0.26*pz - 0.2*(S.bp.x + S.cp.x))*g, -0.12, 0.3), clamp((m.gaze_p || 0) - 0.27, -0.7, 0.55), gz), -(0.42 + 0.2*lv) + 0.08*wr1), 2.4, 0.6, air(t, 5, 2.4, 0.03*g), dt);
+      spring(S.hr, H(clamp((-0.22*px - 0.2*(S.br.x + S.cr.x))*g, -0.25, 0.25), 0.3 + 0.12*wr2), 2.4, 0.6, air(t, 6, 2.4, 0.025*g), dt);
       const gc = clamp((m.gaze || 0)*0.3, -0.35, 0.35);
-      spring(S.hy, mix(clamp(m.look*0.5, -0.5, 0.5)*g + idle_glance, clamp((m.gaze || 0) - gc, -1.1, 1.1), gz), 2.2, 0.75, air(t, 8, 2.2, 0.025*g), dt);
-      spring(S.cp, clamp((0.24*pz + 0.05*fwd)*g, -0.1, 0.3), 1.6, 0.6, air(t, 3, 1.6, 0.02*g), dt);
-      spring(S.cr, clamp(-0.2*px*g, -0.22, 0.22), 1.6, 0.6, air(t, 4, 1.6, 0.018*g), dt);
-      spring(S.cy, mix(clamp(m.look*0.4*g, -0.45, 0.45), gc, gz), 1.6, 0.7, air(t, 9, 1.6, 0.02*g), dt);
+      spring(S.hy, H(mix(clamp(m.look*0.5, -0.5, 0.5)*g + idle_glance, clamp((m.gaze || 0) - gc, -1.1, 1.1), gz), -0.24 + 0.14*wr3), 2.2, 0.75, air(t, 8, 2.2, 0.025*g), dt);
+      spring(S.cp, H(clamp((0.24*pz + 0.05*fwd)*g, -0.1, 0.3), -(0.28 + 0.14*lv) + 0.05*wr2), 1.6, 0.6, air(t, 3, 1.6, 0.02*g), dt);
+      spring(S.cr, H(clamp(-0.2*px*g, -0.22, 0.22), 0.2 + 0.1*wr1), 1.6, 0.6, air(t, 4, 1.6, 0.018*g), dt);
+      spring(S.cy, H(mix(clamp(m.look*0.4*g, -0.45, 0.45), gc, gz), -0.32 + 0.1*wr3), 1.6, 0.7, air(t, 9, 1.6, 0.02*g), dt);
       // then the whole body leans into its speed and banks into turns; the hips turn last
-      spring(S.bp, clamp((0.03*vz + 0.02*az)*g, -0.2, 0.24), 0.9, 0.75, air(t, 1, 0.9, 0.012*g), dt);
-      spring(S.br, clamp(-0.035*ax*g, -0.24, 0.24), 0.9, 0.75, air(t, 2, 0.9, 0.012*g), dt);
+      spring(S.bp, H(clamp((0.03*vz + 0.02*az)*g, -0.2, 0.24), -(0.1 + 0.08*lv) + 0.03*wr1), 0.9, 0.75, air(t, 1, 0.9, 0.012*g), dt);
+      spring(S.br, H(clamp(-0.035*ax*g, -0.24, 0.24), 0.08 + 0.07*wr2), 0.9, 0.75, air(t, 2, 0.9, 0.012*g), dt);
       spring(S.py, 0, 1.1, 0.45, -ya*0.05*g, dt);
       // jaw: a hinged weight under the skull; a push up or forward drops it, a stop clacks it shut
       spring(S.jw, 0, 2.3, 0.22, (ay*8 + az*3.5)*g + air(t, 7, 2.3, 0.015*g), dt);
-      const JAW0 = 0.07 + Math.max(0, Math.sin(t*0.45))*0.04;
+      const JAW0 = H(0.07 + Math.max(0, Math.sin(t*0.45))*0.04, 0.26 + 0.1*lv + 0.04*wr3);   // hurt: hanging open
       if (JAW0 + S.jw.x < 0.0) { S.jw.x = -JAW0; if (S.jw.v < 0) S.jw.v = -S.jw.v*0.3; }
       if (JAW0 + S.jw.x > 0.42) { S.jw.x = 0.42 - JAW0; if (S.jw.v > 0) S.jw.v = 0; }
 
@@ -235,14 +256,15 @@ export function create_lich(R, opts = {}) {
         spring(L.an, 0, 1.7*df, 0.3, (az*0.4 - L.k.a*0.3)*g + air(tt, sd + 6, 1.7, 0.09*g), dt);
         spring(L.tw, 0, 0.9*df, 0.4, air(tt, sd + 8, 0.9, 0.1*g) - ya*0.03*g, dt);
       });
+      spring(HURT.legs, 0, 1.3, 0.4, 0, dt);
       let r0 = S.legs[0].r.x, r1 = S.legs[1].r.x;
       if (r0 - r1 > 0.03) { const c = (r0 + r1)/2; r0 = c + 0.015; r1 = c - 0.015; }   // the knees never pass through each other
       for (const l of legs) {
         const k = l.s > 0 ? 1 : 0, L = S.legs[k];
         const stagger = l.s > 0 ? 0.07 : 0;
-        l.hip.rotation.set(clamp(0.1 + stagger + L.p.x, -0.35, 0.9), clamp(L.tw.x, -0.2, 0.2), -0.02*l.s + clamp(k ? r1 : r0, -0.4, 0.4));   // thighs ~12-16 deg back at rest
-        l.kn.rotation.set(clamp(0.2 + stagger*0.5 + L.k.x, 0.03, 0.9), 0, 0.015*l.s);                    // shins a little further back; knees never bend forward
-        l.an.rotation.set(clamp(1.0 + L.an.x, 0.55, 1.45), 0, 0);                                        // toes pointed down
+        l.hip.rotation.set(clamp(H(0.1 + stagger, -0.34 - 0.1*lv + (k ? -0.12 : 0.06) + 0.05*wr2*(k ? 1 : -1)) + L.p.x + HURT.legs.x, -0.9, 0.9), clamp(L.tw.x, -0.2, 0.2), H(-0.02*l.s, 0.05*l.s) + clamp(k ? r1 : r0, -0.4, 0.4));   // thighs ~12-16 deg back at rest (hurt: forward under him)
+        l.kn.rotation.set(clamp(H(0.2 + stagger*0.5, 0.62 + 0.2*lv + (k ? 0.3 : 0)) + L.k.x - 0.6*HURT.legs.x, 0.03, 1.5), 0, 0.015*l.s);   // shins a little further back; knees never bend forward
+        l.an.rotation.set(clamp(H(1.0, 1.22) + L.an.x, 0.55, 1.45), 0, 0);                                        // toes pointed down
       }
 
       // arms: light, slow pendulums (+ pitch = hand back, + roll = hand to his left). Moving,
@@ -266,36 +288,43 @@ export function create_lich(R, opts = {}) {
         }
         const base_r = (s < 0 ? 0.12 : 0.22)*s;
         const drive = (az*0.85 + ay*Math.sin(-Q.p.x) + (S.cp.a + S.bp.a)*0.5 - s*(S.cy.a + ya)*0.3)*(1 - pt);
-        spring(Q.p, mix(mix(R0.p, ARM_TRAIL.p, trail), aim_p, pt), mix(0.55*df, 2.3, pt), mix(0.34, 0.75, pt), drive*g + air(tt, sd, 0.55, 0.1*g*(1 - pt)), dt);
-        spring(Q.r, mix((-0.25*side + s*0.1*fwd)*gt, aim_r - base_r, pt), mix(0.6*df, 2.3, pt), mix(0.3, 0.75, pt), (-ax + (S.cr.a + S.br.a)*0.4)*g*(1 - pt) + air(tt, sd + 3, 0.6, 0.07*g*(1 - pt)), dt);
+        const hang = k === 0 ? hw : 0;               // hurt: the arm that doesn't point
+        spring(Q.p, H(mix(mix(R0.p, ARM_TRAIL.p, trail), aim_p, pt), hang ? 0.3 + 0.1*wr1 : aim_p + 0.16*lv*pt), mix(0.55*df, 2.3, pt), mix(0.34, 0.75, pt), drive*g + air(tt, sd, 0.55, 0.1*g*(1 - pt)), dt);
+        spring(Q.r, H(mix((-0.25*side + s*0.1*fwd)*gt, aim_r - base_r, pt), hang ? s*(0.42 + 0.08*wr2) : aim_r - base_r), mix(0.6*df, 2.3, pt), mix(0.3, 0.75, pt), (-ax + (S.cr.a + S.br.a)*0.4)*g*(1 - pt) + air(tt, sd + 3, 0.6, 0.07*g*(1 - pt)), dt);
         spring(Q.t, 0, 0.7*df, 0.4, air(tt, sd + 5, 0.7, 0.12*g*(1 - pt)), dt);
-        spring(Q.e, mix(mix(R0.e, ARM_TRAIL.e, trail), -0.1, pt), mix(1.0*df, 2.6, pt), mix(0.3, 0.75, pt), (az*0.8 - Q.p.a*0.35)*g*(1 - pt) + air(tt, sd + 7, 1.0, 0.1*g*(1 - pt)), dt);
-        spring(Q.w, mix(mix(R0.w, ARM_TRAIL.w, trail), 0.05, pt), mix(1.5*df, 3.0, pt), mix(0.3, 0.75, pt), (az*0.5 - Q.e.a*0.3)*g*(1 - pt) + air(tt, sd + 9, 1.5, 0.08*g*(1 - pt)), dt);
+        spring(Q.e, H(mix(mix(R0.e, ARM_TRAIL.e, trail), -0.1, pt), hang ? -0.5 - 0.1*wr3 : -0.12 - 0.38*lv*pt), mix(1.0*df, 2.6, pt), mix(0.3, 0.75, pt), (az*0.8 - Q.p.a*0.35)*g*(1 - pt) + air(tt, sd + 7, 1.0, 0.1*g*(1 - pt)), dt);
+        spring(Q.w, H(mix(mix(R0.w, ARM_TRAIL.w, trail), 0.05, pt), hang ? 0.6 : 0.05), mix(1.5*df, 3.0, pt), mix(0.3, 0.75, pt), (az*0.5 - Q.e.a*0.3)*g*(1 - pt) + air(tt, sd + 9, 1.5, 0.08*g*(1 - pt)), dt);
         spring(Q.f, (ARM_TRAIL.curl - R0.curl)*trail, 2.0*df, 0.3, (az*0.6 - Q.w.a*0.2)*g + air(tt, sd + 11, 2.0, 0.06*g), dt);
         const roll = s*Math.max(mix(-0.08, -0.45, pt), s*Q.r.x);      // never swings in through the ribs
         // posed here without the recoil; the recoil goes on after the finger is aimed (below)
-        const rc = RC[k], tr = rc.press*Math.sin(t*31 + k*2)*0.012;
-        rc.sh = clamp(Q.p.x + rc.p.x + tr, -2.4, 1.0); rc.el = clamp(Q.e.x + rc.e.x, -1.9, -0.05);
+        const rc = RC[k], tr = rc.press*Math.sin(t*31 + k*2)*0.012 + trem(k*3)*1.4;
+        rc.sh = clamp(Q.p.x + rc.p.x + tr, -2.4, 1.0); rc.el = clamp(Q.e.x + rc.e.x + trem(k*3 + 1)*1.6, -1.9, -0.05);
         A.sh.rotation.set(clamp(Q.p.x, -2.4, 1.0), clamp(Q.t.x, -0.35, 0.35), base_r + roll);
         A.el.rotation.set(clamp(Q.e.x, -1.9, -0.05), 0, 0);
         A.wr.rotation.set(clamp(Q.w.x, -0.9, 0.7), -s*(s < 0 ? 0.9 : 1.25), 0);
         const curl = R0.curl + clamp(Q.f.x, -0.3, 0.4), fw = RC[k].fist;
+        const claw = hw*(k === 0 || HURT.hand === 0 ? 1 : 0);
         A.fingers.forEach((segs, i) => {
           // pointing: the index finger (0) straightens, the others close; the pull: a fist
           const c = mix(mix(curl, i === 0 ? -0.1 : 1.05, pt), 1.3, fw);
-          segs.forEach((n, j) => n.rotation.set(0, 0, -s*(c + j*(i === 0 ? 0.12*(1 - pt) : 0.12 + 0.25*pt) + i*0.03 + Math.sin(t*1.3 + i)*0.03)));
+          segs.forEach((n, j) => {
+            const normal = c + j*(i === 0 ? 0.12*(1 - pt) : 0.12 + 0.25*pt) + i*0.03 + Math.sin(t*1.3 + i)*0.03;
+            // hurt: splayed (the first joint spreads the fingers apart) and clawed, shaking; a jolt clenches them
+            const hurt = CLAW[j] + 0.08*i*(j > 0 ? 1 : 0) + HURT.clench.x*(0.5 + 0.3*j) + trem(10 + i*3 + j)*4;
+            n.rotation.set(j === 0 ? -claw*(FINGERS[i].z/0.02)*0.2 : 0, 0, -s*mix(normal, hurt, claw));
+          });
         });
-        A.thumb[0].rotation.set(0.5 + 0.35*fw, 0, -s*(0.35 + 0.35*fw));
+        A.thumb[0].rotation.set(0.5 + 0.35*fw - 0.3*(k === 0 || HURT.hand === 0 ? hw : 0), 0, -s*(0.35 + 0.35*fw));
         A.thumb[1].rotation.set(0, 0, -s*(0.3 + 0.5*fw));
       });
 
-      body.position.y = 0;
+      body.position.y = hw ? -hw*(0.07 + 0.2*lv) + HURT.drop.x + hw*0.025*wr2 : 0;
       body.rotation.set(0.1 + S.bp.x, 0, S.br.x);
       pelvis.rotation.set(0, S.py.x, 0);
       spine.rotation.set(0.04 + S.cp.x*0.5, -S.py.x*0.75 + S.cy.x*0.45, S.cr.x*0.5);
       chest.rotation.set(0.03 + S.cp.x*0.5, S.cy.x*0.55, S.cr.x*0.5);
       neck.rotation.set(0.04 + S.hp.x*0.3, S.hy.x*0.3, S.hr.x*0.3);
-      head.rotation.set(-0.02 + S.hp.x*0.7, S.hy.x*0.7, S.hr.x*0.7);                  // ~15 deg down in all, as in 07
+      head.rotation.set(-0.02 + S.hp.x*0.7 + trem(20), S.hy.x*0.7 + trem(21)*0.7, S.hr.x*0.7);                  // ~15 deg down in all, as in 07
       jaw.rotation.x = JAW0 + S.jw.x;
 
       // pointing: the index finger laid along the line to the target (the arm alone left it up
@@ -330,6 +359,14 @@ export function create_lich(R, opts = {}) {
         A.wr.quaternion.premultiply(AQ.t);
         recoil_on();
       });
+    },
+    // hurt (round 36): a jolt (1 = a snake gripping the egg): his head snaps back, his chest
+    // arches, he drops, his legs kick, his casting arm is yanked back, his hands clench, his jaw drops
+    hit(a = 1) {
+      S.hp.v -= 3.2*a; S.hr.v += (Math.random() < 0.5 ? -1 : 1)*1.4*a; S.cp.v -= 1.8*a; S.bp.v -= 0.9*a;
+      S.cy.v += (Math.random() < 0.5 ? -1 : 1)*1.2*a;
+      HURT.drop.v -= 1.1*a; HURT.clench.v += 9*a; HURT.legs.v -= 2.4*a; S.jw.v += 3.5*a;
+      RC[1].kick += 0.55*a*lich.recoil_gain;
     },
     // recoil (round 18): a kick on an arm (1 = the beam firing), and how hard it pushes while on (0..1)
     kick(k, amount = 1) { RC[k].kick += amount*lich.recoil_gain*RECOILS[recoil].gain; },
