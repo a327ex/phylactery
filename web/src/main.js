@@ -8,6 +8,8 @@
 // 5-0 the six powers on/off (round 28: a removed power's object drops around the egg), I the
 // inspect view (inspect.js), C the gem's cut, V what the inspect view has behind the object, O what he does when a target goes behind him, K beam colour, X beam recoil, L lens beam, F fire colour, J floatiness, R prism pattern, G out-of-the-light level, P prism strength, B darkness,
 // H hides the text. In 4 (FREE) right-drag orbits.
+// Round 36 (the ending): T removes every power, one after another; snakes that reach the egg coil
+// round it (snakes.js, coil.js) and he is hurt (lich.js HURT); U how they coil, N his hand.
 // Fixed 60 Hz step, rendering every animation frame. window.GAME is the harness API
 // (tools/shoot.mjs): ready, setManual, step(n, input), state(), cam(i), juice(i).
 import * as THREE from 'three';
@@ -28,6 +30,10 @@ import { create_mover, MOVE } from 'game/mover.js';
 import { draw_text } from 'game/hud_font.js';
 import { create_items, ITEMS, HAND_MATS, SIZES } from 'game/items.js';
 import { create_inspect } from 'game/inspect.js';
+import { COIL_MODES } from 'game/coil.js';
+import { create_devtrace, create_program_map } from 'game/devtrace.js';
+import { GLCAP } from 'game/glcapture.js';
+import { create_exporter, export_cave, export_lich, export_statics, export_items } from 'game/port_export.js';
 
 const R = create_render(document.body);
 R.canvas.style.cursor = 'default';
@@ -95,6 +101,7 @@ let env_world = null;
   cc.update(R.renderer, R.world_scene);
   for (const o of hidden) o.visible = true;
   env_world = rt.texture;
+  env_world.userData.rt = rt;                     // (the port to Anchor reads it back: port_export.js)
 }
 const items = create_items({ R, cave, fx, warp, env_world, nav, lich, mover, get_L: () => L, glance: (p) => powers.glance(p) });
 const inspect = create_inspect({ R, items, ITEMS });
@@ -103,6 +110,52 @@ function toggle_power(i) {
   const on = powers.toggle(i);
   if (on === false) items.drop(i); else if (on === true) items.take(i);
   return on;
+}
+
+// ------------------------------------------------------------------ the ending (round 36)
+// Every power gone, the snakes reach the egg and coil round it; once the first grips it he is
+// hurt: he points at the egg with his casting hand while the rest of him arches back (lich.js
+// HURT), jolted as each one grips, shaking and sinking as the egg is covered. When it is covered
+// (snakes.WIN of the shell) the game is won. He still floats where he is sent, slower, facing it.
+const END = { w: 0, level: 0, grips: 0, spasm: 2, won: false, over: -1, queue: [], queue_t: 0, hand: 0 };
+G.END = END;
+snakes.on_grip = () => { END.grips++; lich.hit(0.5 + 0.1*Math.min(END.grips, 6) + (END.grips === 1 ? 0.5 : 0)); };
+snakes.on_won = () => { END.won = true; END.over = 0; held.clear(); mouse.down = false; goal = null; lich.hit(1.7); };
+// Round 37 (owner: "After the win, the game should end. The screen turns black and a message is
+// written in the center, most likely, message to be defined still. The camera can remain as it
+// is"): from the win nothing answers the player; the last jolt plays out for OVER.hold s, the
+// screen cuts to black (owner, round 37: "The cut to black should be instant, the text can fade
+// in"), the game stops, and the message fades in. (On the site
+// this is where site_unlock_posts('lich-survivors', { ending = 'egg', powers = 0 }) goes.)
+const OVER = { hold: 1.8, fade: 0, text_at: 0.8, text_in: 1.4 };
+const MESSAGE = ['[ YOUR MESSAGE ]'];                  // his to write; one entry per line
+const over_black = () => END.won && END.over >= OVER.hold + OVER.fade;
+const end_rng = make_rng(77);
+function remove_all() {
+  END.queue = powers.ALL.map((a, i) => i).filter(i => powers.is_on(powers.ALL[i]));
+  END.queue_t = 0;
+}
+function ending_tick(dt) {
+  // T: the powers go one after another, a breath apart (each object tossed from his hand)
+  if (END.queue.length) { END.queue_t -= dt; if (END.queue_t <= 0) { toggle_power(END.queue.shift()); END.queue_t = 0.4; } }
+  const hurt = END.grips > 0;
+  END.w = Math.min(1, END.w + (hurt ? dt/0.45 : -dt/1.5)); if (END.w < 0) END.w = 0;
+  const target = END.force_level ?? (END.won ? 1 : snakes.coverage);
+  END.level += (target - END.level)*(1 - Math.exp(-dt/0.8));
+  cave.egg.userData.still = Math.min(1, snakes.coiled.length);
+  lich.hurt.w = END.w*END.w*(3 - 2*END.w); lich.hurt.level = END.level; lich.hurt.hand = END.hand;
+  mover.face.half = 1.31;
+  if (END.w <= 0) return;
+  // small spasms between the jolts, harder as the egg is covered
+  END.spasm -= dt;
+  if (END.spasm <= 0) { lich.hit(END.w*(0.18 + 0.4*END.level)); END.spasm = end_rng.float(1.1, 3.2)*(1 - 0.4*END.level); }
+  // he faces the egg and points at it with his casting hand
+  mover.face.on = true;
+  mover.face.yaw = Math.atan2(EGG.x - L.x, EGG.z - L.z);
+  mover.face.half = mover.speed > 0.2 ? 0.7 : 0.08;
+  const m = mover.motion;
+  m.gaze_w = 0;
+  m.point = { w: lich.hurt.w, arm: 1, x: EGG.x, y: EGG.y + 0.42, z: EGG.z };
 }
 
 // ------------------------------------------------------------------ cameras
@@ -200,6 +253,7 @@ const pick_goal = () => { const [gx, gy] = R.to_game_px(mouse.px, mouse.py); set
 // camera-relative: W is up the screen, D is right
 const cf = new THREE.Vector3();
 function wanted_velocity() {
+  if (END.won) return { x: 0, z: 0 };                 // round 37: the game is over
   const keys = script_keys ?? [...held].join('');
   let ix = 0, iz = 0;
   if (keys.includes('w')) iz += 1;
@@ -211,8 +265,8 @@ function wanted_velocity() {
     R.world_camera.getWorldDirection(cf); cf.y = 0; cf.normalize();
     const rx = -cf.z, rz = cf.x;                  // the camera's right on the floor
     let wx = cf.x*iz + rx*ix, wz = cf.z*iz + rz*ix;
-    const l = Math.hypot(wx, wz);
-    return { x: wx/l*MOVE.speed, z: wz/l*MOVE.speed };
+    const l = Math.hypot(wx, wz), sp = MOVE.speed*(1 - 0.6*END.w);   // hurt: slower
+    return { x: wx/l*sp, z: wz/l*sp };
   }
   if (mouse.down) pick_goal();
   if (goal) {
@@ -221,13 +275,14 @@ function wanted_velocity() {
     if (mouse.down || d < best - 0.05) { best = d; stall = 0; } else stall += DT;
     if ((d < 0.12 || stall > 0.5) && !mouse.down) { goal = null; return { x: 0, z: 0 }; }
     if (d < 0.12) return { x: 0, z: 0 };
-    const s = Math.min(MOVE.speed, Math.sqrt(2*MOVE.dec*Math.max(0, d - 0.08))*0.9);
+    const s = Math.min(MOVE.speed*(1 - 0.6*END.w), Math.sqrt(2*MOVE.dec*Math.max(0, d - 0.08))*0.9);
     return { x: dx/d*s, z: dz/d*s };
   }
   return { x: 0, z: 0 };
 }
 
 addEventListener('keydown', (e) => {
+  if (END.won) return;                                 // round 37: the game is over
   // the inspect view takes the keys while it is up
   if (inspect.S.active) {
     if (e.code === 'KeyI' || e.code === 'Escape' || e.code === 'KeyE') inspect.close();
@@ -254,6 +309,9 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyX') lich.recoil = lich.recoil + 1;
   if (e.code === 'KeyO') powers.facing = powers.facing + 1;
   if (e.code === 'KeyL') powers.lens.look = powers.lens.look + 1;
+  if (e.code === 'KeyT') remove_all();
+  if (e.code === 'KeyU') snakes.coil_mode = snakes.coil_mode + 1;
+  if (e.code === 'KeyN') END.hand = (END.hand + 1) % lich.HANDS.length;
   const pk = /^(Digit|Numpad)([0-9])$/.exec(e.code);
   if (pk && POWER_KEYS.includes(pk[2])) toggle_power(POWER_KEYS.indexOf(pk[2]));
   if (e.code === 'KeyB') { G.dark = (G.dark + 1) % cave.DARK.length; cave.set_darkness(G.dark); }
@@ -264,7 +322,7 @@ let drag = null;
 R.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 R.canvas.addEventListener('pointerdown', (e) => {
   try { R.canvas.setPointerCapture(e.pointerId); } catch { }
-  if (inspect.S.active) return;
+  if (inspect.S.active || END.won) return;
   if (e.button === 0) { mouse.down = true; mouse.px = e.clientX; mouse.py = e.clientY; pick_goal(); }   // picked now: a quick click never falls between ticks
   if (e.button === 2 && (G.cam === CAM_FREE || G.cam === CAM_EGG)) drag = [e.clientX, e.clientY];
 });
@@ -302,6 +360,8 @@ function draw_hud() {
   const ink = 'rgba(8,6,5,0.85)';
   draw_text(hud, `${G.cam === CAM_EGG ? 'Y' : G.cam === CAM_FREE ? 4 : G.cam + 1} ${c.name}`, 8, 8, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, c.note, 8, 19, '#a8987c', 1, 'left', null, ink);
+  draw_text(hud, `U COIL: ${COIL_MODES[snakes.coil_mode]}`, 8, R.H - 169, '#f2e3c2', 1, 'left', null, ink);
+  draw_text(hud, `N HIS HAND: ${lich.HANDS[END.hand]}`, 8, R.H - 158, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `Z ON THE FLOOR: ${SIZES[items.opts.size].name}`, 8, R.H - 147, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `M HAND: ${HAND_MATS[items.opts.hand_mat]}`, 8, R.H - 125, '#f2e3c2', 1, 'left', null, ink);
   draw_text(hud, `O BEHIND HIM: ${FACINGS[powers.facing]}`, 8, R.H - 114, '#a8987c', 1, 'left', null, ink);
@@ -321,18 +381,37 @@ function draw_hud() {
   });
   draw_text(hud, `EACH POWER X${powers.power.toFixed(1)}`, R.W - 8, 8 + 6*11 + 3, '#a8987c', 1, 'right', null, ink);
   draw_text(hud, `REACHED THE EGG: ${snakes.reached}`, R.W - 8, 8 + 7*11 + 3, snakes.reached ? '#e0a070' : '#a8987c', 1, 'right', null, ink);
+  if (snakes.coiled.length) draw_text(hud, `COILED ROUND IT: ${snakes.coiled.length}   COVERED: ${Math.round(snakes.coverage*100)}% OF ${Math.round(snakes.WIN*100)}`, R.W - 8, 8 + 8*11 + 3, '#e0a070', 1, 'right', null, ink);
+  if (END.won) draw_text(hud, 'THE EGG IS COVERED: WON', R.W - 8, 8 + 9*11 + 3, '#f2e3c2', 1, 'right', null, ink);
+  draw_text(hud, 'T: REMOVE EVERY POWER (THE ENDING)', R.W - 8, R.H - 48, '#f2e3c2', 1, 'right', null, ink);
   draw_text(hud, 'I: INSPECT THE OBJECTS   5-0: REMOVE A POWER (ITS OBJECT DROPS)', R.W - 8, R.H - 37, '#f2e3c2', 1, 'right', null, ink);
   draw_text(hud, 'WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', null, ink);
-  draw_text(hud, '1-4 Y CAMERA   Z M O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+  draw_text(hud, '1-4 Y CAMERA   U N Z M O K X L F J R G P B   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', null, ink);
+}
+
+// round 37: the end: black over everything, then the message in the centre
+const ss = (a, b, x) => { const t = clamp((x - a)/(b - a), 0, 1); return t*t*(3 - 2*t); };
+function draw_over() {
+  if (!END.won) return;
+  const k = OVER.fade > 0 ? ss(OVER.hold, OVER.hold + OVER.fade, END.over) : END.over >= OVER.hold ? 1 : 0;
+  if (k > 0) { hud.fillStyle = `rgba(0,0,0,${k.toFixed(3)})`; hud.fillRect(0, 0, R.W, R.H); }
+  const t0 = OVER.hold + OVER.fade + OVER.text_at, a = ss(t0, t0 + OVER.text_in, END.over);
+  if (a <= 0) return;
+  hud.globalAlpha = a;
+  const LH = 18, y0 = Math.round(R.H/2 - (MESSAGE.length*LH)/2);
+  MESSAGE.forEach((line, i) => draw_text(hud, line, R.W/2, y0 + i*LH, '#f2e3c2', 2, 'center'));
+  hud.globalAlpha = 1;
 }
 
 // ------------------------------------------------------------------ sim + render
 function tick() {
+  if (END.won) { END.over += DT; if (over_black()) return; }   // round 37: once it is black, the game has stopped
   if (inspect.S.active) { inspect.tick(DT); return; }       // the game waits while he looks
   G.tick++;
   G.t += DT;
   mover.tick(G.t, DT, wanted_velocity());
   powers.tick(G.t, DT);
+  ending_tick(DT);
   lich.pose(G.t, DT, mover.motion);
   powers.after_pose(G.t);
   lich.update(G.t);
@@ -353,6 +432,7 @@ function render(dt) {
   gore.set_camera(R.world_camera, R.H);
   warp.set_camera(R.world_camera, R.H);
   draw_hud();
+  draw_over();
   R.render(dt);
 }
 
@@ -444,6 +524,55 @@ window.GAME = {
   facing(m) { powers.facing = m; return FACINGS[powers.facing]; },
   lens_look(m) { powers.lens.look = m; return LENS_LOOKS[powers.lens.look]; },
   reached() { return snakes.reached; },
+  // the port to Anchor: what three.js draws (devtrace.js)
+  trace_programs() { return (G.trace ||= create_devtrace(R)).programs(); },
+  trace_start(uniforms = false) { return (G.trace ||= create_devtrace(R)).start(uniforms); },
+  trace_stop() { return G.trace ? G.trace.stop() : []; },
+  trace_info() { return (G.trace ||= create_devtrace(R)).info(); },
+  // the port: start collecting the program each draw uses (before anything renders ideally);
+  // program_map_write(dir) writes <outDir>/<dir>/program_map.json through the harness
+  program_map_start() { G.pmap = create_program_map(R); return true; },
+  // the port: write what the Anchor build loads (port_export.js) into <outDir>/<dir>
+  async port_export(dir, what = ['cave']) {
+    const X = create_exporter(dir);
+    const out = {};
+    if (what.includes('cave')) out.cave = export_cave(X, cave);
+    if (what.includes('lich')) out.lich = export_lich(X, lich);
+    if (what.includes('statics')) out.statics = export_statics(X, R);
+    if (what.includes('items')) out.items = export_items(X, R, items, inspect, ITEMS, HAND_MATS, SIZES);
+    return await X.finish(out);
+  },
+  async program_map_write(dir) {
+    const r = G.pmap.result();
+    await fetch(`/__out/${dir}/program_map.json`, { method: 'PUT', body: JSON.stringify(r) });
+    return { keys: Object.keys(r.keys).length, programs: Object.keys(r.programs).length, conflicts: r.conflicts, unnamed: r.unnamed };
+  },
+  // the port: capture the next rendered frame's GL commands and resources into <outDir>/<dir>
+  // (only with ?glcapture), plus the programs and the frame three.js made (rt_final RGBA8,
+  // rt_world float RGBA)
+  async glcap(dir) {
+    if (!GLCAP.on) return 'glcapture is off (load the page with ?glcapture)';
+    const cmds = await GLCAP.capture(dir, () => render(0));
+    const pids = new Map(R.renderer.info.programs.map(p => [p.program, p.id]));
+    const res = await GLCAP.export(dir, cmds, pids);
+    const put = (name, body) => fetch(`/__out/${dir}/${name}`, { method: 'PUT', body });
+    for (const pr of (G.trace ||= create_devtrace(R)).programs()) { await put(`programs/${pr.id}_vs.glsl`, pr.vs || ''); await put(`programs/${pr.id}_fs.glsl`, pr.fs || ''); }
+    const fin = new Uint8Array(R.W*R.H*4); R.renderer.readRenderTargetPixels(R.targets.rt_final, 0, 0, R.W, R.H, fin); await put('ref_final_rgba8.bin', fin);
+    const wf = new Uint16Array(R.W*R.H*4); R.renderer.readRenderTargetPixels(R.targets.rt_world, 0, 0, R.W, R.H, wf); await put('ref_world_rgba16f.bin', wf);
+    return res;
+  },
+  // round 36: the ending
+  remove_all() { remove_all(); return END.queue.length; },
+  coil_mode(i) { snakes.coil_mode = i; return COIL_MODES[snakes.coil_mode]; },
+  hand(i) { END.hand = i % lich.HANDS.length; return lich.HANDS[END.hand]; },
+  hit(a) { lich.hit(a); return true; },
+  // tests: hurt him without snakes (grips > 0), at a given level (null = the coverage)
+  hurt(level = null) { END.grips = Math.max(1, END.grips); END.force_level = level; return true; },
+  ending() {
+    return { w: r3(END.w), level: r3(END.level), grips: END.grips, won: END.won, won_t: snakes.won_t, over: r3(END.over), black: over_black(), coverage: r3(snakes.coverage), reached: snakes.reached,
+      coiled: snakes.coiled.map(s => ({ phase: s.coil.phase, h: r3(s.coil.h), of: r3(s.coil.Qlen), turns: s.coil.band.turns ? r3(s.coil.band.turns) : null, axis: s.coil.band.axis.map(r3), lift_max: r3(Math.max(...s.coil.lift)) })),
+      crawling: snakes.S.filter(s => snakes.free(s)).length, snakes: snakes.S.length };
+  },
   // round 28: the objects
   drop(i) { if (powers.is_on(powers.ALL[i])) toggle_power(i); return items.state()[i]; },
   restore(i) { if (!powers.is_on(powers.ALL[i])) toggle_power(i); return items.state()[i]; },
@@ -485,5 +614,8 @@ window.GAME = {
 cave.set_darkness(G.dark);
 tick();
 render(0);
+// the port to Anchor: ?manual starts paused (no real-time frames before the harness takes over),
+// so a comparison starts from the same tick as the Anchor build
+if (/manual/.test(location.search)) G.manual = true;
 window.GAME.ready = true;
 requestAnimationFrame(frame);

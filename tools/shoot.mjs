@@ -26,8 +26,10 @@ const argv = process.argv.slice(2);
 const flags = new Set(argv.filter(a => a.startsWith('--') && !a.includes('=')));
 const pos = [];
 let size = [1280, 720];
+let query = '';
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--size') { size = argv[++i].split('x').map(Number); continue; }
+  if (argv[i] === '--query') { query = argv[++i]; continue; }
   if (!argv[i].startsWith('--')) pos.push(argv[i]);
 }
 if (pos.length < 3) {
@@ -78,6 +80,17 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/ja
 
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  // the port to Anchor (2026-09-30): the page writes binary exports into <outDir>/<name> with
+  // fetch('/__out/<name>', { method: 'PUT', body }) (subfolders allowed, nothing outside outDir)
+  if (req.method === 'PUT' && p.startsWith('/__out/')) {
+    const dest = path.join(outDir, p.slice(7));
+    if (!dest.startsWith(outDir)) { res.writeHead(403); res.end(); return; }
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    const chunks = [];
+    req.on('data', c => chunks.push(c));
+    req.on('end', () => { fs.writeFileSync(dest, Buffer.concat(chunks)); res.writeHead(200); res.end('ok'); });
+    return;
+  }
   if (p.endsWith('/')) p += 'index.html';
   if (p === '/favicon.ico') { res.writeHead(204); res.end(); return; }
   const file = path.join(gameDir, p);
@@ -153,7 +166,8 @@ try {
   };
   await send('Page.enable'); await send('Runtime.enable'); await send('Log.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: size[0], height: size[1], deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: `http://127.0.0.1:${pagePort}/` });
+  // --query '?glcapture': a query string on the page's URL (the port's GL capture reads it)
+  await send('Page.navigate', { url: `http://127.0.0.1:${pagePort}/${query}` });
 
   let ready = false;
   for (let i = 0; i < 300 && !ready; i++) {

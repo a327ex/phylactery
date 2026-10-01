@@ -10,6 +10,7 @@
 // glass absorbs along its path, more in red and blue, so the middle of a thick ball is green.
 // In the inspect view they hover around each other; on the floor each is its own rolling ball.
 import * as THREE from 'three';
+import { named } from 'game/util.js';
 
 // radii, m (a few sizes, like the anime's)
 export const ORB_R = [0.05, 0.036, 0.042, 0.028, 0.032];
@@ -70,7 +71,7 @@ function orb_material(ctx) {
     uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3(30, 27, 22) },
     uAbsorb: { value: new THREE.Vector3(0.16, 0.15, 0.15) },      // per unit radius: neutral, a little grey (round 29, owner: not green)
   };
-  const m = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VS, fragmentShader: FS });
+  const m = named(new THREE.ShaderMaterial({ uniforms: U, vertexShader: VS, fragmentShader: FS }), 'item.orbs');
   m.userData.U = U;
   return m;
 }

@@ -13,6 +13,7 @@
 // are flatter than deep, a real finger's width (~1.8 cm at the base), fuller at the joints and a
 // little narrower between them, with pads and nails at their tips; the cast surface finer.
 import * as THREE from 'three';
+import { named } from 'game/util.js';
 import { mesh_sdf, smin, cone, ellipsoid } from 'game/sdf.js';
 import { fbm3, cells3, sstep, vertex_mr } from 'game/shape_noise.js';
 
@@ -186,7 +187,7 @@ export function set_hand_material(i) {
 export function build_hand(ctx = {}, opts = {}) {
   const lit = ctx.lit || (m => m);
   set_hand_material(opts.hand_mat ?? 0);
-  const mat = lit(vertex_mr(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0, envMapIntensity: ctx.env_i ?? 1, side: THREE.DoubleSide })));
+  const mat = lit(vertex_mr(named(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0, envMapIntensity: ctx.env_i ?? 1, side: THREE.DoubleSide }), 'item.hand')));
   const m = new THREE.Mesh(geometry(), mat);
   m.castShadow = true;
   const g = new THREE.Group();

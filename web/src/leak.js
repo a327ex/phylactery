@@ -16,7 +16,7 @@
 //   - where a snake is coming apart, warped smoke rises from it; when the last of it goes, a
 //     last puff where its head was
 import * as THREE from 'three';
-import { smoothstep } from 'game/util.js';
+import { smoothstep, named } from 'game/util.js';
 import { K } from 'game/warp.js';
 import { spectrum } from 'game/fx.js';
 
@@ -98,7 +98,7 @@ export function create_leak(ctx) {
   // glowing: the owner moved the prismatic away from glitter, round 23)
   const FN = 700;
   const fgeo = new THREE.CircleGeometry(1, 5);
-  const fmat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  const fmat = named(new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }), 'leak.flakes');
   const fmesh = new THREE.InstancedMesh(fgeo, fmat, FN);
   fmesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(FN*3), 3);
   fmesh.frustumCulled = false;
@@ -164,7 +164,7 @@ export function create_leak(ctx) {
     update(t, dt, on, urgent) {
       const L = get_L();
       for (const s of snakes.S) {
-        if (s.delay > 0 || s.dying >= 0 || s.burn || s.sink >= 0 || s.fx) continue;
+        if (s.delay > 0 || s.dying >= 0 || s.burn || s.sink >= 0 || s.fx || s.coil) continue;   // (round 36: not one coiled round the egg)
         let d = 1e9;
         for (let i = 0; i < N; i += 6) d = Math.min(d, Math.hypot(s.spine[i].x - L.x, s.spine[i].z - L.z));
         if (on && d < reach) {

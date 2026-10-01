@@ -13,7 +13,7 @@
 //            thin lens; ripples run along them
 //   puffs    rising, spreading, swirling blobs (smoke made of warped air)
 import * as THREE from 'three';
-import { smoothstep } from 'game/util.js';
+import { smoothstep, named, make_rng } from 'game/util.js';
 
 export const K = 24;                  // points in a streak
 
@@ -29,6 +29,8 @@ const blend = { transparent: true, depthWrite: false, depthTest: false, side: TH
   blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneFactor, blendEquation: THREE.AddEquation };
 
 export function create_warp(R) {
+  // (2026-09-30, the port to Anchor: seeded, so both builds draw the same air; it was Math.random)
+  const rnd = make_rng(23);
   const U = { uRes: { value: new THREE.Vector2(R.W, R.H) }, uProj: { value: 400 }, uTime: { value: 0 }, tDepth: { value: R.targets.rt_world.depthTexture }, uNoDepth: { value: 0 } };
 
   // ---------------------------------------------------------------- streaks
@@ -47,7 +49,7 @@ export function create_warp(R) {
   sg.setAttribute('aP', new THREE.BufferAttribute(prm, 4));          // width m, amp px, chroma, phase
   sg.setAttribute('aA', new THREE.BufferAttribute(fade, 1));
   sg.setIndex(idx);
-  const smat = new THREE.ShaderMaterial({
+  const smat = named(new THREE.ShaderMaterial({
     uniforms: U, ...blend,
     vertexShader: `attribute vec3 aPrev, aNext; attribute float aSide, aU, aA; attribute vec4 aP;
       uniform vec2 uRes; uniform float uProj;
@@ -75,11 +77,11 @@ export function create_warp(R) {
         float k = vAmp*env*rip*vA;
         vec2 off = vN*g*k + vT*exp(-x*x*2.0)*k*0.35;        // and dragged a little along it, like wind
         gl_FragColor = vec4(off, vCh*env*exp(-x*x*1.5)*vA, 0.32*exp(-x*x*2.0)*env*vA); }`,
-  });
+  }), 'warp.streaks');
   const smesh = new THREE.Mesh(sg, smat); smesh.frustumCulled = false;
   R.warp_scene.add(smesh);
   const S = [];
-  for (let i = 0; i < NS; i++) S.push({ on: false, pts: [...Array(K)].map(() => new THREE.Vector3()), w: 0.1, amp: 3, chroma: 0.7, a: 0, ph: Math.random()*6.28 });
+  for (let i = 0; i < NS; i++) S.push({ on: false, pts: [...Array(K)].map(() => new THREE.Vector3()), w: 0.1, amp: 3, chroma: 0.7, a: 0, ph: rnd.next()*6.28 });
 
   // ---------------------------------------------------------------- puffs
   const NP = 500;
@@ -87,7 +89,7 @@ export function create_warp(R) {
   const pg = new THREE.BufferGeometry();
   pg.setAttribute('position', new THREE.BufferAttribute(ppos, 3));
   pg.setAttribute('aP', new THREE.BufferAttribute(pprm, 4));         // size m, amp px, rotation, alpha
-  const pmat = new THREE.ShaderMaterial({
+  const pmat = named(new THREE.ShaderMaterial({
     uniforms: U, ...blend,
     vertexShader: `attribute vec4 aP; uniform float uProj; varying vec4 vP; varying float vSeed;
       void main(){ vec4 mv = modelViewMatrix*vec4(position, 1.0); gl_Position = projectionMatrix*mv;
@@ -106,7 +108,7 @@ export function create_warp(R) {
         float lump = 0.6 + 0.8*n1(qr.x*3.0 + vSeed*17.0 + uTime*1.3)*n1(qr.y*3.0 + vSeed*9.0 - uTime*1.1);
         vec2 off = (vec2(-qr.y, qr.x)*0.9 + qr*0.35)*vP.y*fall*lump*vP.w;
         gl_FragColor = vec4(off, 0.9*fall*vP.w, 0.3*fall*vP.w); }`,
-  });
+  }), 'warp.puffs');
   const pts = new THREE.Points(pg, pmat); pts.frustumCulled = false;
   R.warp_scene.add(pts);
   const P = [];
@@ -120,7 +122,7 @@ export function create_warp(R) {
   function fling(o) {
     const s = S.find(q => !q.on);
     if (!s) return;
-    s.on = true; s.a = 0; s.w = o.w ?? 0.12; s.amp = o.amp ?? 5; s.chroma = o.chroma ?? 1.2; s.ph = Math.random()*6.28;
+    s.on = true; s.a = 0; s.w = o.w ?? 0.12; s.amp = o.amp ?? 5; s.chroma = o.chroma ?? 1.2; s.ph = rnd.next()*6.28;
     const sp = o.speed ?? 6, life = o.life ?? 0.5, len = o.len ?? 0.8, jit = o.jitter ?? 1.5;
     const d = o.dir.clone().normalize(), q = o.p.clone(), path = [q.clone()];
     const ax = new THREE.Vector3().crossVectors(d, Math.abs(d.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize();
@@ -128,9 +130,9 @@ export function create_warp(R) {
     let curl = o.curl ?? 3;
     for (let t = 0; t < total; t += DS) {
       // it turns about an axis across it, and the axis itself wanders (messy)
-      TMP.copy(ax).applyAxisAngle(d, (Math.random() - 0.5)*jit*DS*6);
+      TMP.copy(ax).applyAxisAngle(d, (rnd.next() - 0.5)*jit*DS*6);
       ax.copy(TMP).normalize();
-      d.applyAxisAngle(ax, curl*DS + (Math.random() - 0.5)*jit*DS*3).normalize();
+      d.applyAxisAngle(ax, curl*DS + (rnd.next() - 0.5)*jit*DS*3).normalize();
       d.y -= 0.35*DS; d.normalize();                                   // it droops a little, like a thrown thing
       q.addScaledVector(d, DS);
       path.push(q.clone());
@@ -159,14 +161,14 @@ export function create_warp(R) {
     streak() {
       const s = S.find(q => !q.on);
       if (!s) return null;
-      s.on = true; s.a = 0; s.w = 0.1; s.amp = 3; s.chroma = 0.7; s.ph = Math.random()*6.28;
+      s.on = true; s.a = 0; s.w = 0.1; s.amp = 3; s.chroma = 0.7; s.ph = rnd.next()*6.28;
       return s;
     },
     release(s) { if (s) { s.on = false; s.a = 0; } },
     // a puff: x y z, vx vy vz, life, s0 -> s1 (m across), amp (px), spin (rad/s), drag, rise (m/s^2)
     puff(o) {
       const p = P[pnext]; pnext = (pnext + 1) % NP;
-      Object.assign(p, { vx: 0, vy: 0, vz: 0, drag: 0.8, rise: 0, spin: 1, rot: Math.random()*6.28, amp: 3.5, s0: 0.15, s1: 0.5 }, o, { max: o.life });
+      Object.assign(p, { vx: 0, vy: 0, vz: 0, drag: 0.8, rise: 0, spin: 1, rot: rnd.next()*6.28, amp: 3.5, s0: 0.15, s1: 0.5 }, o, { max: o.life });
       return p;
     },
     fling,

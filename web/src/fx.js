@@ -6,7 +6,7 @@
 // playing. Particles are simple: position, velocity, gravity, drag, a colour (HDR for the
 // additive ones, which the bloom picks up), a size going s0 -> s1 over the life.
 import * as THREE from 'three';
-import { clamp, smoothstep, lerp } from 'game/util.js';
+import { clamp, smoothstep, lerp, named } from 'game/util.js';
 import { gi_dynamic } from 'game/gi.js';
 
 export const spectrum = (h) => { h = ((h % 1) + 1) % 1; return [0, 2/3, 1/3].map(o => clamp(Math.abs(((h + o) % 1)*6 - 3) - 1, 0, 1)); };
@@ -26,7 +26,7 @@ export function sprite_pool(R, N, additive, shape) {
     // a thin diamond sliver
     ? `float d = abs(q.x)*2.6 + abs(q.y); float a = smoothstep(1.0, 0.55, d);`
     : `float d = length(q); float a = smoothstep(1.0, 0.1, d);`;
-  const mat = new THREE.ShaderMaterial({
+  const mat = named(new THREE.ShaderMaterial({
     uniforms: { uScale: { value: 1 } },
     vertexShader: `attribute vec4 aCol; attribute float aSize; uniform float uScale; varying vec4 vCol;
       void main(){ vec4 mv = modelViewMatrix*vec4(position, 1.0); gl_Position = projectionMatrix*mv;
@@ -37,7 +37,7 @@ export function sprite_pool(R, N, additive, shape) {
         ${additive ? `gl_FragColor = vec4(vCol.rgb*vCol.a*a, 1.0);` : `gl_FragColor = vec4(vCol.rgb, vCol.a*a);`} }`,
     transparent: true, depthWrite: false, depthTest: true,
     blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-  });
+  }), 'fx.points.' + shape + (additive ? '.add' : '.alpha'));
   const pts = new THREE.Points(g, mat);
   pts.frustumCulled = false;
   pts.renderOrder = additive ? 11 : 10;
@@ -109,7 +109,7 @@ function ribbon_pool(R, N) {
   g.setAttribute('aPv', new THREE.BufferAttribute(apv, 3));
   g.setAttribute('aNx', new THREE.BufferAttribute(anx, 3));           // style 4: metres along the beam at p0, the hue phase where it starts
   g.setIndex(idx);
-  const mat = new THREE.ShaderMaterial({
+  const mat = named(new THREE.ShaderMaterial({
     uniforms: { uRes: { value: new THREE.Vector2(640, 360) }, uTime: { value: 0 }, uProj: { value: 400 } },
     vertexShader: `attribute vec3 aP0, aP1, aWO; attribute float aEnd, aSide; attribute vec4 aCol, aB; attribute vec2 aX; attribute vec3 aPv, aNx;
       uniform vec2 uRes; uniform float uProj; varying vec4 vCol; varying float vSide, vAlong, vHue, vStyle, vLen, vPx, vW0;
@@ -205,7 +205,7 @@ function ribbon_pool(R, N) {
         }
         gl_FragColor = vec4(c*vCol.a, 1.0); }`,
     transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  });
+  }), 'fx.ribbons');
   const mesh = new THREE.Mesh(g, mat);
   mesh.frustumCulled = false; mesh.renderOrder = 12;
   R.world_scene.add(mesh);
@@ -253,7 +253,7 @@ function ribbon_pool(R, N) {
 // twice on the floor, then sinking into it
 function chunk_pool(R, cave, N) {
   const geo = new THREE.IcosahedronGeometry(1, 0);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x3a3629, roughness: 0.45, metalness: 0, flatShading: true });
+  const mat = named(new THREE.MeshStandardMaterial({ color: 0x3a3629, roughness: 0.45, metalness: 0, flatShading: true }), 'fx.chunks');
   if (cave.GU) gi_dynamic(mat, cave.GU);
   const mesh = new THREE.InstancedMesh(geo, mat, N);
   mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false;

@@ -4,9 +4,15 @@ Guidelines for Claude Code instances working in this project.
 
 **Read `RECORD.md` first** (purpose, owner's settled decisions, rounds, pending choices).
 
-**Porting to Anchor** (planned once the attacks and this part of the cave are done, owner
-2026-09-28): read `ANCHOR_PORT.md` first -- what Anchor lacks for this game (testing and
-rendering), in the order to build it, and the port order.
+**The Anchor port is done (2026-09-30)**: `main.lua` + `boot.lua` + `port/*.lua` run the whole
+game, bit-exact with the three.js build (`ANCHOR_PORT.md` "Status": how, what was checked, the
+engine additions, the known differences). Any change to the game logic must keep the two builds
+identical until he decides the web build is retired: change both, then compare full-state
+digests (`tools/port_digest.js` via shoot.mjs evals, `tools/port_digest.lua` via anchor drive
+eval, `tools/port_digest_cmp.py`). Rules that keep it exact: math.* is the engine's js_* (boot.lua),
+Math.hypot is `js_hypot`, float32 stores go through `js_fround`, JS `a += b - c` is `a + (b - c)`,
+never `x and nil or y`, random draws in the JS's evaluation order. Drive it with
+`ANCHOR_ENGINE_BIN=<Anchor>/engine/engine/build/anchor.exe` set if another session holds the default.
 
 **three.js first (owner, 2026-09-27)**, like Brutal Behavior: the game lives in `web/`
 (`index.html` + `src/*.js`, three.js 0.170 from jsdelivr, local modules import each other only

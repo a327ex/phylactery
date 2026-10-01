@@ -125,3 +125,117 @@ on the GPU removes that.
 
 ⚠ The live site's wasm builds from `Anchor/engine/engine`: every engine change above can reach
 production; run `replay-test/check.sh` after each (APR recordings must still play).
+
+## 5. The port (started 2026-09-30): the plan, and where it stands
+
+Owner, 2026-09-30: port now (the browser build loads slowly); **the port must be 100% the same as
+the three.js build**, he tests them side by side. The three.js build of 2026-09-30 (round 37 + the
+instant cut) is the reference; it stays runnable (`web/`) for the comparison.
+
+**The construction (my call, for exactness):** three.js is not reimplemented from memory. The
+Anchor build runs **the very GLSL programs three.js compiled** for this game (dumped from the
+running renderer: `web/src/devtrace.js`, `GAME.trace_programs()`; 65 programs as of the inventory,
+`scratch/port_programs/`), fed the same uniforms, in the same passes, in the same order:
+1. **Engine: a generic GPU layer** (`gpu_*` in anchor.c, beside layer3, which stays untouched):
+   programs from source (three.js's GLSL ES 3.00 header swapped for 330 core on desktop), meshes
+   with any vertex attributes (+ instanced, + updated in place), index buffers, 2D / 3D / float
+   textures, render targets (RGBA8 / RGBA16F colour, depth as a texture, mipmaps), draw state
+   (blending, depth, culling, points / lines / triangles), clears, and **pixel readback to Lua**
+   (8-bit and linear HDR: the testing gap of section 1). The final image is a gpu target whose
+   texture is drawn into an ordinary layer, so the window, the upscale and `engine_snapshot`
+   are Anchor's own. HUD: Anchor layers (the pixel font drawn with rectangles, as hud_font.js does).
+2. **Lua: a small three.js** (the subset the game uses, same API shape so the game code
+   translates line by line): Vector3 / Quaternion / Matrix4 / Euler, Object3D graph, cameras,
+   BufferGeometry, materials (their uniform refresh as three.js does it), the renderer (render
+   lists and sorting, the shadow pass, the transmission pass for the glass, light uniforms), and
+   render.js's post chain with its own GLSL.
+3. **Assets exported from the three.js build once** (also what makes loading fast): the sculpted
+   skeleton and objects, the cave and its GI bake, the canvas textures, the environment maps.
+4. **The game logic, module by module** (same seeds, same fixed 60 Hz step: the simulations
+   should stay in step), checked against the three.js build's state at the same tick.
+5. **Verification by numbers:** a frame's whole scene state dumped from three.js renders in
+   Anchor and is pixel-compared with three.js's own frame (the renderer is right before any game
+   logic moves); then the same scripted play in both, frames compared at the same ticks.
+
+**Known gap: recordings.** The gpu layer draws outside the layer command stream the recorder
+captures, and a repainted 640x360 frame per tick would be gigabytes a minute. Until the gpu
+command stream records (its own later piece of work), this game runs with `record = false`: his
+runs and mine are not carded as replays; handovers use captures and clips as in three.js.
+
+### Progress (2026-09-30)
+- **Engine: the gpu layer** (`gpu_*` in anchor.c, section "GPU"): programs from source, meshes
+  of named float attributes (+ instanced, updated in place), 16/32-bit indices, 2D / 3D textures
+  (rgba8, srgba8, rgba16f, rgba32f, ...; from files; updated; mipmaps), render targets (colour,
+  depth as a texture, multisampled + `gpu_blit` to resolve), per-draw state, clears, pixel
+  readback (`gpu_read`, 8-bit or float), a layer's texture as a sampler (`gpu_layer_texture`),
+  `gpu_end` to hand the 2D pipeline its state back. Built to `build/anchor-port.exe` by
+  `tools/build_engine_port.bat` (another session's agent instance held anchor.exe); drive with
+  `ANCHOR_ENGINE_BIN=.../build/anchor-port.exe anchor drive start .`. Not yet: the web build,
+  recording.
+- **Proof 1, the GL replay:** a three.js frame captured at the GL level (`web/src/glcapture.js`,
+  `?glcapture`, `GAME.glcap(dir)`) replayed on the gpu layer (`port/replay.lua`) matches three.js's
+  own frame to the floor set by software vs hardware GL (glass and transmission included):
+  ~6-10% of pixels off by >1 level (dither flips), ~0.3% by >16 (`tools/glcap_compare.py`).
+- **Proof 2, the Lua renderer:** the empty cave from the room camera, rendered by the Lua three.js
+  (`port/three/`: math, core, materials, renderer; `port/post.lua` = render.js;
+  `port/cave.lua` = cave.js on exported assets) matches three.js at the same tick: every uniform
+  both sides set agrees within 1e-5 (`tools/port_compare.py` against a capture, draw by draw),
+  pixels at the same floor (6.8% >1, 0.31% >16).
+- Tools: `GAME.program_map_start()/program_map_write(dir)` + `tools/port_programs.py` (the program
+  library, assets/port/programs); `GAME.port_export(dir, what)` (`web/src/port_export.js`) +
+  `tools/port_assets.py` (assets/port/<group>); `?manual` starts the web build paused (ticks line
+  up with the Anchor build); `port_trace_frame(path)` in the Anchor build.
+- Every three.js material now has a name (`named()`, util.js); scenes too (render.js, inspect.js).
+- Then (same session): everything else; see the status below.
+
+### Status: the port is complete (2026-09-30, same session)
+Everything main.js runs now runs in the Anchor build (`main.lua`, `boot.lua`, `port/*.lua`): the
+cave; the lich (pose, springs, recoil, hurt); nav, mover, the five cameras, keys and mouse as
+main.js reads them; the snakes with the coil, the coverage and the win; fire, fx, gore, warp; the
+six powers and their director; the six objects (the drop from his hand, their rigid bodies, the
+orbs as balls, the hand's two materials, the floor sizes); the inspect view; the HUD; the ending
+(instant cut, the message fading in). Load to first frame: ~0.7 s (every program compiled at boot).
+
+**Same numbers, not just the same look.** The port computes what Chrome computes, bit for bit:
+- the engine's `js_sin/cos/tan/asin/acos/atan/exp` are correctly rounded (Chrome's V8 takes these
+  from LLVM libc, which rounds correctly; the C library's differ in the last bit 3-7% of the time),
+  `js_hypot` is V8's own formula, `js_fround` is Math.fround (boot.lua points math.* at them);
+  `pow`/`sqrt` already agreed (20000 samples each);
+- where the JS keeps numbers in Float32Arrays that the game reads back (the snakes' radii, the
+  coil's per-ring arrays), the port rounds to float32 at the same stores;
+- JS's `a += b - c` is `a + (b - c)`; RNG draws happen in the JS's evaluation order.
+Verified with full-precision state digests (`tools/port_digest.js` / `.lua` / `_cmp.py`): every
+2 s for 2 minutes of play, a scripted WASD + mouse-goal run, and the ending (T: all six objects
+dropped and settled, the coil, the win at 44.30 s with 12 coiled, black at tick 2766): identical
+to 15 significant digits. This caught real bugs (a Lua `x and nil or y`; float32 radii; operator
+association) and one tie in the game itself: coil.js picks a band's winding (sigma) by comparing
+two dot products that are equal in exact arithmetic, so the browser's rounding decides it (the
+port now rounds the same way; noted, not changed).
+Pictures (`scratch/port_visual/sheet.png`, room camera at five moments, the four other cameras,
+the end screen): ~0.3-0.5% of pixels off by >16 levels (dither and GPU float noise, the floor the
+GL replay set), the end screen identical; the inspect view per object <=0.01%, the traced gem
+1.7% (its internal reflections amplify GPU float differences).
+
+**Engine additions** (`anchor.c`, all generic; `anchor.exe` and `anchor-port.exe` rebuilt;
+`replay-test/check.sh` passes; the web engine build is NOT verified on this machine: no emsdk,
+the new code is guarded for it):
+`gpu_buffer(n)` (+ `gpu_buffer_set`, `gpu_buffer_fill`; float arrays a mesh uploads by copy),
+`gpu_tube` (elliptical sections along a spine into gpu buffers: the snakes),
+`gpu_texture_cube` (cube maps from faces; seamless), `anisotropy` for 2D textures,
+`js_*` math as above, `noise_value3` / `noise_fbm3` (the cave's value noise, same bits as
+cave.js: the floor height went from 17 us to 0.7 us).
+**Performance:** a 60 Hz tick + a frame costs ~12 ms at the busiest moments (the six objects
+falling; ten snakes coiled late in the ending), ~8 ms in play. The renderer sends a material's
+uniforms only when the program or material changes, as three.js does, culls by frustum (view and
+shadow), and caches still objects' matrices.
+**Known differences:** GPU float differences (the gem's sparkle, the skeleton's prism up close);
+the window is 1280x720 at x2 (the browser fills its window); the dither's time phase follows
+each build's own clock; the mouse wheel steps 100 per notch; runs are not recorded (the gpu
+layer is outside the recorder). The web build's warp randomness is now seeded (it was
+Math.random) so both draw the same air: the reference for the side-by-side is
+`rounds/38-port-reference/index.html` (round 37 + the instant cut + the seeded warp), not the
+round 37 page.
+**Run:** `run.bat` (the Anchor build). Drive it: `ANCHOR_ENGINE_BIN=...build/anchor.exe anchor
+drive start .`, `GAME.*` in `port/game.lua` mirrors `window.GAME` (step, state, cam, drop,
+inspect, remove_all, ending, until, ...); exports: `GAME.port_export(dir, ['cave' | 'lich' |
+'statics' | 'items'])` + `tools/port_assets.py`.

@@ -13,9 +13,13 @@
 // placeholder). Round 9: set on fire (fire.js) a snake stops where it is, its lifted neck sinks
 // as it dies, its scales char black with glowing cracks that cool; then the black corpse sinks
 // into the ground in a puff of ash, and another comes.
+// Round 36 (the ending): one that reaches the egg coils around it (coil.js decides where); it
+// crawls to the shell, climbs, winds onto its band over the ones already there, and then turns
+// with its band for good. Another comes out of the dark in its place.
 import * as THREE from 'three';
-import { make_rng, clamp, smoothstep, lerp } from 'game/util.js';
+import { make_rng, clamp, smoothstep, lerp, named } from 'game/util.js';
 import { gi_dynamic } from 'game/gi.js';
+import { create_coil, OFF as COIL_OFF } from 'game/coil.js';
 
 const LEN = 4.4, R0 = 0.08;                   // body length and body radius, metres (03 build, dream-sized: readable from the room camera)
 const RINGS = 72, SIDES = 12;
@@ -40,6 +44,13 @@ const SINK_T = 1.5, SINK_D = 0.34;
 const RESPAWN = [2.0, 5.0];                  // seconds in the dark before a gone snake comes back
 const sink_depth = s => (s.sink < 0 ? 0 : SINK_D*smoothstep(0, SINK_T, s.sink));
 const flat_at = s => (s < 0.11 ? 0.62 : lerp(0.62, 0.84, smoothstep(0.11, 0.3, s)));   // head flatter than body
+// round 36: coiling. It slows as it climbs; once wound it turns with its band at CHURN m/s (its
+// body sliding along itself), easing there over CHURN_T s; the egg counts as covered at WIN.
+const WRAP_SPEED = 0.72, CHURN = 0.34, CHURN_T = 3.0, WIN = 0.97;
+// over the others: a body rises LIFT_K of what would clear the ones under it (crossings squeeze
+// together) and never more than LIFT_MAX (at full clearance the pile stood 45 cm off the egg in
+// loops); a coiled snake holds its head HEAD_UP off the pile, the front HEAD_LEN of it curving up
+const LIFT_K = 0.6, LIFT_MAX = 0.2, HEAD_UP = 0.15, HEAD_LEN = 0.55;
 
 // scale texture: dark olive-bronze back with overlapping scale rows, pale belly
 function scale_texture() {
@@ -71,7 +82,7 @@ function scale_texture() {
 
 export function create_snakes(R, cave, get_lich_pos, fire, count = 8, seed = 5) {
   const rng = make_rng(seed);
-  const mat = new THREE.MeshStandardMaterial({ map: scale_texture(), roughness: 0.3, metalness: 0.0 });
+  const mat = named(new THREE.MeshStandardMaterial({ map: scale_texture(), roughness: 0.3, metalness: 0.0 }), 'snakes.body');
   if (cave.GU) gi_dynamic(mat, cave.GU);
   // scales are glossy: their edges catch whatever light is around (the bounce light included),
   // which draws the body's outline against the floor
@@ -122,10 +133,15 @@ uniform float uSnakeT;`)
     };
     mat.customProgramCacheKey = () => 'snake_gi_rim_burn';
   }
-  const eye_mat = new THREE.MeshStandardMaterial({ color: 0x0b0a08, roughness: 0.08, metalness: 0.0 });
+  const eye_mat = named(new THREE.MeshStandardMaterial({ color: 0x0b0a08, roughness: 0.08, metalness: 0.0 }), 'snakes.eye');
   const eye_geo = new THREE.SphereGeometry(1, 8, 6);
   const egg = cave.egg.position;
   const S = [];
+  // round 36: the coil (coil.js): the shell's centre, the floor, the snake's length
+  const coil = create_coil({ centre: [egg.x, egg.y + 0.4, egg.z], ground_y: cave.ground_y, rng: make_rng(seed*131 + 7), len: LEN });
+  const coiled = [];                  // in the order they reached the egg (a later one lies over an earlier)
+  let coil_mode = 0, coverage = 0, won = false, won_t = -1, cover_tick = 0;
+  let covered_mask = new Uint8Array(coil.samples.length);
 
   // one tube geometry per snake, rewritten each frame
   const make_mesh = () => {
@@ -167,7 +183,7 @@ uniform float uSnakeT;`)
     for (let i = 0; i < 400; i++) s.trail.push([s.x - Math.cos(s.dir)*i*0.01, s.z - Math.sin(s.dir)*i*0.01]);
     s.dying = -1; s.delay = delay; s.scale = 1; s.dist = 0;
     s.burn = null; s.sag = 0; s.sink = -1; s.burnt = false;
-    s.fx = null; s.leak = 0; s.leak_at = null; s.claim = null;
+    s.fx = null; s.leak = 0; s.leak_at = null; s.claim = null; s.coil = null;
     s.m.geometry.attributes.aBurn.array.fill(0); s.m.geometry.attributes.aBurn.needsUpdate = true;
   };
   for (let i = 0; i < count; i++) { const s = make_mesh(); spawn(s, i*1.6); S.push(s); }
@@ -176,9 +192,9 @@ uniform float uSnakeT;`)
   let reached = 0, dissolved = 0;                // tests: dissolved = taken by leakage
   const reach_log = [];               // tests: what each one that got through was doing
 
-  const P = [], T = new THREE.Vector3(), Nn = new THREE.Vector3(), Bn = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  const P = [], U = [], T = new THREE.Vector3(), Nn = new THREE.Vector3(), Bn = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
   const RK = new Float32Array(RINGS), GL = new Float32Array(RINGS), SH = [0, 0, 0];
-  for (let i = 0; i < RINGS; i++) P.push(new THREE.Vector3());
+  for (let i = 0; i < RINGS; i++) { P.push(new THREE.Vector3()); U.push(new THREE.Vector3(0, 1, 0)); }
 
   function update(t, dt) {
     uSnakeT.value = t;
@@ -186,6 +202,7 @@ uniform float uSnakeT;`)
       if (s.delay > 0) { s.delay -= dt; s.m.visible = false; s.eyes.forEach(e => (e.visible = false)); continue; }
       const hide = !!(s.fx && s.fx.hide);
       s.m.visible = !hide; s.eyes.forEach(e => (e.visible = !hide));
+      if (s.coil) { coil_tick(s, dt); continue; }          // placed below, with the others coiled
       if (s.sink >= 0) {
         // the black corpse goes into the ground
         s.sink += dt;
@@ -215,11 +232,175 @@ uniform float uSnakeT;`)
         const last = s.trail[0];
         if (Math.hypot(s.x - last[0], s.z - last[1]) > 0.01) s.trail.unshift([s.x, s.z]);
         if (s.trail.length > 600) s.trail.length = 600;
-        if (Math.hypot(s.x - egg.x, s.z - egg.z) < 1.1) { s.dying = 0; reached++; reach_log.push({ t: +t.toFixed(2), claim: s.claim, until: s.claim_until, leak: +s.leak.toFixed(2), speed: s.speed }); }   // it reached the egg (placeholder: it shrinks away)
+        if (Math.hypot(s.x - egg.x, s.z - egg.z) < 1.1) { reached++; reach_log.push({ t: +t.toFixed(2), claim: s.claim, until: s.claim_until, leak: +s.leak.toFixed(2), speed: s.speed }); start_coil(s); continue; }   // it reached the egg: it coils around it (round 36)
       }
       if (s.leak >= 1.12 && !s.burn && s.sink < 0) { dissolved++; if (api.on_dissolve) api.on_dissolve(s); respawn(s); continue; }   // dissolved into nothing
       build(s);
     }
+    // round 36: the coiled ones, in the order they came (a later one lies over an earlier); and
+    // how much of the egg they cover (every 0.1 s)
+    if (coiled.length) {
+      for (const q of coiled) coil_base(q);
+      stack_lifts();
+      for (const q of coiled) build(q);
+      if (++cover_tick % 6 === 0) {
+        coverage = coil.coverage(coiled.map(q => q.coil), covered_mask);
+        if (!won && coverage >= WIN) { won = true; won_t = t; if (api.on_won) api.on_won(); }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ the coil (round 36)
+  // It reached the egg: from its head, the way it was going, a curve over the floor to where it
+  // meets the shell; up the shell to where its band starts; round its band. The head goes along
+  // that path and the body follows it exactly (as on the floor); once the tail is on the band it
+  // is wound, and from then on the band turns about its axis.
+  function start_coil(s) {
+    const hx = s.x, hz = s.z, hd = [Math.cos(s.dir), Math.sin(s.dir)];
+    const d_b = coil.base_dir(hx, hz, R0*flat_at(1));
+    const bp = coil.lifted(d_b, COIL_OFF, [0, 0, 0]);
+    const dist = Math.hypot(bp[0] - hx, bp[2] - hz), k = Math.min(0.45, dist*0.5);
+    const cx = hx + hd[0]*k, cz = hz + hd[1]*k;
+    const n = Math.max(4, Math.ceil(dist/0.02));
+    const gx = [], gz = [], garc = [0];
+    for (let i = 0; i <= n; i++) {
+      const f = i/n, a = (1 - f)*(1 - f), b = 2*(1 - f)*f, c = f*f;
+      gx.push(a*hx + b*cx + c*bp[0]); gz.push(a*hz + b*cz + c*bp[2]);
+      if (i) garc.push(garc[i - 1] + Math.hypot(gx[i] - gx[i - 1], gz[i] - gz[i - 1]));
+    }
+    const g_len = garc[n];
+    const plan = coil.plan(coil_mode, d_b, hd, coiled.map(q => q.coil.band), covered_mask);
+    const B = plan.band, st = plan.stem, sa = plan.stem_arc, st_len = sa[sa.length - 1];
+    const dirs = [...st, ...B.dirs.slice(1)];
+    const earc = [...sa.map(a => g_len + a), ...B.arc.slice(1).map(a => g_len + st_len + a)];
+    const band_at = g_len + st_len;
+    const mk = () => Array.from({ length: RINGS }, () => [0, 0, 0]);
+    s.coil = { phase: 'wrap', t: 0, set_t: 0, order: coiled.length, band: B, gx, gz, garc, e0: g_len, dirs, earc, band_at, Qlen: earc[earc.length - 1],
+      h: 0, v: WRAP_SPEED*s.speed, alpha: 0, spin: coil_mode === 1 ? 1 : rng.float(0.8, 1.2),
+      foot: mk(), nrm: mk(), gp: mk(), rad: new Float32Array(RINGS), fl: new Float32Array(RINGS), off: new Float32Array(RINGS),
+      lift: new Float32Array(RINGS), hgt: new Float32Array(RINGS), ue: new Float32Array(RINGS), on: new Array(RINGS).fill(false) };
+    s.claim = null;
+    coiled.push(s);
+    if (api.on_coil) api.on_coil(s);
+    // another comes out of the dark in its place (until the egg is covered)
+    if (!won) { const q = make_mesh(); spawn(q, rng.float(1.0, 3.0)); S.push(q); }
+  }
+  function coil_tick(s, dt) {
+    const c = s.coil;
+    c.t += dt;
+    s.m.visible = true; s.eyes.forEach(e => (e.visible = true));
+    if (c.phase === 'wrap') {
+      const was = c.h;
+      c.h = Math.min(c.Qlen, c.h + c.v*dt);
+      if (was < c.e0 && c.h >= c.e0 && api.on_grip) api.on_grip(s);        // its head is on the shell
+      if (c.h - LEN >= c.band_at - 0.02 || c.h >= c.Qlen) { c.h = c.Qlen; c.phase = 'set'; }
+    } else {
+      c.set_t += dt;
+      const v = lerp(c.v, CHURN, smoothstep(0, CHURN_T, c.set_t));
+      c.alpha += c.band.sigma*v/c.band.rho*c.spin*dt;
+    }
+  }
+  const DQ = [0, 0, 0];
+  // where each ring is before lying over the others: on the shell (its direction, the shell point
+  // under it, the normal there), or on the floor
+  function coil_base(s) {
+    const c = s.coil, A = c.earc, D = c.dirs;
+    const ax = c.band.axis, ca = Math.cos(c.alpha), sn = Math.sin(c.alpha), rot = c.phase === 'set' && c.alpha !== 0;
+    const raise = 1 - smoothstep(0, 0.5, c.h);
+    let ti = 0, acc = 0;
+    for (let i = 0; i < RINGS; i++) {
+      const sa = S_AT(i), q = c.h - sa;
+      const r = R0*radius_at(sa), fl = flat_at(sa);
+      c.rad[i] = r; c.fl[i] = fl; c.off[i] = r*fl*0.8 + 0.004;
+      if (q >= c.e0) {
+        let lo = 0, hi = A.length - 1;
+        if (q >= A[hi]) lo = hi - 1;
+        else while (hi - lo > 1) { const m = (lo + hi) >> 1; if (A[m] < q) lo = m; else hi = m; }
+        const a = D[lo], b = D[lo + 1], f = clamp((q - A[lo])/((A[lo + 1] - A[lo]) || 1), 0, 1);
+        let x = a[0] + (b[0] - a[0])*f, y = a[1] + (b[1] - a[1])*f, z = a[2] + (b[2] - a[2])*f;
+        if (rot) {
+          // turned about the band's axis (Rodrigues)
+          const kd = ax[0]*x + ax[1]*y + ax[2]*z;
+          const cx = ax[1]*z - ax[2]*y, cy = ax[2]*x - ax[0]*z, cz = ax[0]*y - ax[1]*x;
+          x = x*ca + cx*sn + ax[0]*kd*(1 - ca); y = y*ca + cy*sn + ax[1]*kd*(1 - ca); z = z*ca + cz*sn + ax[2]*kd*(1 - ca);
+        }
+        const l = Math.hypot(x, y, z) || 1;
+        DQ[0] = x/l; DQ[1] = y/l; DQ[2] = z/l;
+        coil.surface(DQ, c.foot[i], c.nrm[i]);
+        c.on[i] = true; c.ue[i] = smoothstep(c.e0, c.e0 + 0.3, q);
+      } else {
+        let x, z;
+        if (q >= 0) {
+          // the floor, from where it was to the shell
+          const G = c.garc; let j = 1;
+          while (j < G.length - 1 && G[j] < q) j++;
+          const f = clamp((q - G[j - 1])/((G[j] - G[j - 1]) || 1), 0, 1);
+          x = c.gx[j - 1] + (c.gx[j] - c.gx[j - 1])*f; z = c.gz[j - 1] + (c.gz[j] - c.gz[j - 1])*f;
+        } else {
+          // still on the way it came in
+          const want = -q;
+          x = s.trail[s.trail.length - 1][0]; z = s.trail[s.trail.length - 1][1];
+          while (ti < s.trail.length - 1) {
+            const a = s.trail[ti], b = s.trail[ti + 1];
+            const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+            if (acc + l >= want) { const f = (want - acc)/(l || 1); x = a[0] + (b[0] - a[0])*f; z = a[1] + (b[1] - a[1])*f; break; }
+            acc += l; ti++;
+          }
+        }
+        const lift = RAISE*smoothstep(RAISE_LEN, 0.05, sa)*raise;
+        const g = c.gp[i]; g[0] = x; g[1] = cave.ground_y(x, z) + r*fl + lift; g[2] = z;
+        c.on[i] = false;
+      }
+    }
+  }
+  // each lies over the ones that came before it: where a ring passes over another body, it rises
+  // just enough to clear it (the two cross-sections, flattened, touching)
+  function stack_lifts() {
+    for (let k = 0; k < coiled.length; k++) {
+      const c = coiled[k].coil, Lf = c.lift;
+      Lf.fill(0);
+      for (let j = 0; j < k; j++) {
+        const o = coiled[j].coil;
+        for (let i = 0; i < RINGS; i++) {
+          if (!c.on[i]) continue;
+          const f = c.foot[i], ri = c.rad[i], bi = ri*c.fl[i]*0.8;
+          for (let m = 0; m < RINGS; m++) {
+            if (!o.on[m]) continue;
+            const g = o.foot[m], dx = f[0] - g[0], dy = f[1] - g[1], dz = f[2] - g[2];
+            const Dl = (ri + o.rad[m])*0.9, d2 = dx*dx + dy*dy + dz*dz;
+            if (d2 >= Dl*Dl) continue;
+            const need = (o.hgt[m] + (bi + o.rad[m]*o.fl[m])*Math.sqrt(1 - d2/(Dl*Dl)) - c.off[i])*LIFT_K;
+            if (need > Lf[i]) Lf[i] = need;
+          }
+        }
+      }
+      // eased along the body (never lower than it must be)
+      for (let pass = 0; pass < 3; pass++) {
+        let prev = Lf[0];
+        for (let i = 0; i < RINGS; i++) {
+          const cur = Lf[i], nx = i < RINGS - 1 ? Lf[i + 1] : cur;
+          Lf[i] = Math.max(cur, 0.5*cur + 0.25*(prev + nx));
+          prev = cur;
+        }
+      }
+      for (let i = 0; i < RINGS; i++) c.hgt[i] = c.off[i] + Math.min(LIFT_MAX, Lf[i]);
+    }
+  }
+  function coil_place(s) {
+    const c = s.coil;
+    for (let i = 0; i < RINGS; i++) {
+      if (c.on[i]) {
+        const f = c.foot[i], n = c.nrm[i], h = c.hgt[i] + HEAD_UP*smoothstep(HEAD_LEN, 0.06, S_AT(i))*c.ue[i];
+        P[i].set(f[0] + n[0]*h, f[1] + n[1]*h, f[2] + n[2]*h);
+        U[i].set(n[0], n[1], n[2]).lerp(UP, 1 - c.ue[i]).normalize();
+      } else {
+        const g = c.gp[i];
+        P[i].set(g[0], g[1], g[2]);
+        U[i].copy(UP);
+      }
+      s.spine[i].copy(P[i]); s.radii[i] = c.rad[i];
+    }
+    s.x = P[0].x; s.z = P[0].z;
   }
 
   // the spine: points along the trail by arc length, the front raised into a neck curve
@@ -239,7 +420,9 @@ uniform float uSnakeT;`)
       GL[i] = s.leak > 0 ? Math.min(1, 0.62*Math.exp(-(((u - f)/0.04)**2)) + 0.4*(1 - smoothstep(f, f + 0.12, u))*Math.min(1, s.leak*4)) : 0;
       if (fx) { if (fx.radk) RK[i] *= fx.radk(i); if (fx.glow) GL[i] = Math.max(GL[i], fx.glow(i)); }
     }
-    for (let i = 0; i < RINGS; i++) {
+    if (s.coil) coil_place(s);
+    else for (let i = 0; i < RINGS; i++) {
+      U[i].copy(UP);
       const target = S_AT(i);
       let x = s.trail[s.trail.length - 1][0], z = s.trail[s.trail.length - 1][1];
       while (ti < s.trail.length - 1) {
@@ -278,7 +461,9 @@ uniform float uSnakeT;`)
     for (let i = 0; i < RINGS; i++) {
       const a = P[Math.max(0, i - 1)], b = P[Math.min(RINGS - 1, i + 1)];
       T.subVectors(a, b).normalize();                             // pointing toward the head
-      Bn.crossVectors(T, UP).normalize();                         // sideways
+      Bn.crossVectors(T, U[i]);                                   // sideways (U: up, or out of the shell for a coiled one)
+      if (Bn.lengthSq() < 1e-8) Bn.crossVectors(T, UP);
+      Bn.normalize();
       Nn.crossVectors(Bn, T).normalize();                         // up, square to the body
       const target = S_AT(i);
       const r = R0*radius_at(target)*sc*RK[i], fl = flat_at(target);
@@ -308,7 +493,7 @@ uniform float uSnakeT;`)
     // eyes: on the sides of the head, a little up, near the front of the widest part
     const ei = Math.round(I_AT(0.055));
     const a = P[Math.max(0, ei - 1)], b = P[ei + 1];
-    T.subVectors(a, b).normalize(); Bn.crossVectors(T, UP).normalize(); Nn.crossVectors(Bn, T).normalize();
+    T.subVectors(a, b).normalize(); Bn.crossVectors(T, U[ei]).normalize(); Nn.crossVectors(Bn, T).normalize();
     const rr = R0*radius_at(0.055)*sc*RK[ei];
     s.eyes.forEach((e, k) => {
       const side = k ? 1 : -1;
@@ -326,10 +511,15 @@ uniform float uSnakeT;`)
   // give it to another power (lift, wind, beam, lens): `fx` drives it from now on (see build())
   function take(s, fx) { if (!free(s)) return false; s.fx = fx; return true; }
   // out of the dark and crawling (a dissolving one still counts)
-  const free = s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0 && !s.fx;
+  const free = s => s.delay <= 0 && s.dying < 0 && !s.burn && s.sink < 0 && !s.fx && !s.coil;
   const live = () => S.filter(free);
   function set_ember(c) { uEmber.value.setRGB(c[0], c[1], c[2]); }
   const api = { update, S, ignite, LEN, take, live, free, set_ember, respawn, RINGS, SIDES, mat, egg, reach_log, arc: S_AT, ring_at: I_AT, get reached() { return reached; }, get dissolved() { return dissolved; },
-    on_dissolve: null };            // round 23: leak.js puffs its last smoke here
+    on_dissolve: null,              // round 23: leak.js puffs its last smoke here
+    // round 36: the coil. on_coil(s) when one reaches the egg, on_grip(s) when its head is on the
+    // shell, on_won() when the egg is covered
+    coil, coiled, WIN, on_coil: null, on_grip: null, on_won: null,
+    get coverage() { return coverage; }, get won() { return won; }, get won_t() { return won_t; },
+    get coil_mode() { return coil_mode; }, set coil_mode(i) { coil_mode = ((i % 2) + 2) % 2; } };
   return api;
 }

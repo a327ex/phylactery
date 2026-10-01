@@ -64,6 +64,8 @@ export function make_rng(seed = 1) {
 }
 
 // ---------------------------------------------------------------- math
+// the port to Anchor (2026-09-30): every material carries a stable name (the Anchor build's do too)
+export const named = (m, name) => { m.name = name; return m; };
 export const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 export const lerp = (a, b, t) => a + (b - a)*t;
 export const inv_lerp = (a, b, x) => (x - a)/(b - a);
