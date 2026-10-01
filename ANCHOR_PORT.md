@@ -157,10 +157,10 @@ running renderer: `web/src/devtrace.js`, `GAME.trace_programs()`; 65 programs as
    Anchor and is pixel-compared with three.js's own frame (the renderer is right before any game
    logic moves); then the same scripted play in both, frames compared at the same ticks.
 
-**Known gap: recordings.** The gpu layer draws outside the layer command stream the recorder
-captures, and a repainted 640x360 frame per tick would be gigabytes a minute. Until the gpu
-command stream records (its own later piece of work), this game runs with `record = false`: his
-runs and mine are not carded as replays; handovers use captures and clips as in three.js.
+**Recordings (closed 2026-10-01, APR v13).** The gpu layer records its own command stream
+(Anchor/engine/docs/REPLAY.md "The gpu layer"): every run records like any Anchor game again,
+`record = false` is gone from main.lua, and the recordings play back byte-identical on the desktop
+and play in the browser. Busiest scene ~1.1 MB/s.
 
 ### Progress (2026-09-30)
 - **Engine: the gpu layer** (`gpu_*` in anchor.c, section "GPU"): programs from source, meshes
@@ -230,8 +230,7 @@ uniforms only when the program or material changes, as three.js does, culls by f
 shadow), and caches still objects' matrices.
 **Known differences:** GPU float differences (the gem's sparkle, the skeleton's prism up close);
 the window is 1280x720 at x2 (the browser fills its window); the dither's time phase follows
-each build's own clock; the mouse wheel steps 100 per notch; runs are not recorded (the gpu
-layer is outside the recorder). The web build's warp randomness is now seeded (it was
+each build's own clock; the mouse wheel steps 100 per notch. (Runs record since APR v13, 2026-10-01.) The web build's warp randomness is now seeded (it was
 Math.random) so both draw the same air: the reference for the side-by-side is
 `rounds/38-port-reference/index.html` (round 37 + the instant cut + the seeded warp), not the
 round 37 page.

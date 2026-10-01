@@ -10,7 +10,7 @@
   THIS FILE HOLDS DEFINITIONS ONLY (it reloads on save); boot.lua does the one-time work.
   Drive it with:  anchor drive start .   anchor drive eval . 'engine_step(60)'   anchor drive stop .
   GAME (port/game.lua) is the harness, as window.GAME in the three.js build.
-  The gpu layer is not recorded yet, so runs don't record (record = false).
+  Runs record like any Anchor game (the gpu layer records since APR v13, 2026-10-01).
 ]]
 
 require('anchor')({
@@ -19,7 +19,6 @@ require('anchor')({
   scale  = 2,
   title  = 'Lich Survivors',
   filter = 'rough',
-  record = false,
   boot   = {'boot.lua'},
 })
 
