@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { gi_dynamic } from 'game/gi.js';
 import { gem_material, GEM_LEVELS, PATTERNS } from 'game/gem.js';
 import { build_skeleton_geometry, RIG, FINGERS } from 'game/skeleton.js';
+import { make_rng } from 'game/util.js';
 
 export function create_lich(R, opts = {}) {
   const mat = gem_material({ flat: false, roughness: 0.44, color: 0xecdab2 });   // round 8: warmer ivory (owner: "more yellow, less grey")
@@ -172,9 +173,11 @@ export function create_lich(R, opts = {}) {
   const AQ = { e: new THREE.Quaternion(), c: new THREE.Quaternion(), r: new THREE.Quaternion(), i: new THREE.Quaternion(), t: new THREE.Quaternion() };
   const AV = { b: new THREE.Vector3(), t: new THREE.Vector3(), f: new THREE.Vector3(), d: new THREE.Vector3(), ax: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
   const NO_MOTION = { a: [0, 0, 0], v: [0, 0, 0], push: [0, 0], yaw_a: 0, yaw_v: 0, look: 0, gaze: 0, gaze_p: 0, gaze_w: 0 };
+  const hit_rng = make_rng(97);                // the jolts' directions (seeded: the port to Anchor compares runs)
 
   const lich = {
     root, body, mat, light, MODES, build_ms, tris, nodes: { pelvis, spine, chest, neck, head, jaw, arms, legs },
+    _port: { GEO },                           // the port to Anchor: port_export.js reads the bones
     JUICE, springs: S, GLOWS, PATTERNS, rc: RC, hurt: HURT, HANDS,
     get pattern() { return GU.uPattern.value; },
     set pattern(i) { GU.uPattern.value = ((i % PATTERNS.length) + PATTERNS.length) % PATTERNS.length; },
@@ -363,8 +366,8 @@ export function create_lich(R, opts = {}) {
     // hurt (round 36): a jolt (1 = a snake gripping the egg): his head snaps back, his chest
     // arches, he drops, his legs kick, his casting arm is yanked back, his hands clench, his jaw drops
     hit(a = 1) {
-      S.hp.v -= 3.2*a; S.hr.v += (Math.random() < 0.5 ? -1 : 1)*1.4*a; S.cp.v -= 1.8*a; S.bp.v -= 0.9*a;
-      S.cy.v += (Math.random() < 0.5 ? -1 : 1)*1.2*a;
+      S.hp.v -= 3.2*a; S.hr.v += hit_rng.sign()*1.4*a; S.cp.v -= 1.8*a; S.bp.v -= 0.9*a;
+      S.cy.v += hit_rng.sign()*1.2*a;
       HURT.drop.v -= 1.1*a; HURT.clench.v += 9*a; HURT.legs.v -= 2.4*a; S.jw.v += 3.5*a;
       RC[1].kick += 0.55*a*lich.recoil_gain;
     },

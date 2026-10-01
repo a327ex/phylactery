@@ -15,6 +15,7 @@
 // Round 5 adds one that does emit, off by default in the material: GLOW, the same inner rainbow
 // shining faintly on its own, so the bones still read in the dark while he is steered there.
 import * as THREE from 'three';
+import { named } from 'game/util.js';
 
 const DECL = /* glsl */`
 uniform float uGemTime, uFire, uInner, uGlow, uGemDebug, uPrismLo, uPrismHi, uLitDim, uPattern, uLift;
@@ -39,12 +40,12 @@ export const GEM_LEVELS = [
 export const PATTERNS = ['FINE (ROUND 7)', 'SOFT', 'PER BONE', 'GLINTS ONLY'];
 
 export function gem_material(opts = {}) {
-  const m = new THREE.MeshPhysicalMaterial({
+  const m = named(new THREE.MeshPhysicalMaterial({
     color: opts.color ?? 0xebe4d6, roughness: opts.roughness ?? 0.3, metalness: 0,
     ior: 1.9, specularIntensity: 1.0,
     iridescence: 0.35, iridescenceIOR: 1.45, iridescenceThicknessRange: [220, 820],
     flatShading: opts.flat ?? true,
-  });
+  }), 'lich.gem');
   const U = { uGemTime: { value: 0 }, uFire: { value: 1.6 }, uInner: { value: 0.16 }, uGlow: { value: 0 }, uGemDebug: { value: 0 },
     uPrismLo: { value: 0.02 }, uPrismHi: { value: 1.0 }, uLitDim: { value: 0.36 }, uPattern: { value: 1 /* SOFT: owner, round 8 */ }, uLift: { value: 0 } };
   m.userData.gemU = U;

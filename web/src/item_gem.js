@@ -11,6 +11,7 @@
 // (owner: "let's just use the initial gem you made") restores round 28's brilliant as it was
 // (its source taken from rounds/28-objects' bundle), seen in round 28's inspect environment.
 import * as THREE from 'three';
+import { named } from 'game/util.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 
 export const GEM_CUTS = ['ROUND BRILLIANT'];
@@ -144,7 +145,7 @@ export function gem_material(env, planes, opts = {}) {
     uAbsorb: { value: new THREE.Vector3(...(opts.absorb ?? [0.02, 0.02, 0.03])) },
     uTint: { value: new THREE.Vector3(...(opts.tint ?? [1, 1, 1])) },
   };
-  const m = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VS, fragmentShader: FS });
+  const m = named(new THREE.ShaderMaterial({ uniforms: U, vertexShader: VS, fragmentShader: FS }), 'item.gem');
   m.userData.U = U;
   return m;
 }

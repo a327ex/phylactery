@@ -15,7 +15,7 @@
 //            spreads under the burst), glossy so the light catches them; a red mist
 // Everything lies a while, then goes into the ground like the other corpses.
 import * as THREE from 'three';
-import { smoothstep } from 'game/util.js';
+import { smoothstep, named } from 'game/util.js';
 import { gi_dynamic } from 'game/gi.js';
 
 const GRAV = 9.8;
@@ -72,8 +72,8 @@ export function create_gore(R, cave, snakes, fx, rng) {
   const DEC_N = 90, decals = [];
   const plane = new THREE.PlaneGeometry(1, 1); plane.rotateX(-Math.PI/2);
   for (let v = 0; v < 4; v++) {
-    const m = lit(new THREE.MeshStandardMaterial({ color: 0x4a0604, alphaMap: splat_texture(v + 1), transparent: true, depthWrite: false,
-      roughness: 0.14, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    const m = lit(named(new THREE.MeshStandardMaterial({ color: 0x4a0604, alphaMap: splat_texture(v + 1), transparent: true, depthWrite: false,
+      roughness: 0.14, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 'gore.splat'));
     const mesh = new THREE.InstancedMesh(plane, m, DEC_N);
     mesh.frustumCulled = false; mesh.receiveShadow = true; mesh.renderOrder = 2;
     const D = [];
@@ -112,7 +112,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
   bg.setAttribute('aVel', new THREE.BufferAttribute(bvel, 3));
   bg.setAttribute('aCol', new THREE.BufferAttribute(bcol, 4));
   bg.setAttribute('aSize', new THREE.BufferAttribute(bsize, 1));
-  const bmat = new THREE.ShaderMaterial({
+  const bmat = named(new THREE.ShaderMaterial({
     uniforms: { uScale: { value: 1 }, uRes: { value: new THREE.Vector2(640, 360) } },
     vertexShader: `attribute vec3 aVel; attribute vec4 aCol; attribute float aSize; uniform float uScale; uniform vec2 uRes;
       varying vec4 vCol; varying vec2 vDir; varying float vK;
@@ -140,7 +140,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
         vec3 c = mix(vCol.rgb, vCol.rgb*2.6 + vec3(0.04, 0.01, 0.01), smoothstep(0.7, 1.0, along)*0.5);
         gl_FragColor = vec4(c, vCol.a*a); }`,
     transparent: true, depthWrite: false,
-  });
+  }), 'gore.blood');
   const bpts = new THREE.Points(bg, bmat); bpts.frustumCulled = false; bpts.renderOrder = 10;
   R.world_scene.add(bpts);
   const B = [];
@@ -177,7 +177,7 @@ export function create_gore(R, cave, snakes, fx, rng) {
   }
 
   // ---------------------------------------------------------------- the pieces of its body
-  const flesh_mat = lit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0, side: THREE.DoubleSide, flatShading: true }));
+  const flesh_mat = lit(named(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0, side: THREE.DoubleSide, flatShading: true }), 'gore.flesh'));
   const CAPV = 3*SIDES + 1, MAXV = MAXR*SIDES + 2 + 2*CAPV;
   const PIECES = [];
   for (let k = 0; k < 18; k++) {
@@ -395,18 +395,18 @@ export function create_gore(R, cave, snakes, fx, rng) {
   // a lump of flesh: an icosphere pushed about so no two faces agree
   const lump = new THREE.IcosahedronGeometry(1, 1);
   { const p = lump.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.7 + 0.5*Math.abs(Math.sin(i*12.9898)*43758.5453 % 1); p.setXYZ(i, p.getX(i)*k, p.getY(i)*k, p.getZ(i)*k); } lump.computeVertexNormals(); }
-  const meat = debris_pool(lump, lit(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.22, metalness: 0 })), 320, true);
-  const bone_mat = lit(new THREE.MeshStandardMaterial({ color: 0xb4a78e, roughness: 0.5, metalness: 0 }));
+  const meat = debris_pool(lump, lit(named(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.22, metalness: 0 }), 'gore.meat')), 320, true);
+  const bone_mat = lit(named(new THREE.MeshStandardMaterial({ color: 0xb4a78e, roughness: 0.5, metalness: 0 }), 'gore.bone'));
   const ribs = debris_pool(new THREE.TorusGeometry(1, 0.06, 3, 7, 1.9), bone_mat, 160, false);
   const verts = debris_pool(new THREE.DodecahedronGeometry(1, 0), bone_mat, 80, false);
   // skin torn off in scraps, scales out, red within
   const scrap_geo = new THREE.PlaneGeometry(1, 1, 2, 1);
   { const p = scrap_geo.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, (Math.abs(p.getX(i)) > 0.2 ? 0.18 : 0)); scrap_geo.computeVertexNormals(); }
-  const scraps = debris_pool(scrap_geo, lit(new THREE.MeshStandardMaterial({ color: 0x3a3629, roughness: 0.35, metalness: 0, side: THREE.DoubleSide })), 120, false);
+  const scraps = debris_pool(scrap_geo, lit(named(new THREE.MeshStandardMaterial({ color: 0x3a3629, roughness: 0.35, metalness: 0, side: THREE.DoubleSide }), 'gore.scraps')), 120, false);
 
   // ---------------------------------------------------------------- guts
   const GN = 11, GS = 6, GUTS = [];
-  const gut_mat = lit(new THREE.MeshStandardMaterial({ color: 0x6e3634, roughness: 0.22, metalness: 0 }));
+  const gut_mat = lit(named(new THREE.MeshStandardMaterial({ color: 0x6e3634, roughness: 0.22, metalness: 0 }), 'gore.gut'));
   for (let k = 0; k < 10; k++) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(GN*GS*3), 3));

@@ -1,50 +1,46 @@
 --[[
-  lich-survivors — an Anchor 3 game.
+  Lich Survivors -- the Anchor build (the port from three.js, started 2026-09-30).
 
-  Scaffolded by `anchor new`. Read Anchor/engine/docs/SURFACE.md first: how a
-  game is run, driven, recorded and reloaded.
+  The three.js build (web/) is the reference; this one must draw and play exactly as it does
+  (ANCHOR_PORT.md section 5). Rendering runs three.js's own compiled programs on the engine's gpu
+  layer through a small three.js in Lua (port/three/); the game's modules are ports of web/src/
+  (port/*.lua), with the heavy static content (the sculpted skeleton and objects, the cave and its
+  light bake, textures, environment maps) exported from the three.js build (assets/port/).
 
-  THIS FILE HOLDS DEFINITIONS ONLY, so saving it re-runs them in the live
-  globals — functions rebind, constants go live, and the state boot.lua made
-  survives. One-time work (layers, fonts, binds, state) belongs in boot.lua,
-  which the init table names below and which never reloads.
-
-  Run it with run.bat (the owner's). Drive it with:
-    anchor drive start .
-    anchor drive eval  . 'engine_step(60) return box_x'
-    anchor drive stop  .
+  THIS FILE HOLDS DEFINITIONS ONLY (it reloads on save); boot.lua does the one-time work.
+  Drive it with:  anchor drive start .   anchor drive eval . 'engine_step(60)'   anchor drive stop .
+  GAME (port/game.lua) is the harness, as window.GAME in the three.js build.
+  The gpu layer is not recorded yet, so runs don't record (record = false).
 ]]
 
 require('anchor')({
-  width  = 480,
-  height = 270,
+  width  = 640,
+  height = 360,
   scale  = 2,
-  title  = 'lich-survivors',
+  title  = 'Lich Survivors',
   filter = 'rough',
+  record = false,
   boot   = {'boot.lua'},
 })
 
--- Definitions: a saved colour or constant is live on the next frame.
-COL_BG  = color(26, 26, 26)
-COL_BOX = color(230, 165, 80)
-
-BOX_SIZE  = 32
-BOX_SPEED = 120        -- pixels per second
-
+-- input, then the game's 60 Hz ticks (the engine updates at 120 Hz)
 function update(dt)
   sync_engine_globals()
-  if input_pressed('quit') then engine_quit() end
-  box_x = (box_x + BOX_SPEED*dt) % (width + BOX_SIZE)
+  G.game.input_update()
+  G.game.frame(dt)
+  G.render_acc = G.render_acc + dt
   process_destroy_queue()
 end
 
 function draw()
-  -- rectangles and text draw from the TOP-LEFT; images and circles centre on (x, y)
-  layer_rectangle(game_layer, 0, 0, width, height, COL_BG())
-  layer_rectangle(game_layer, box_x - BOX_SIZE, math.floor((height - BOX_SIZE)/2),
-                  BOX_SIZE, BOX_SIZE, COL_BOX())
-  layer_render(game_layer)
-  layer_draw(game_layer)
+  local dt = G.game.G.render_dt or G.render_acc
+  G.game.G.render_dt = nil
+  G.render_acc = 0
+  G.game.render(dt)
+  if G.trace_path then port_trace_flush() end
+  G.R.present(G.screen_layer)
+  layer_render(G.screen_layer)
+  layer_draw(G.screen_layer)
 end
 
 require('boot')   -- LAST line: one-time work, after every definition exists

@@ -5,6 +5,7 @@
 // in its thickness (old glass), polishing marks in the faces, and two conchoidal chips knocked
 // out of the rim.
 import * as THREE from 'three';
+import { named } from 'game/util.js';
 
 const R = 0.22;               // radius, m (44 cm across; the attack's is 76)
 // round 29 (owner: "shouldn't a lens that does that kind of attack be convex?"): it was, 14% as
@@ -117,15 +118,15 @@ export function build_lens(ctx = {}) {
   for (const g of [top_g, bot_g, band_g]) g.computeVertexNormals();
   const rough = scratch_texture(7);
   const lit = ctx.lit || (m => m);
-  const glass = rim(lit(new THREE.MeshPhysicalMaterial({
+  const glass = rim(lit(named(new THREE.MeshPhysicalMaterial({
     color: 0xffffff, metalness: 0, roughness: 0.035, roughnessMap: rough, transmission: 1, thickness: 0.075, ior: 1.52,
     dispersion: 0.9, attenuationColor: new THREE.Color(0.8, 0.93, 0.84), attenuationDistance: 0.22,
     specularIntensity: 0.7, envMapIntensity: (ctx.env_i ?? 1)*1.1, side: THREE.FrontSide,
-  })), ctx.rim ?? 0);
-  const frost = lit(new THREE.MeshPhysicalMaterial({
+  }), 'item.lens_glass')), ctx.rim ?? 0);
+  const frost = lit(named(new THREE.MeshPhysicalMaterial({
     color: 0xc9d2c8, metalness: 0, roughness: 0.5, transmission: 0.7, thickness: 0.02, ior: 1.52,
     attenuationColor: new THREE.Color(0.8, 0.92, 0.84), attenuationDistance: 0.12, envMapIntensity: ctx.env_i ?? 1,
-  }));
+  }), 'item.lens_frost'));
   const g = new THREE.Group();
   for (const [geo, mat] of [[top_g, glass], [bot_g, glass], [band_g, frost]]) {
     const m = new THREE.Mesh(geo, mat);

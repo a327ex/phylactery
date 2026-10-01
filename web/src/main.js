@@ -31,6 +31,9 @@ import { draw_text } from 'game/hud_font.js';
 import { create_items, ITEMS, HAND_MATS, SIZES } from 'game/items.js';
 import { create_inspect } from 'game/inspect.js';
 import { COIL_MODES } from 'game/coil.js';
+import { create_devtrace, create_program_map } from 'game/devtrace.js';
+import { GLCAP } from 'game/glcapture.js';
+import { create_exporter, export_cave, export_lich, export_statics, export_items } from 'game/port_export.js';
 
 const R = create_render(document.body);
 R.canvas.style.cursor = 'default';
@@ -98,6 +101,7 @@ let env_world = null;
   cc.update(R.renderer, R.world_scene);
   for (const o of hidden) o.visible = true;
   env_world = rt.texture;
+  env_world.userData.rt = rt;                     // (the port to Anchor reads it back: port_export.js)
 }
 const items = create_items({ R, cave, fx, warp, env_world, nav, lich, mover, get_L: () => L, glance: (p) => powers.glance(p) });
 const inspect = create_inspect({ R, items, ITEMS });
@@ -120,9 +124,10 @@ snakes.on_won = () => { END.won = true; END.over = 0; held.clear(); mouse.down =
 // Round 37 (owner: "After the win, the game should end. The screen turns black and a message is
 // written in the center, most likely, message to be defined still. The camera can remain as it
 // is"): from the win nothing answers the player; the last jolt plays out for OVER.hold s, the
-// screen fades to black over OVER.fade s, the game stops, and the message fades in. (On the site
+// screen cuts to black (owner, round 37: "The cut to black should be instant, the text can fade
+// in"), the game stops, and the message fades in. (On the site
 // this is where site_unlock_posts('lich-survivors', { ending = 'egg', powers = 0 }) goes.)
-const OVER = { hold: 1.8, fade: 2.2, text_at: 0.8, text_in: 1.4 };
+const OVER = { hold: 1.8, fade: 0, text_at: 0.8, text_in: 1.4 };
 const MESSAGE = ['[ YOUR MESSAGE ]'];                  // his to write; one entry per line
 const over_black = () => END.won && END.over >= OVER.hold + OVER.fade;
 const end_rng = make_rng(77);
@@ -388,7 +393,7 @@ function draw_hud() {
 const ss = (a, b, x) => { const t = clamp((x - a)/(b - a), 0, 1); return t*t*(3 - 2*t); };
 function draw_over() {
   if (!END.won) return;
-  const k = ss(OVER.hold, OVER.hold + OVER.fade, END.over);
+  const k = OVER.fade > 0 ? ss(OVER.hold, OVER.hold + OVER.fade, END.over) : END.over >= OVER.hold ? 1 : 0;
   if (k > 0) { hud.fillStyle = `rgba(0,0,0,${k.toFixed(3)})`; hud.fillRect(0, 0, R.W, R.H); }
   const t0 = OVER.hold + OVER.fade + OVER.text_at, a = ss(t0, t0 + OVER.text_in, END.over);
   if (a <= 0) return;
@@ -519,6 +524,43 @@ window.GAME = {
   facing(m) { powers.facing = m; return FACINGS[powers.facing]; },
   lens_look(m) { powers.lens.look = m; return LENS_LOOKS[powers.lens.look]; },
   reached() { return snakes.reached; },
+  // the port to Anchor: what three.js draws (devtrace.js)
+  trace_programs() { return (G.trace ||= create_devtrace(R)).programs(); },
+  trace_start(uniforms = false) { return (G.trace ||= create_devtrace(R)).start(uniforms); },
+  trace_stop() { return G.trace ? G.trace.stop() : []; },
+  trace_info() { return (G.trace ||= create_devtrace(R)).info(); },
+  // the port: start collecting the program each draw uses (before anything renders ideally);
+  // program_map_write(dir) writes <outDir>/<dir>/program_map.json through the harness
+  program_map_start() { G.pmap = create_program_map(R); return true; },
+  // the port: write what the Anchor build loads (port_export.js) into <outDir>/<dir>
+  async port_export(dir, what = ['cave']) {
+    const X = create_exporter(dir);
+    const out = {};
+    if (what.includes('cave')) out.cave = export_cave(X, cave);
+    if (what.includes('lich')) out.lich = export_lich(X, lich);
+    if (what.includes('statics')) out.statics = export_statics(X, R);
+    if (what.includes('items')) out.items = export_items(X, R, items, inspect, ITEMS, HAND_MATS, SIZES);
+    return await X.finish(out);
+  },
+  async program_map_write(dir) {
+    const r = G.pmap.result();
+    await fetch(`/__out/${dir}/program_map.json`, { method: 'PUT', body: JSON.stringify(r) });
+    return { keys: Object.keys(r.keys).length, programs: Object.keys(r.programs).length, conflicts: r.conflicts, unnamed: r.unnamed };
+  },
+  // the port: capture the next rendered frame's GL commands and resources into <outDir>/<dir>
+  // (only with ?glcapture), plus the programs and the frame three.js made (rt_final RGBA8,
+  // rt_world float RGBA)
+  async glcap(dir) {
+    if (!GLCAP.on) return 'glcapture is off (load the page with ?glcapture)';
+    const cmds = await GLCAP.capture(dir, () => render(0));
+    const pids = new Map(R.renderer.info.programs.map(p => [p.program, p.id]));
+    const res = await GLCAP.export(dir, cmds, pids);
+    const put = (name, body) => fetch(`/__out/${dir}/${name}`, { method: 'PUT', body });
+    for (const pr of (G.trace ||= create_devtrace(R)).programs()) { await put(`programs/${pr.id}_vs.glsl`, pr.vs || ''); await put(`programs/${pr.id}_fs.glsl`, pr.fs || ''); }
+    const fin = new Uint8Array(R.W*R.H*4); R.renderer.readRenderTargetPixels(R.targets.rt_final, 0, 0, R.W, R.H, fin); await put('ref_final_rgba8.bin', fin);
+    const wf = new Uint16Array(R.W*R.H*4); R.renderer.readRenderTargetPixels(R.targets.rt_world, 0, 0, R.W, R.H, wf); await put('ref_world_rgba16f.bin', wf);
+    return res;
+  },
   // round 36: the ending
   remove_all() { remove_all(); return END.queue.length; },
   coil_mode(i) { snakes.coil_mode = i; return COIL_MODES[snakes.coil_mode]; },
@@ -572,5 +614,8 @@ window.GAME = {
 cave.set_darkness(G.dark);
 tick();
 render(0);
+// the port to Anchor: ?manual starts paused (no real-time frames before the harness takes over),
+// so a comparison starts from the same tick as the Anchor build
+if (/manual/.test(location.search)) G.manual = true;
 window.GAME.ready = true;
 requestAnimationFrame(frame);

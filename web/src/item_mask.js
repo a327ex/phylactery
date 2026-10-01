@@ -15,6 +15,7 @@
 // Sculpted as a thin shell (distance field, meshed by surface nets); colour and roughness are
 // read from the same functions.
 import * as THREE from 'three';
+import { named } from 'game/util.js';
 import { mesh_sdf, smax, largest_piece } from 'game/sdf.js';
 import { cells2, fbm3, sstep, rand, vertex_mr } from 'game/shape_noise.js';
 
@@ -320,8 +321,8 @@ function geometry() {
 export function build_mask(ctx = {}) {
   const lit = ctx.lit || (m => m);
   // char is black and nearly matte: a weak specular (a grey sheen read as "not black")
-  const mat = lit(vertex_mr(new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.8, metalness: 0, side: THREE.DoubleSide,
-    specularIntensity: 0.3, envMapIntensity: (ctx.env_i ?? 1)*0.4 })));
+  const mat = lit(vertex_mr(named(new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.8, metalness: 0, side: THREE.DoubleSide,
+    specularIntensity: 0.3, envMapIntensity: (ctx.env_i ?? 1)*0.4 }), 'item.mask')));
   const m = new THREE.Mesh(geometry(), mat);
   m.castShadow = true;
   const g = new THREE.Group();

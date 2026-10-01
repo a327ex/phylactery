@@ -331,14 +331,14 @@ export function create_render(parent = document.body) {
   const rt_bloom_a = new THREE.WebGLRenderTarget(BW, BH, blo);
   const rt_bloom_b = new THREE.WebGLRenderTarget(BW, BH, blo);
   const rt_warp = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: false });
-  const warp_scene = new THREE.Scene();
+  const warp_scene = new THREE.Scene(); warp_scene.name = 'warp';          // (scene names: the port's program keys)
   const rt_final = new THREE.WebGLRenderTarget(W, H, { type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: false });
 
-  const world_scene = new THREE.Scene();
+  const world_scene = new THREE.Scene(); world_scene.name = 'world';
   world_scene.background = new THREE.Color(0x9ec3e6);
   const world_camera = new THREE.PerspectiveCamera(68, W/H, 0.05, 250);
   world_camera.rotation.order = 'YXZ';
-  const view_scene = new THREE.Scene();
+  const view_scene = new THREE.Scene(); view_scene.name = 'view';
   const view_camera = new THREE.PerspectiveCamera(58, W/H, 0.01, 20);
 
   // HUD canvas (drawn by hud.js in 640x360 pixel space)
@@ -380,7 +380,7 @@ export function create_render(parent = document.body) {
   const hook_uniforms = {};
 
   const tri = fullscreen_triangle();
-  const pass_scene = new THREE.Scene();
+  const pass_scene = new THREE.Scene(); pass_scene.name = 'post';
   const pass_cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const quad = new THREE.Mesh(tri, null);
   quad.frustumCulled = false;
@@ -409,10 +409,12 @@ export function create_render(parent = document.body) {
   const rebuild = () => {
     if (final_mat) final_mat.dispose();
     final_mat = mk(final_fs(hooks, (params.shafts && params.shafts.steps) || 24), Object.assign(U, hook_uniforms));
+    final_mat.name = 'post.final';
   };
   rebuild();
   const bright_mat = mk(BRIGHT_FS, { tWorld: U.tWorld, tView: U.tView, uSrc: { value: new THREE.Vector2(W, H) }, uThreshold: { value: 1 } });
   const blur_mat = mk(BLUR_FS, { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } });
+  bright_mat.name = 'post.bright'; blur_mat.name = 'post.blur';
   const up_mat = mk(UPSCALE_FS, { tSrc: { value: rt_final.texture }, uRes: { value: new THREE.Vector2(W, H) }, uOut: { value: new THREE.Vector2(W, H) }, uSharp: { value: 1 } });
 
   const pass = (mat, target) => { quad.material = mat; renderer.setRenderTarget(target); renderer.render(pass_scene, pass_cam); };
@@ -436,6 +438,7 @@ export function create_render(parent = document.body) {
   // lich-survivors round 28: a copy of the last final frame (the inspect view's backdrop)
   const rt_freeze = new THREE.WebGLRenderTarget(W, H, { type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: false });
   const copy_mat = mk(`precision highp float; varying vec2 vUv; uniform sampler2D tSrc; void main(){ gl_FragColor = texture2D(tSrc, vUv); }`, { tSrc: { value: rt_final.texture } });
+  up_mat.name = 'post.upscale'; copy_mat.name = 'post.copy';
   function freeze() { pass(copy_mat, rt_freeze); return rt_freeze.texture; }
 
   let time = 0;

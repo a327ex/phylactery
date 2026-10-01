@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
-import { make_rng, clamp, smoothstep, lerp } from 'game/util.js';
+import { make_rng, clamp, smoothstep, lerp, named } from 'game/util.js';
 import * as TX from 'game/textures.js';
 import { bake_gi, gi_static, gi_uniforms, export_gi, import_gi } from 'game/gi.js';
 import { GI_DATA } from 'game/gi_data.js';
@@ -133,6 +133,7 @@ export function build_cave(R, seed = 7, opts = {}) {
     floor: lam(tx.floor, { flatShading: true }),
     egg: lam(tx.egg),
   };
+  for (const k in M) M[k].name = 'cave.' + k;               // the port to Anchor: stable names
   const TILE = 64/TX.TEXELS_PER_METER;                          // 2 m per 64-texel tile
   const statics = [];
   const add_static = (g, mat, cast = true) => {
@@ -210,7 +211,7 @@ export function build_cave(R, seed = 7, opts = {}) {
   const LID_Y = TOP - 1.0, LID_HOLE = 1.9;
   const lid = (() => {
     const g = new THREE.RingGeometry(LID_HOLE, 80, 24, 1);
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide }));
+    const m = new THREE.Mesh(g, named(new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide }), 'cave.occluder'));
     m.rotation.x = -Math.PI/2;
     m.position.set(sun_xz.x*LID_Y, LID_Y, sun_xz.y*LID_Y);
     m.castShadow = true;
@@ -422,7 +423,7 @@ export function build_cave(R, seed = 7, opts = {}) {
   const SKY_L = [2.4, 2.5, 2.7];
   {
     const g = new THREE.CircleGeometry(2.8, 16);
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: new THREE.Color(9, 8.4, 7.2), side: THREE.DoubleSide }));
+    const m = new THREE.Mesh(g, named(new THREE.MeshBasicMaterial({ color: new THREE.Color(9, 8.4, 7.2), side: THREE.DoubleSide }), 'cave.sun_disc'));
     m.rotation.x = Math.PI/2;
     m.position.set(sun_xz.x*(TOP - 0.3), TOP - 0.3, sun_xz.y*(TOP - 0.3));
     group.add(m);
@@ -470,8 +471,8 @@ export function build_cave(R, seed = 7, opts = {}) {
   const dust_geo = new THREE.BufferGeometry();
   dust_geo.setAttribute('position', new THREE.BufferAttribute(dust_pos, 3));
   dust_geo.setAttribute('color', new THREE.BufferAttribute(dust_col, 3));
-  const dust_pts = new THREE.Points(dust_geo, new THREE.PointsMaterial({ size: 1, sizeAttenuation: false, vertexColors: true,
-    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const dust_pts = new THREE.Points(dust_geo, named(new THREE.PointsMaterial({ size: 1, sizeAttenuation: false, vertexColors: true,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 'cave.dust'));
   dust_pts.frustumCulled = false;
   group.add(dust_pts);
   function update_dust(t, dt) {
@@ -503,6 +504,7 @@ export function build_cave(R, seed = 7, opts = {}) {
   const dome_mats = [M.dome];
   return {
     group, ground_y, egg, sun, LAYOUT, GU, rock_geo, rock_tex: tx.rock, bake_ms, tris: baked.tris, gi_cached: baked.cached,
+    _port: { statics, lid, dust, M, tx, SKY_L, DIRECT_K, SUN_E, LID_Y, TOP },     // the port to Anchor: what port_export.js reads
     export_gi: () => export_gi(baked.data),
     set_dome_visible(on) { for (const m of dome_mats) { m.colorWrite = on; m.depthWrite = on; } },
     DARK,

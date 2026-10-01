@@ -29,7 +29,7 @@
 // the line and corrected; it is his until it strikes, and his hand follows it all the way.
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
-import { smoothstep } from 'game/util.js';
+import { smoothstep, named } from 'game/util.js';
 import { gi_dynamic } from 'game/gi.js';
 
 // (quick: from his gesture to the hit it has ~2 s, the time a snake 5.6 m out takes to reach the egg)
@@ -42,7 +42,7 @@ export function create_rock(ctx) {
   const N = snakes.RINGS, mid = Math.round(N*0.4);
 
   // ---------------------------------------------------------------- the rocks
-  const mat = new THREE.MeshLambertMaterial({ map: cave.rock_tex, color: 0xffffff, flatShading: true });
+  const mat = named(new THREE.MeshLambertMaterial({ map: cave.rock_tex, color: 0xffffff, flatShading: true }), 'rock.stone');
   if (cave.GU) gi_dynamic(mat, cave.GU);
   const make_geo = () => {
     const pts = [];

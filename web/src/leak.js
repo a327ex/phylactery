@@ -16,7 +16,7 @@
 //   - where a snake is coming apart, warped smoke rises from it; when the last of it goes, a
 //     last puff where its head was
 import * as THREE from 'three';
-import { smoothstep } from 'game/util.js';
+import { smoothstep, named } from 'game/util.js';
 import { K } from 'game/warp.js';
 import { spectrum } from 'game/fx.js';
 
@@ -98,7 +98,7 @@ export function create_leak(ctx) {
   // glowing: the owner moved the prismatic away from glitter, round 23)
   const FN = 700;
   const fgeo = new THREE.CircleGeometry(1, 5);
-  const fmat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  const fmat = named(new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }), 'leak.flakes');
   const fmesh = new THREE.InstancedMesh(fgeo, fmat, FN);
   fmesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(FN*3), 3);
   fmesh.frustumCulled = false;

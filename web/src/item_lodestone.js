@@ -11,6 +11,7 @@
 // crumbled, a granular, lumpy surface at three scales; matte, speckled grain to grain, a brown
 // weathering crust in patches, grey dust in the pits; the metal only in small bright flakes.
 import * as THREE from 'three';
+import { named } from 'game/util.js';
 import { mesh_sdf, smax } from 'game/sdf.js';
 import { fbm3, cells3, sstep, rand, vertex_mr } from 'game/shape_noise.js';
 
@@ -101,7 +102,7 @@ function build_geo() {
 
 export function build_lodestone(ctx = {}) {
   const lit = ctx.lit || (m => m);
-  const mat = lit(vertex_mr(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, envMapIntensity: (ctx.env_i ?? 1)*0.7 })));
+  const mat = lit(vertex_mr(named(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, envMapIntensity: (ctx.env_i ?? 1)*0.7 }), 'item.lodestone')));
   const stone = new THREE.Mesh(build_geo(), mat);
   stone.castShadow = true;
   const grp = new THREE.Group();

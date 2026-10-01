@@ -17,7 +17,7 @@
 // crawls to the shell, climbs, winds onto its band over the ones already there, and then turns
 // with its band for good. Another comes out of the dark in its place.
 import * as THREE from 'three';
-import { make_rng, clamp, smoothstep, lerp } from 'game/util.js';
+import { make_rng, clamp, smoothstep, lerp, named } from 'game/util.js';
 import { gi_dynamic } from 'game/gi.js';
 import { create_coil, OFF as COIL_OFF } from 'game/coil.js';
 
@@ -82,7 +82,7 @@ function scale_texture() {
 
 export function create_snakes(R, cave, get_lich_pos, fire, count = 8, seed = 5) {
   const rng = make_rng(seed);
-  const mat = new THREE.MeshStandardMaterial({ map: scale_texture(), roughness: 0.3, metalness: 0.0 });
+  const mat = named(new THREE.MeshStandardMaterial({ map: scale_texture(), roughness: 0.3, metalness: 0.0 }), 'snakes.body');
   if (cave.GU) gi_dynamic(mat, cave.GU);
   // scales are glossy: their edges catch whatever light is around (the bounce light included),
   // which draws the body's outline against the floor
@@ -133,7 +133,7 @@ uniform float uSnakeT;`)
     };
     mat.customProgramCacheKey = () => 'snake_gi_rim_burn';
   }
-  const eye_mat = new THREE.MeshStandardMaterial({ color: 0x0b0a08, roughness: 0.08, metalness: 0.0 });
+  const eye_mat = named(new THREE.MeshStandardMaterial({ color: 0x0b0a08, roughness: 0.08, metalness: 0.0 }), 'snakes.eye');
   const eye_geo = new THREE.SphereGeometry(1, 8, 6);
   const egg = cave.egg.position;
   const S = [];

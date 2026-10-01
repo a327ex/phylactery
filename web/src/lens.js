@@ -22,7 +22,7 @@
 // Cut halves part charred and smoking, twitch, and sink into the ground. With fewer powers
 // left, several lenses form at once.
 import * as THREE from 'three';
-import { smoothstep } from 'game/util.js';
+import { smoothstep, named } from 'game/util.js';
 import { LAYOUT } from 'game/cave.js';
 
 const FORM = 0.4, CONVERGE = 0.8, SPEED = 3.0, SWEEP = 2.6, LEAD = 0.35, OFF = 0.2, FADE = 0.45, CUT_R = 0.13;
@@ -43,11 +43,11 @@ export function create_lens(ctx) {
   const geo = new THREE.SphereGeometry(1, 40, 16);
   geo.scale(1, 0.14, 1);                            // a biconvex lens: 76 cm across, ~10 cm thick
   const glass_mat = () => {
-    const m = new THREE.MeshPhysicalMaterial({
+    const m = named(new THREE.MeshPhysicalMaterial({
       color: 0xffffff, metalness: 0, roughness: 0.03, transmission: 1, thickness: 0.18, ior: 1.52,
       dispersion: 0.8, specularIntensity: 1, specularColor: 0xffffff, envMapIntensity: 0,
       depthWrite: false,             // the shaft's haze (drawn after, by depth) must show through the glass, not stop at it
-    });
+    }), 'lens.glass');
     const U = { uRim: { value: 0 } };
     m.userData.U = U;
     m.onBeforeCompile = (sh) => {
@@ -65,7 +65,7 @@ export function create_lens(ctx) {
     return m;
   };
   // a shimmer over the glass while it crystallizes (additive, fades once it has formed)
-  const shimmer_mat = () => new THREE.ShaderMaterial({
+  const shimmer_mat = () => named(new THREE.ShaderMaterial({
     uniforms: { uA: { value: 0 }, uTime: { value: 0 } },
     vertexShader: `varying vec3 vN, vV, vP; void main(){ vec4 w = modelMatrix*vec4(position, 1.0); vN = normalize(mat3(modelMatrix)*normal); vV = normalize(cameraPosition - w.xyz); vP = position; gl_Position = projectionMatrix*viewMatrix*w; }`,
     fragmentShader: `uniform float uA, uTime; varying vec3 vN, vV, vP;
@@ -74,22 +74,22 @@ export function create_lens(ctx) {
         vec3 h = clamp(abs(fract(atan(vP.z, vP.x)*0.16 + uTime*0.8 + vec3(0.0, 0.6667, 0.3333))*6.0 - 3.0) - 1.0, 0.0, 1.0);
         gl_FragColor = vec4(mix(vec3(1.0), h, 0.6)*rim*1.1*uA, 1.0); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  });
+  }), 'lens.shimmer');
 
   // the cone of gathered sunlight under the lens, and the patch it throws on the floor
   const SEG = 28;
-  const cone_mat = new THREE.ShaderMaterial({
+  const cone_mat = named(new THREE.ShaderMaterial({
     uniforms: { uA: { value: 1 } },
     vertexShader: `attribute float aT; attribute float aA; varying float vT, vA; void main(){ vT = aT; vA = aA; gl_Position = projectionMatrix*viewMatrix*vec4(position, 1.0); }`,
     fragmentShader: `varying float vT, vA; void main(){ gl_FragColor = vec4(vec3(1.0, 0.9, 0.7)*vA*(0.25 + 0.75*vT*vT), 1.0); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  });
-  const patch_mat = new THREE.ShaderMaterial({
+  }), 'lens.cone');
+  const patch_mat = named(new THREE.ShaderMaterial({
     uniforms: { uA: { value: 0 } },
     vertexShader: `varying vec2 vU; void main(){ vU = uv*2.0 - 1.0; gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }`,
     fragmentShader: `uniform float uA; varying vec2 vU; void main(){ float d = length(vU); float k = smoothstep(1.0, 0.0, d); k = k*k; gl_FragColor = vec4(vec3(1.0, 0.92, 0.75)*k*uA, 1.0); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  });
+  }), 'lens.patch');
   const make_cone = () => {
     const g = new THREE.BufferGeometry();
     const pos = new Float32Array(SEG*2*3), at = new Float32Array(SEG*2), aa = new Float32Array(SEG*2);

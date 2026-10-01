@@ -9,7 +9,7 @@
 // and the text slot are drawn under it. It is drawn by the game's own pipeline (render.js'
 // world_override): the same 640x360, grade, bloom and dither as everything else.
 import * as THREE from 'three';
-import { clamp, smoothstep, damp } from 'game/util.js';
+import { clamp, smoothstep, damp, named } from 'game/util.js';
 import { draw_text } from 'game/hud_font.js';
 
 
@@ -18,8 +18,8 @@ import { draw_text } from 'game/hud_font.js';
 // in it: a larger, brighter opening and bright points; round 29 made them small for the raw
 // crystals, whose flat faces mirrored them as white discs)
 function env_scene(r28 = false) {
-  const s = new THREE.Scene();
-  const m = new THREE.ShaderMaterial({
+  const s = new THREE.Scene(); s.name = 'inspect_env';
+  const m = named(new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
     vertexShader: `varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }`,
     fragmentShader: `varying vec3 vD;
@@ -54,7 +54,7 @@ function env_scene(r28 = false) {
         }
         gl_FragColor = vec4(c, 1.0);
       }`,
-  });
+  }), 'inspect.env_sky');
   s.add(new THREE.Mesh(new THREE.SphereGeometry(10, 48, 24), m));
   return s;
 }
@@ -70,10 +70,13 @@ export function create_inspect(ctx) {
   const cube28 = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
   new THREE.CubeCamera(0.1, 50, cube28).update(renderer, env_scene(true));
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const env_pm = pmrem.fromCubemap(cube_rt.texture).texture;
+  const env_pm_rt = pmrem.fromCubemap(cube_rt.texture);
+  const env_pm = env_pm_rt.texture;
+  // (the port to Anchor reads these back: port_export.js)
+  cube_rt.texture.userData.rt = cube_rt; cube28.texture.userData.rt = cube28; env_pm.userData.rt = env_pm_rt;
 
   // ---------------------------------------------------------------- the scene
-  const scene = new THREE.Scene();
+  const scene = new THREE.Scene(); scene.name = 'inspect';
   scene.background = new THREE.Color(0x000000);
   scene.environment = env_pm;
   scene.environmentIntensity = 0.6;
@@ -87,7 +90,7 @@ export function create_inspect(ctx) {
 
   // the frozen frame behind: darkened, softened (display values back to linear, before the
   // exposure the final pass applies again)
-  const back_mat = new THREE.ShaderMaterial({
+  const back_mat = named(new THREE.ShaderMaterial({
     uniforms: { tFrame: { value: null }, uDim: { value: 1 }, uRes: { value: new THREE.Vector2(R.W, R.H) }, uExposure: { value: 1 }, uBlur: { value: 0 }, uBlack: { value: 0 }, uGlow: { value: 0 } },
     vertexShader: `varying vec2 vUv; void main(){ vUv = position.xy*0.5 + 0.5; gl_Position = vec4(position.xy, 0.9999, 1.0); }`,
     fragmentShader: `varying vec2 vUv; uniform sampler2D tFrame; uniform float uDim, uExposure, uBlur, uBlack, uGlow; uniform vec2 uRes;
@@ -109,7 +112,7 @@ export function create_inspect(ctx) {
         gl_FragColor = vec4(c, 1.0);
       }`,
     depthWrite: false, depthTest: false,
-  });
+  }), 'inspect.backdrop');
   const tri = new THREE.BufferGeometry();
   tri.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
   const back = new THREE.Mesh(tri, back_mat);
@@ -240,7 +243,7 @@ export function create_inspect(ctx) {
   }
 
   return {
-    S, open, close, next, tick, render_setup, draw_hud, scene, camera, holder, env: cube_rt.texture,
+    S, open, close, next, tick, render_setup, draw_hud, scene, camera, holder, env: cube_rt.texture, ctx: inspect_ctx, env_pm, key, fill, rim, back_mat,
     rebuild() { if (S.active) { const q = S.q.clone(); build(S.idx); S.q.copy(q); } },
     // tests: turn to a view (radians), zoom
     pose(yaw, pitch, roll = 0, zoom = 1) { S.q.setFromEuler(new THREE.Euler(pitch, yaw, roll, 'YXZ')); S.zoom = S.zoom_t = zoom; S.wv.set(0, 0); S.idle = -1e9; },
