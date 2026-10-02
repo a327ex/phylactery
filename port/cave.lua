@@ -204,6 +204,7 @@ function C.build(R)
   local cave = {
     group = group, ground_y = C.ground_y, egg = egg, sun = sun, LAYOUT = L, GU = GU, rock_geo = statics[5] and statics[5].geometry,
     rock_tex = A.texture('cave_rock'), DARK = DARK, statics = statics, assets = A,
+    lid = lid,                                   -- (the walk hides it: walk.lua)
   }
   function cave.set_dome_visible(on) for _, m in ipairs(dome_mats) do m.color_write = on; m.depth_write = on end end
   function cave.set_darkness(i)

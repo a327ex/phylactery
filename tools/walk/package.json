@@ -1,0 +1,7 @@
+{
+  "name": "lich-walk-builder",
+  "private": true,
+  "type": "module",
+  "description": "Builds the walk through the cave (geometry, light bake, nav, cameras) into assets/port/walk for the Anchor build",
+  "dependencies": { "three": "0.170.0" }
+}
