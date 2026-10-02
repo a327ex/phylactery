@@ -14,6 +14,11 @@ Math.hypot is `js_hypot`, float32 stores go through `js_fround`, JS `a += b - c`
 never `x and nil or y`, random draws in the JS's evaluation order. Drive it with
 `ANCHOR_ENGINE_BIN=<Anchor>/engine/engine/build/anchor.exe` set if another session holds the default.
 
+**The walk (2026-10-02, round 39)** lives in Anchor only: generated offline by `tools/walk/build.mjs`
+(node; `npm install` in tools/walk once) into `assets/port/walk*`, run by `port/walk.lua`. The game
+starts in it; `LICH_ROOM=1` in the environment starts in the final room exactly as before (keep that
+path identical: the digests run with it).
+
 **three.js first (owner, 2026-09-27)**, like Brutal Behavior: the game lives in `web/`
 (`index.html` + `src/*.js`, three.js 0.170 from jsdelivr, local modules import each other only
 as `game/<file>.js`), reusing the Sun Court renderer (`web/src/render.js`, from

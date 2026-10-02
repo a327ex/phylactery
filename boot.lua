@@ -27,6 +27,13 @@ do
       local a, b = src.fs:find('c = mix(c, hud.rgb, hud.a*uHud);', 1, true)
       assert(a, 'post.final: the HUD line moved')
       src.fs = src.fs:sub(1, a - 1) .. 'c = c*(1.0 - hud.a*uHud) + hud.rgb*uHud;' .. src.fs:sub(b + 1)
+      -- the walk (2026-10-02): air outside the sun's shadow map is not sunlit (render.js counted it
+      -- lit; the final room never looks outside its map, so its frames are unchanged)
+      if not os.getenv('LICH_ROOM') then
+        local c1, c2 = src.fs:find('s.y < 0.0 || s.y > 1.0 || s.z > 1.0) return 1.0;', 1, true)
+        assert(c1, 'post.final: the shaft frustum test moved')
+        src.fs = src.fs:sub(1, c1 - 1) .. 's.y < 0.0 || s.y > 1.0 || s.z > 1.0) return 0.0;' .. src.fs:sub(c2 + 1)
+      end
     end
     rawset(t, key, src)
     return src
