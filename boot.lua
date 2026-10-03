@@ -7,6 +7,11 @@
 -- V8's hypot), before any module takes its locals from math: the same numbers as the three.js build
 math.sin, math.cos, math.tan, math.asin, math.acos, math.atan, math.exp = js_sin, js_cos, js_tan, js_asin, js_acos, js_atan, js_exp
 
+-- what the GPU gets each frame (object matrices, moving vertices, the snakes' rings) rounded to 14
+-- mantissa bits (2026-10-03, APR v15): the recording holds exactly what is drawn, without the noise
+-- of bits no pixel shows; recordings ~64% smaller. Game state is untouched (only the GPU's copies).
+gpu_precision(14)
+
 local POST = require('port.post')
 local LD = require('port.three.loader')
 local GM = require('port.game')

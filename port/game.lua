@@ -39,10 +39,11 @@ function GM.create(R, hud_layer)
   local cave = CAVE.build(R)
   local lich = LICH.create(R, { GU = cave.GU })
   local EGG = cave.egg.position
-  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = true, dark = 1,
+  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = true, dark = 1, surface = 1, tlight = 2,
     static = { eye = { -3.6, 9.8, -10.4 }, tgt = { 0.4, 0.1, 2.4 } },
     free = { yaw = 200, pitch = 18, dist = 4.5 }, egg_view = { yaw = 195, pitch = 32, dist = 3.4 } }
   G.R = R; G.cave = cave; G.lich = lich
+  cave.set_surface(G.surface)
 
   -- where he can go (the room camera's frame blocks him too)
   local room_cam = T.PerspectiveCamera.new(50, R.W/R.H, 0.1, 200)
@@ -294,6 +295,7 @@ function GM.create(R, hud_layer)
     return { x = 0, z = 0 }
   end
 
+  local set_tunnel_light   -- (below, with the tunnel's lamps)
   -- keys, as main.js's keydown (a press or the OS repeat of a held key)
   local function hit(k) return key_is_pressed(k) or key_is_repeated(k) end
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
@@ -337,6 +339,8 @@ function GM.create(R, hud_layer)
     if hit('n') then END.hand = (END.hand + 1) % #lich.HANDS end
     for i, pk in ipairs(POWER_KEYS) do if hit(pk) or hit('kp' .. pk) then held = {}; mouse.down = false; ask_remove(i - 1) end end
     if hit('b') then G.dark = (G.dark + 1) % #cave.DARK; cave.set_darkness(G.dark) end
+    if hit('v') then G.surface = (G.surface + 1) % #cave.SURF; cave.set_surface(G.surface) end
+    if hit('c') and G.mode == 'tunnel' then set_tunnel_light(G.tlight + 1) end
   end
   -- the inventory: the six objects he carries, top right, each its own little render (inspect.icon)
   local INV = { px = 34, pad = 3, gap = 4, y = 8 }
@@ -438,6 +442,8 @@ function GM.create(R, hud_layer)
       HUD.text(label .. ' ' .. c.name, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
       HUD.text(c.note, 8, 19, '#a8987c', 1, 'left', nil, INK)
     end
+    if G.mode == 'tunnel' then HUD.text('C TUNNEL LIGHT: ' .. G.TLIGHT[G.tlight + 1].name, 8, H - 191, '#f2e3c2', 1, 'left', nil, INK) end
+    HUD.text('V CAVE SURFACE: ' .. cave.SURF[G.surface + 1].name, 8, H - 180, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('U COIL: ' .. CL.COIL_MODES[snakes.coil_mode + 1], 8, H - 169, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('N HIS HAND: ' .. lich.HANDS[END.hand + 1], 8, H - 158, '#f2e3c2', 1, 'left', nil, INK)
     if items then
@@ -466,7 +472,7 @@ function GM.create(R, hud_layer)
     HUD.text('T: REMOVE EVERY POWER AT ONCE (TESTING)', W - 8, H - 48, '#8a7c66', 1, 'right', nil, INK)
     HUD.text('CLICK AN OBJECT, OR 5-0: REMOVE IT   I: LOOK AT THEM', W - 8, H - 37, '#f2e3c2', 1, 'right', nil, INK)
     HUD.text('WASD OR HOLD LEFT MOUSE: MOVE', W - 8, H - 26, '#8a7c66', 1, 'right', nil, INK)
-    HUD.text('1-4 Y CAMERA   U N Z M O K X L F J R G P B   H HIDE', W - 8, H - 15, '#8a7c66', 1, 'right', nil, INK)
+    HUD.text('1-4 Y CAMERA   V C U N Z M O K X L F J R G P B   H HIDE', W - 8, H - 15, '#8a7c66', 1, 'right', nil, INK)
   end
   local function ss(a, b, x) local t = clamp((x - a)/(b - a), 0, 1); return t*t*(3 - 2*t) end
   local function draw_over()
@@ -487,6 +493,25 @@ function GM.create(R, hud_layer)
   -- the tunnel's light: what the room throws back down it, borrowed from two of the fire's point
   -- lights (three.js compiled the programs for the room's nine; the fire lights none before the fight)
   local lamps = {}
+  -- round 41 (owner: the first view is too bright): AS BUILT lit the room's whole south half from
+  -- the tunnel mouth; LOW reaches just past the mouth; DIM keeps the light in the tunnel, round him
+  -- as he comes; DARK = none (the
+  -- room's own light and his glow)
+  local TLIGHT = {
+    { name = 'AS BUILT', { 0, 2.6, -13, 5.0, 30 }, { 0, 2.4, -30, 1.4, 14 } },
+    { name = 'LOW', { 0, 2.5, -14, 2.2, 15 }, { 0, 2.2, -27, 0.9, 10 } },
+    { name = 'DIM', { 0, 2.3, -17, 1.4, 9 }, { 0, 2.2, -27, 0.8, 9 } },
+    { name = 'DARK', { 0, 2.3, -17, 0, 1 }, { 0, 2.2, -27, 0, 1 } },
+  }
+  G.TLIGHT = TLIGHT
+  set_tunnel_light = function(i)
+    G.tlight = i % #TLIGHT
+    for k, lp in ipairs(lamps) do
+      local sp, l = TLIGHT[G.tlight + 1][k], lp.l
+      l.position:set(sp[1], sp[2], sp[3]); l.color:set_rgb(1.0, 0.8, 0.56); l.intensity = sp[4]; l.distance = sp[5]; l.decay = 0.9
+    end
+    return TLIGHT[G.tlight + 1].name
+  end
   local function enter_room()
     G.mode = 'room'
     nav.cur = room_nav
@@ -502,12 +527,11 @@ function GM.create(R, hud_layer)
   if G.mode == 'tunnel' then
     local pl = {}
     R.world_scene:traverse(function(o) if o.is_point_light then pl[#pl + 1] = o end end)
-    local SPEC = { { 0, 2.6, -13, 5.0, 30 }, { 0, 2.4, -30, 1.4, 14 } }
-    for k, sp in ipairs(SPEC) do
+    for k = 1, 2 do
       local l = pl[k]
       lamps[k] = { l = l, keep = { position = l.position:clone(), color = l.color:clone(), intensity = l.intensity, distance = l.distance, decay = l.decay } }
-      l.position:set(sp[1], sp[2], sp[3]); l.color:set_rgb(1.0, 0.8, 0.56); l.intensity = sp[4]; l.distance = sp[5]; l.decay = 0.9
     end
+    set_tunnel_light(G.tlight)
     for _, sn in ipairs(snakes.S) do sn.m.visible = false; sn.eyes[1].visible = false; sn.eyes[2].visible = false end
   end
   -- each object's icon for the inventory (rendered once, now, outside any frame's draw)
@@ -632,6 +656,8 @@ function GM.create(R, hud_layer)
       goal = goal and { r3(goal.x), r3(goal.z) } or nil }
   end
   function GAME.dark(i) G.dark = i; return cave.set_darkness(i) end
+  function GAME.surface(i) G.surface = i % #cave.SURF; return cave.set_surface(i) end
+  function GAME.tunnel_light(i) return set_tunnel_light(i) end
   function GAME.inspect(i) inspect.open(i); return items and require('port.items').ITEMS[inspect.S.idx + 1].name end
   function GAME.inspect_pose(yaw, pitch, roll, zoom) inspect.pose(yaw, pitch, roll or 0, zoom or 1); return true end
   function GAME.inspect_close() inspect.close(); return true end
