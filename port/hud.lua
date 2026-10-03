@@ -203,9 +203,17 @@ function HUD.rect(x, y, w, h, color)
   local c = css(color)
   ops[#ops + 1] = { t = 'rect', x = x, y = y, w = w, h = h, c = c, a = galpha }
 end
+-- an image (a gpu texture's image, rows bottom-up as GL keeps them: drawn flipped) at x, y
+function HUD.image(img, x, y, w, h)
+  ops[#ops + 1] = { t = 'img', img = img, x = x, y = y, w = w, h = h, a = galpha }
+end
 function HUD.flush(layer)
   for _, o in ipairs(ops) do
-    if o.t == 'tex' then
+    if o.t == 'img' then
+      layer_push(layer, o.x + o.w/2, o.y + o.h/2, 0, 1, -1)
+      layer_draw_texture(layer, o.img, 0, 0, color(255, 255, 255, floor(o.a*255 + 0.5))())
+      layer_pop(layer)
+    elseif o.t == 'tex' then
       layer_draw_texture(layer, o.e.tex, o.x + o.e.w/2, o.y + o.e.h/2, color(255, 255, 255, floor(o.a*255 + 0.5))())
     else
       local c = o.c

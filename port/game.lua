@@ -4,6 +4,10 @@
   the floor under the cursor; the six powers (5-0 remove one, its object drops), the ending (T:
   every power removed; the snakes coil round the egg; the win cuts to black and the message fades
   in). 1-4 / Y cameras, the round keys (U N Z M O K X L F J R G P B), H hides the text.
+  Round 40 (owner, 2026-10-02): he comes in down the tunnel (its own camera, which shows where he
+  comes from) and the fight starts when he steps into the room; he carries all six objects in an
+  inventory (top right); clicking one (or 5-0) brings up the model viewer with its text and the
+  question; yes, and it falls to the floor. LICH_ROOM=1 starts in the room exactly as before.
   Fixed 60 Hz ticks as main.js steps them. GAME (a global) is the harness: the same calls as
   window.GAME in the three.js build, for anchor drive eval.
 ]]
@@ -24,7 +28,6 @@ local BEAM = require('port.beam')
 local LENS = require('port.lens')
 local CL = require('port.coil')
 local HUD = require('port.hud')
-local WALK = require('port.walk')
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
 local clamp, smoothstep = U.clamp, U.smoothstep
 local sqrt, abs, sin, cos, atan2, exp, floor, ceil, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.ceil, math.min, math.max, math.pi
@@ -57,12 +60,21 @@ function GM.create(R, hud_layer)
     nav.finish()
   end
   G.nav = nav
-  -- the walk (walk.lua) has its own grid: the mover, the camera and the objects ask whichever is
-  -- current through this proxy (the room's from the moment he steps into it)
+  -- round 40: he comes in down the tunnel, which the room's grid blocks (outside its camera's
+  -- frame): a grid of its own for it, handed over to the room's when he steps into that frame
+  G.mode = os.getenv('LICH_ROOM') and 'room' or 'tunnel'
   local room_nav = nav
   nav = setmetatable({ cur = room_nav }, { __index = function(t, k) return t.cur[k] end })
+  if G.mode == 'tunnel' then
+    local tn = NAV.build({ geo = cave.rock_geo, ground_y = cave.ground_y, x0 = -4, x1 = 4, z0 = -48, z1 = -2 })
+    tn.block(function(x, z) return abs(x) > 1.9 or z < -45 end)
+    tn.finish()
+    nav.cur = tn
+  end
+  local SPAWN = { x = 0, z = -22 }                  -- where he comes from, in the tunnel's dark
 
   local START = Vector3.new(CAVE.LAYOUT.hover.x, 0, CAVE.LAYOUT.hover.z)
+  if G.mode == 'tunnel' then START = Vector3.new(SPAWN.x, 0, SPAWN.z) end
   local mover = MV.create(nav, lich, START, atan2(EGG.x - START.x, EGG.z - START.z))
   local L = mover.p
   local fire = FIRE.create(R, cave)
@@ -89,31 +101,19 @@ function GM.create(R, hud_layer)
   end
   G.items = items; G.inspect = inspect
   local function inspect_active() return inspect and inspect.S.active end
-
-  -- ------------------------------------------------------------------ the walk (owner, 2026-10-02)
-  -- The game starts in the walk through the cave (walk.lua); stepping into the final room hands
-  -- everything back to the room as it was built. LICH_ROOM=1 in the environment starts in the
-  -- room exactly as before (the digests against the three.js build: tools/port_digest.*).
-  G.mode = os.getenv('LICH_ROOM') and 'room' or 'walk'
-  local walk = nil
-  if G.mode == 'walk' then
-    walk = WALK.create({ R = R, cave = cave, lich = lich, mover = mover, items = items, powers = powers, fx = fx, warp = warp, inspect = inspect })
-    G.walk = walk
-    -- the tunnel's far end is open now (its cap: the last 18 triangles of the tunnel's mesh)
-    for _, m in ipairs(cave.statics) do
-      local g = m.geometry
-      if g.name == 'cave_2' then g:set_draw_range(0, g.attributes.position.count - 54) end
-    end
-    for _, sn in ipairs(snakes.S) do sn.m.visible = false; sn.eyes[1].visible = false; sn.eyes[2].visible = false end
-  end
-  G.walk_speed = 0
-
   local function toggle_power(i)
     local on = powers.toggle(i)
     if items then
       if on == false then items.drop(i) elseif on == true then items.take(i) end
     end
     return on
+  end
+  -- round 40: giving one up goes through the model viewer's question (yes: it falls, as before);
+  -- one already given up comes back at once (testing only)
+  local function ask_remove(i)
+    if not inspect then return toggle_power(i) end
+    if not powers.is_on(powers.ALL[i + 1]) then return toggle_power(i) end
+    inspect.open(i, { remove = true })
   end
 
   -- ------------------------------------------------------------------ the ending (round 36)
@@ -164,12 +164,13 @@ function GM.create(R, hud_layer)
   local ROOM_H = Vector2.new(G.static.tgt[1] - G.static.eye[1], G.static.tgt[3] - G.static.eye[3]):normalize()
   local function from_room(pitch_deg, dist) local p = pitch_deg*pi/180; return v(-ROOM_H.x*cos(p)*dist, sin(p)*dist, -ROOM_H.y*cos(p)*dist) end
   local SIDE_DIR = v(-ROOM_H.y, 0, ROOM_H.x)
-  local CAMS_FOV = nil
+  -- the second fixed camera (round 40): from the room past the egg, down the tunnel he comes out of
+  local TUNNEL_CAM = { eye = { 2.0, 3.0, 5.0 }, tgt = { 0.0, 1.0, -14.0 }, fov = 50 }
   local CAMS = {
     { name = 'ROOM', note = 'THE ROOM CAMERA, FIXED: THE GAME', fov = 50,
       rig = function()
-        if G.look then CAMS_FOV = G.look.fov; return v(G.look.eye[1], G.look.eye[2], G.look.eye[3]), v(G.look.tgt[1], G.look.tgt[2], G.look.tgt[3]) end
-        if G.mode == 'walk' then local e, t, fov = walk.rig(); CAMS_FOV = fov; return e, t end
+        if G.look then return v(G.look.eye[1], G.look.eye[2], G.look.eye[3]), v(G.look.tgt[1], G.look.tgt[2], G.look.tgt[3]) end
+        if G.mode == 'tunnel' then return v(TUNNEL_CAM.eye[1], TUNNEL_CAM.eye[2], TUNNEL_CAM.eye[3]), v(TUNNEL_CAM.tgt[1], TUNNEL_CAM.tgt[2], TUNNEL_CAM.tgt[3]) end
         return v(G.static.eye[1], G.static.eye[2], G.static.eye[3]), v(G.static.tgt[1], G.static.tgt[2], G.static.tgt[3])
       end },
     { name = 'CLOSE', note = "FOLLOWS HIM, FROM THE ROOM CAMERA'S SIDE, LOWER", fov = 45,
@@ -208,52 +209,13 @@ function GM.create(R, hud_layer)
     if G.cam ~= 0 and G.cam ~= CAM_EGG then eye = clear_eye(eye, F) end
     cave.set_dome_visible(c.dome ~= false)
     local C = R.world_camera
-    C.fov = (G.cam == 0 and (G.mode == 'walk' or G.look) and CAMS_FOV) or c.fov; C:update_projection_matrix()
+    C.fov = (G.cam == 0 and G.look and G.look.fov) or (G.cam == 0 and G.mode == 'tunnel' and TUNNEL_CAM.fov) or c.fov; C:update_projection_matrix()
     C.position:copy(eye)
     C.up:set(0, 1, 0)
     C:look_at(tgt)
     C:update_matrix_world()
   end
   local function set_cam(i) G.cam = clamp(floor(i), 0, #CAMS - 1); F:copy(L) end
-  local enter_room
-  local function walk_start(a)
-    -- a = the area he starts in (0 = the waking); the objects of the areas before are his
-    G.mode = 'walk'
-    nav.cur = walk.nav
-    walk.reset(a)
-    local W = walk.W
-    if a == 0 then
-      mover.place(W.start.x, W.start.z, W.start.yaw)
-    else
-      local c = walk.CAMS[walk.zone_at(walk.ENTRY[a] + 1.5)]
-      -- the open floor nearest the start of that stretch's camera target
-      local x, z = c.tgt[1], c.tgt[3]
-      for r = 0, 6, 0.25 do
-        local done = false
-        for k = 0, 15 do
-          local px, pz = x + cos(k/16*pi*2)*r, z + sin(k/16*pi*2)*r
-          if walk.nav.dist(px, pz) > 0.5 and abs(walk.nav.s_at(px, pz) - (walk.ENTRY[a] + 1.5)) < 6 then x, z = px, pz; done = true; break end
-        end
-        if done then break end
-      end
-      mover.place(x, z, mover.yaw())
-    end
-    F:copy(L)
-  end
-  -- he steps into the final room: from here everything is the room's, as it was built (direct:
-  -- F9, the room as it was before the walk, at the pool's edge with every power)
-  enter_room = function(direct)
-    if walk then walk.apply_room(); walk.lamps_on(false) end
-    G.mode = 'room'
-    nav.cur = room_nav
-    if direct then
-      for i0 = 0, 5 do powers.set(i0, true); require('port.items').ITEMS[i0 + 1].build = true end
-      mover.place(START.x, START.z, atan2(EGG.x - START.x, EGG.z - START.z))
-      set_cam(0)
-    end
-    F:copy(L)
-  end
-  if G.mode == 'walk' then walk_start(0) end
 
   -- ------------------------------------------------------------------ input
   local ndc = Vector2.new()
@@ -266,7 +228,7 @@ function GM.create(R, hud_layer)
     local t = 0.3
     while t < 60 do
       local x, y, z = o.x + d.x*t, o.y + d.y*t, o.z + d.z*t
-      if y < (G.mode == 'walk' and walk.ground_y or cave.ground_y)(x, z) then t1 = t; break end
+      if y < cave.ground_y(x, z) then t1 = t; break end
       t0 = t
       t = t + 0.08
     end
@@ -274,7 +236,7 @@ function GM.create(R, hud_layer)
     for _ = 1, 8 do
       local tm = (t0 + t1)/2
       local x, y, z = o.x + d.x*tm, o.y + d.y*tm, o.z + d.z*tm
-      if y < (G.mode == 'walk' and walk.ground_y or cave.ground_y)(x, z) then t1 = tm else t0 = tm end
+      if y < cave.ground_y(x, z) then t1 = tm else t0 = tm end
     end
     local tm = (t0 + t1)/2
     return v(o.x + d.x*tm, o.y + d.y*tm, o.z + d.z*tm)
@@ -285,19 +247,18 @@ function GM.create(R, hud_layer)
     local d = js_hypot(dx, dz)
     local s = 0
     while s < d and nav.is_blocked(p.x, p.z) do p.x = p.x + dx/d*0.1; p.z = p.z + dz/d*0.1; s = s + 0.1 end
-    p.y = (G.mode == 'walk' and walk.ground_y or cave.ground_y)(p.x, p.z)
+    p.y = cave.ground_y(p.x, p.z)
     best = math.huge; stall = 0
     goal = p
   end
   local function pick_goal() set_goal(floor_at_px(mouse.px, mouse.py)) end
 
   local cf = Vector3.new()
-  local basis = { keys = '', x = 0, z = 1 }
+  local basis = { hold = false, keys = '', x = 0, z = 1 }
   local function wanted_velocity()
     if END.won then return { x = 0, z = 0 } end
-    if G.mode == 'walk' and walk.busy() then goal = nil; return { x = 0, z = 0 } end
     local keys = script_keys
-    if keys == nil then keys = ''; for _, k in ipairs({ 'w', 's', 'a', 'd' }) do if held[k] then keys = keys .. k end end end
+    if keys == nil then keys = ''; for k in pairs(held) do keys = keys .. k end end
     local ix, iz = 0, 0
     if keys:find('w', 1, true) then iz = iz + 1 end
     if keys:find('s', 1, true) then iz = iz - 1 end
@@ -306,20 +267,20 @@ function GM.create(R, hud_layer)
     if ix ~= 0 or iz ~= 0 then
       goal = nil
       R.world_camera:get_world_direction(cf); cf.y = 0; cf:normalize()
-      if G.mode == 'walk' then
-        -- (Resident Evil remakes: while the same keys stay held, they keep the direction they had
-        -- when pressed; a cut does not turn him round)
-        if keys ~= basis.keys then basis.x, basis.z = cf.x, cf.z end
-        cf.x, cf.z = basis.x, basis.z
+      -- (from the tunnel's camera to the room's: keys held through the cut keep the direction they
+      -- had, as in the Resident Evil remakes, until they change)
+      local nk = (keys:find('w', 1, true) and 'w' or '') .. (keys:find('s', 1, true) and 's' or '') .. (keys:find('a', 1, true) and 'a' or '') .. (keys:find('d', 1, true) and 'd' or '')
+      if G.mode == 'tunnel' then basis.x, basis.z, basis.keys = cf.x, cf.z, nk
+      elseif basis.hold then
+        if nk == basis.keys then cf.x, cf.z = basis.x, basis.z else basis.hold = false end
       end
-      basis.keys = keys
       local rx, rz = -cf.z, cf.x
       local wx, wz = cf.x*iz + rx*ix, cf.z*iz + rz*ix
       local l = js_hypot(wx, wz)
-      local sp = (G.mode == 'walk' and WALK.SPEEDS[G.walk_speed + 1].v or MV.MOVE.speed)*(1 - 0.6*END.w)
+      local sp = MV.MOVE.speed*(1 - 0.6*END.w)
       return { x = wx/l*sp, z = wz/l*sp }
     end
-    basis.keys = ''
+    basis.hold = false
     if mouse.down then pick_goal() end
     if goal then
       local dx, dz = goal.x - L.x, goal.z - L.z
@@ -327,7 +288,7 @@ function GM.create(R, hud_layer)
       if mouse.down or d < best - 0.05 then best = d; stall = 0 else stall = stall + DT end
       if (d < 0.12 or stall > 0.5) and not mouse.down then goal = nil; return { x = 0, z = 0 } end
       if d < 0.12 then return { x = 0, z = 0 } end
-      local s = min((G.mode == 'walk' and WALK.SPEEDS[G.walk_speed + 1].v or MV.MOVE.speed)*(1 - 0.6*END.w), sqrt(2*MV.MOVE.dec*max(0, d - 0.08))*0.9)
+      local s = min(MV.MOVE.speed*(1 - 0.6*END.w), sqrt(2*MV.MOVE.dec*max(0, d - 0.08))*0.9)
       return { x = dx/d*s, z = dz/d*s }
     end
     return { x = 0, z = 0 }
@@ -339,25 +300,17 @@ function GM.create(R, hud_layer)
   local function keys_input()
     if END.won then return end
     if inspect_active() then
+      if inspect.S.remove then
+        if hit('y') or hit('return') or hit('enter') or hit('kpenter') then inspect.answer(true) end
+        if hit('n') or hit('escape') or hit('backspace') or hit('i') or hit('e') then inspect.answer(false) end
+        return
+      end
       if hit('i') or hit('escape') or hit('e') then inspect.close() end
       if hit('a') or hit('left') then inspect.next(-1) end
       if hit('d') or hit('right') then inspect.next(1) end
       if hit('m') then items.set_hand_mat(items.opts.hand_mat + 1); inspect.rebuild() end
       if hit('h') then G.hud = not G.hud end
       return
-    end
-    if G.mode == 'walk' then
-      -- the walk: I shows what he carries; F1-F8 go to an area (with the objects before it), F9 to
-      -- the final room as it was before the walk; Q his pace
-      if hit('i') and inspect then
-        local last = nil
-        for i0 = 0, 5 do if walk.collected[i0] then last = i0 end end
-        if last then held = {}; mouse.down = false; inspect.open(last) end
-        return
-      end
-      for k = 1, 8 do if hit('f' .. k) then held = {}; goal = nil; walk_start(k - 1); set_cam(0) end end
-      if hit('f9') then held = {}; goal = nil; enter_room(true) end
-      if hit('q') then G.walk_speed = (G.walk_speed + 1) % #WALK.SPEEDS end
     end
     if hit('i') and inspect then held = {}; mouse.down = false; inspect.open(); return end
     if items then
@@ -368,7 +321,7 @@ function GM.create(R, hud_layer)
     for dgt = 1, 4 do
       if hit(tostring(dgt)) or hit('kp' .. dgt) then set_cam(dgt == 4 and CAM_FREE or dgt - 1) end
     end
-    if hit('y') and G.mode ~= 'walk' then set_cam(CAM_EGG) end
+    if hit('y') then set_cam(CAM_EGG) end
     if hit('h') then G.hud = not G.hud end
     if hit('p') then lich.set_mode(lich.get_mode() + 1) end
     if hit('j') then lich.set_juice(lich.get_juice() + 1) end
@@ -379,18 +332,37 @@ function GM.create(R, hud_layer)
     if hit('x') then lich.set_recoil(lich.get_recoil() + 1) end
     if hit('o') then powers.set_facing(powers.get_facing() + 1) end
     if hit('l') then powers.lens.set_look(powers.lens.get_look() + 1) end
-    if hit('t') and G.mode ~= 'walk' then remove_all() end
+    if hit('t') then remove_all() end
     if hit('u') then snakes.set_coil_mode(snakes.coil_mode + 1) end
     if hit('n') then END.hand = (END.hand + 1) % #lich.HANDS end
-    if G.mode ~= 'walk' then for i, pk in ipairs(POWER_KEYS) do if hit(pk) or hit('kp' .. pk) then toggle_power(i - 1) end end end
-    if hit('b') then G.dark = (G.dark + 1) % #cave.DARK; cave.set_darkness(G.dark); if walk then walk.set_dark(G.dark) end end
+    for i, pk in ipairs(POWER_KEYS) do if hit(pk) or hit('kp' .. pk) then held = {}; mouse.down = false; ask_remove(i - 1) end end
+    if hit('b') then G.dark = (G.dark + 1) % #cave.DARK; cave.set_darkness(G.dark) end
+  end
+  -- the inventory: the six objects he carries, top right, each its own little render (inspect.icon)
+  local INV = { px = 34, pad = 3, gap = 4, y = 8 }
+  local icons = {}
+  local function slot_rect(i)
+    local w = INV.px + INV.pad*2
+    local x0 = R.W - 8 - (6*w + 5*INV.gap)
+    return x0 + i*(w + INV.gap), INV.y, w, w
+  end
+  local function slot_at(mx, my)
+    for i = 0, 5 do
+      local x, y, w, h = slot_rect(i)
+      if mx >= x and mx < x + w and my >= y and my < y + h then return i end
+    end
   end
   local drag = nil
   local function mouse_input()
     local mx, my = mouse_position()
     local moved = mx ~= mouse.px or my ~= mouse.py
     mouse.px, mouse.py = mx, my
-    if mouse_is_pressed(1) and not (inspect_active() or END.won) then mouse.down = true; pick_goal() end
+    if mouse_is_pressed(1) and not (inspect_active() or END.won) then
+      local sl = slot_at(mx, my)
+      if sl then
+        if powers.is_on(powers.ALL[sl + 1]) then held = {}; mouse.down = false; ask_remove(sl); return end
+      else mouse.down = true; pick_goal() end
+    end
     if mouse_is_pressed(2) and not (inspect_active() or END.won) and (G.cam == CAM_FREE or G.cam == CAM_EGG) then drag = { mx, my } end
     if mouse_is_released(1) then mouse.down = false end
     if mouse_is_released(2) then drag = nil end
@@ -427,9 +399,27 @@ function GM.create(R, hud_layer)
   -- ------------------------------------------------------------------ hud
   local gp = Vector3.new()
   local INK = 'rgba(8,6,5,0.85)'
+  local function draw_inventory()
+    local mx, my = mouse.px, mouse.py
+    local hot = slot_at(mx, my)
+    for i = 0, 5 do
+      local x, y, w, h = slot_rect(i)
+      local on = powers.is_on(powers.ALL[i + 1])
+      local edge = (hot == i and on) and 'rgba(242,227,194,0.95)' or 'rgba(120,106,86,0.75)'
+      HUD.rect(x, y, w, h, 'rgba(8,6,5,0.8)')
+      HUD.rect(x, y, w, 1, edge); HUD.rect(x, y + h - 1, w, 1, edge); HUD.rect(x, y, 1, h, edge); HUD.rect(x + w - 1, y, 1, h, edge)
+      if on and icons[i] then HUD.image(icons[i], x + INV.pad, y + INV.pad, INV.px, INV.px) end
+    end
+    if hot and powers.is_on(powers.ALL[hot + 1]) then
+      local ITM = require('port.items')
+      local _, y, _, h = slot_rect(hot)
+      HUD.text(ITM.ITEMS[hot + 1].name, R.W - 8, y + h + 4, '#f2e3c2', 1, 'right', nil, INK)
+    end
+  end
   local function draw_hud()
     HUD.begin()
     if inspect_active() then if G.hud then inspect.draw_hud() end; return end
+    if not END.won then draw_inventory() end
     if goal then
       gp:copy(goal):project(R.world_camera)
       if gp.z < 1 then
@@ -438,34 +428,16 @@ function GM.create(R, hud_layer)
       end
     end
     if not G.hud then return end
-    if G.mode == 'walk' then
-      local W = walk.W
-      local a = walk.area_now()
-      local nm = a == 8 and 'THE TUNNEL' or (W.areas[a + 1] and W.areas[a + 1].name or '')
-      if G.cam == 0 then
-        HUD.text('1 FIXED CAMERAS: ' .. walk.zone .. ' OF ' .. #walk.CAMS, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
-      else
-        local label = G.cam == CAM_FREE and '4' or tostring(G.cam + 1)
-        HUD.text(label .. ' ' .. CAMS[G.cam + 1].name, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
-      end
-      HUD.text('THE WALK: ' .. nm, 8, 19, '#a8987c', 1, 'left', nil, INK)
-      local ITM = require('port.items')
-      for i, it in ipairs(ITM.ITEMS) do
-        local has = walk.collected[i - 1]
-        HUD.text((has and it.name or '-'), R.W - 8, 8 + (i - 1)*11, has and '#f2e3c2' or '#6a5e4e', 1, 'right', nil, INK)
-      end
-      HUD.text('Q PACE: ' .. WALK.SPEEDS[G.walk_speed + 1].name, 8, R.H - 26, '#a8987c', 1, 'left', nil, INK)
-      HUD.text('B DARKNESS: ' .. cave.DARK[G.dark + 1].name, 8, R.H - 15, '#a8987c', 1, 'left', nil, INK)
-      HUD.text('I: WHAT HE CARRIES   F1-F8: GO TO AN AREA   F9: THE ROOM', R.W - 8, R.H - 37, '#f2e3c2', 1, 'right', nil, INK)
-      HUD.text('WASD OR HOLD LEFT MOUSE: MOVE', R.W - 8, R.H - 26, '#8a7c66', 1, 'right', nil, INK)
-      HUD.text('1-4 CAMERA   H HIDE', R.W - 8, R.H - 15, '#8a7c66', 1, 'right', nil, INK)
-      return
-    end
     local c = CAMS[G.cam + 1]
     local W, H = R.W, R.H
     local label = G.cam == CAM_EGG and 'Y' or (G.cam == CAM_FREE and '4' or tostring(G.cam + 1))
-    HUD.text(label .. ' ' .. c.name, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
-    HUD.text(c.note, 8, 19, '#a8987c', 1, 'left', nil, INK)
+    if G.cam == 0 and G.mode == 'tunnel' then
+      HUD.text('1 THE TUNNEL', 8, 8, '#f2e3c2', 1, 'left', nil, INK)
+      HUD.text('WHERE HE COMES FROM. THE ROOM CAMERA WHEN HE STEPS IN', 8, 19, '#a8987c', 1, 'left', nil, INK)
+    else
+      HUD.text(label .. ' ' .. c.name, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
+      HUD.text(c.note, 8, 19, '#a8987c', 1, 'left', nil, INK)
+    end
     HUD.text('U COIL: ' .. CL.COIL_MODES[snakes.coil_mode + 1], 8, H - 169, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('N HIS HAND: ' .. lich.HANDS[END.hand + 1], 8, H - 158, '#f2e3c2', 1, 'left', nil, INK)
     if items then
@@ -483,18 +455,16 @@ function GM.create(R, hud_layer)
     HUD.text('G OUT OF THE LIGHT: ' .. lich.GLOWS[lich.get_glow() + 1].name, 8, H - 37, '#a8987c', 1, 'left', nil, INK)
     HUD.text('P PRISM STRENGTH: ' .. lich.MODES[lich.get_mode() + 1], 8, H - 26, '#a8987c', 1, 'left', nil, INK)
     HUD.text('B DARKNESS: ' .. cave.DARK[G.dark + 1].name, 8, H - 15, '#a8987c', 1, 'left', nil, INK)
-    for i, a in ipairs(powers.ALL) do
-      local on = powers.is_on(a)
-      HUD.text(POWER_KEYS[i] .. ' ' .. a.name .. (on and '' or ': REMOVED'), W - 8, 8 + (i - 1)*11, on and '#f2e3c2' or '#6a5e4e', 1, 'right', nil, INK)
-    end
-    HUD.text(string.format('EACH POWER X%.1f', powers.power()), W - 8, 8 + 6*11 + 3, '#a8987c', 1, 'right', nil, INK)
-    HUD.text('REACHED THE EGG: ' .. snakes.reached, W - 8, 8 + 7*11 + 3, snakes.reached > 0 and '#e0a070' or '#a8987c', 1, 'right', nil, INK)
+    -- (the powers he has are the inventory above; under it, the room's numbers)
+    local y0 = INV.y + INV.px + INV.pad*2 + 18
+    HUD.text(string.format('EACH POWER X%.1f', powers.power()), W - 8, y0, '#a8987c', 1, 'right', nil, INK)
+    HUD.text('REACHED THE EGG: ' .. snakes.reached, W - 8, y0 + 11, snakes.reached > 0 and '#e0a070' or '#a8987c', 1, 'right', nil, INK)
     if #snakes.coiled > 0 then
-      HUD.text(string.format('COILED ROUND IT: %d   COVERED: %d%% OF %d', #snakes.coiled, floor(snakes.coverage*100 + 0.5), floor(snakes.WIN*100 + 0.5)), W - 8, 8 + 8*11 + 3, '#e0a070', 1, 'right', nil, INK)
+      HUD.text(string.format('COILED ROUND IT: %d   COVERED: %d%% OF %d', #snakes.coiled, floor(snakes.coverage*100 + 0.5), floor(snakes.WIN*100 + 0.5)), W - 8, y0 + 22, '#e0a070', 1, 'right', nil, INK)
     end
-    if END.won then HUD.text('THE EGG IS COVERED: WON', W - 8, 8 + 9*11 + 3, '#f2e3c2', 1, 'right', nil, INK) end
-    HUD.text('T: REMOVE EVERY POWER (THE ENDING)', W - 8, H - 48, '#f2e3c2', 1, 'right', nil, INK)
-    HUD.text('I: INSPECT THE OBJECTS   5-0: REMOVE A POWER (ITS OBJECT DROPS)', W - 8, H - 37, '#f2e3c2', 1, 'right', nil, INK)
+    if END.won then HUD.text('THE EGG IS COVERED: WON', W - 8, y0 + 33, '#f2e3c2', 1, 'right', nil, INK) end
+    HUD.text('T: REMOVE EVERY POWER AT ONCE (TESTING)', W - 8, H - 48, '#8a7c66', 1, 'right', nil, INK)
+    HUD.text('CLICK AN OBJECT, OR 5-0: REMOVE IT   I: LOOK AT THEM', W - 8, H - 37, '#f2e3c2', 1, 'right', nil, INK)
     HUD.text('WASD OR HOLD LEFT MOUSE: MOVE', W - 8, H - 26, '#8a7c66', 1, 'right', nil, INK)
     HUD.text('1-4 Y CAMERA   U N Z M O K X L F J R G P B   H HIDE', W - 8, H - 15, '#8a7c66', 1, 'right', nil, INK)
   end
@@ -513,24 +483,59 @@ function GM.create(R, hud_layer)
     HUD.alpha(1)
   end
 
+
+  -- the tunnel's light: what the room throws back down it, borrowed from two of the fire's point
+  -- lights (three.js compiled the programs for the room's nine; the fire lights none before the fight)
+  local lamps = {}
+  local function enter_room()
+    G.mode = 'room'
+    nav.cur = room_nav
+    for _, lp in ipairs(lamps) do
+      local l, k = lp.l, lp.keep
+      l.position:copy(k.position); l.color:copy(k.color); l.intensity = k.intensity; l.distance = k.distance; l.decay = k.decay
+    end
+    lamps = {}
+    basis.hold = true
+    F:copy(L)
+  end
+  G.enter_room = enter_room
+  if G.mode == 'tunnel' then
+    local pl = {}
+    R.world_scene:traverse(function(o) if o.is_point_light then pl[#pl + 1] = o end end)
+    local SPEC = { { 0, 2.6, -13, 5.0, 30 }, { 0, 2.4, -30, 1.4, 14 } }
+    for k, sp in ipairs(SPEC) do
+      local l = pl[k]
+      lamps[k] = { l = l, keep = { position = l.position:clone(), color = l.color:clone(), intensity = l.intensity, distance = l.distance, decay = l.decay } }
+      l.position:set(sp[1], sp[2], sp[3]); l.color:set_rgb(1.0, 0.8, 0.56); l.intensity = sp[4]; l.distance = sp[5]; l.decay = 0.9
+    end
+    for _, sn in ipairs(snakes.S) do sn.m.visible = false; sn.eyes[1].visible = false; sn.eyes[2].visible = false end
+  end
+  -- each object's icon for the inventory (rendered once, now, outside any frame's draw)
+  if inspect then for i = 0, 5 do icons[i] = inspect.icon(i, INV.px) end end
+
   -- ------------------------------------------------------------------ sim + render
-  local was_inspect = false
   local function tick()
     if END.won then END.over = END.over + DT; if over_black() then return end end
-    if inspect_active() then inspect.tick(DT); was_inspect = true; return end
-    if was_inspect then was_inspect = false; if walk then walk.after_inspect() end end
+    if inspect_active() then inspect.tick(DT); return end
+    -- the model viewer put away after its question: yes, and the object falls
+    if inspect and inspect.S.result then
+      local r, i = inspect.S.result, inspect.S.idx
+      inspect.S.result = nil
+      if r == 'remove' and powers.is_on(powers.ALL[i + 1]) then toggle_power(i) end
+    end
     G.tick = G.tick + 1
     G.t = G.t + DT
     mover.tick(G.t, DT, wanted_velocity())
-    if G.mode == 'walk' then
-      walk.tick(G.t, DT)
+    if G.mode == 'tunnel' then
+      -- coming in: nothing in the room moves yet; the room's camera and the fight begin where its
+      -- frame takes him (the room's grid opens about 4.5 m before the egg)
       lich.pose(G.t, DT, mover.motion)
       lich.update(G.t)
       cave.update(G.t, DT)
       fx.update(G.t, DT)
       warp.update(G.t, DT)
-      -- into the final room: past the tunnel, where the room's camera sees him
-      if walk.area_now() == 8 and L.z > -16 and not room_nav.is_blocked(L.x, L.z) and room_nav.dist(L.x, L.z) > 0.1 then enter_room(false) end
+      if items then items.update(G.t, DT) end
+      if L.z > -9 and not room_nav.is_blocked(L.x, L.z) and room_nav.dist(L.x, L.z) > 0.1 then enter_room() end
       return
     end
     powers.tick(G.t, DT)
@@ -632,33 +637,12 @@ function GM.create(R, hud_layer)
   function GAME.inspect_close() inspect.close(); return true end
   function GAME.hand_mat(i) local c = items.set_hand_mat(i); inspect.rebuild(); return c end
   function GAME.floor_size(i) return items.set_size(i) end
-  -- the walk's harness: put him in stretch k (its camera's target, the open floor nearest it),
-  -- facing along the way; go to an area as F1-F8 do; the walk's state
-  function GAME.walk_zone(k, yaw)
-    if not walk then return nil end
-    local c = walk.CAMS[k]
-    if c.area == 8 then mover.place(0, c.s0 > walk.CAMS[k - 1].s1 - 1 and -40 or -25, 0); G.walk_hold = true; GAME.step(2); return c end
-    local x, z = c.tgt[1], c.tgt[3]
-    for r = 0, 8, 0.2 do
-      local done = false
-      for q = 0, 23 do
-        local px, pz = x + cos(q/24*pi*2)*r, z + sin(q/24*pi*2)*r
-        local s = walk.nav.s_at(px, pz)
-        if walk.nav.dist(px, pz) > 0.45 and s >= c.s0 and s < c.s1 then x, z = px, pz; done = true; break end
-      end
-      if done then break end
-    end
-    local n = walk.CAMS[k + 1] or c
-    mover.place(x, z, yaw or atan2(n.tgt[1] - c.tgt[1], n.tgt[3] - c.tgt[3]))
-    set_cam(0)
-    GAME.step(2)
-    return { x = x, z = z, zone = walk.zone, area = walk.area_now() }
-  end
-  -- an inspection camera (camera 1 while set): eye, target, fov; GAME.look() clears it
+  -- round 40's harness: an inspection camera (camera 1 while set; no args clears it); ask to remove
+  -- object i, answer the question; where he is in the game
   function GAME.look(eye, tgt, fov) G.look = eye and { eye = eye, tgt = tgt, fov = fov or 50 } or nil; set_cam(0); return true end
-  function GAME.place(x, z, yaw) mover.place(x, z, yaw); F:copy(L); return { x, z } end
-  function GAME.walk_area(a) walk_start(a); set_cam(0); GAME.step(2); return { zone = walk.zone, area = walk.area_now() } end
-  function GAME.walk() return walk and { mode = G.mode, zone = walk.zone, area = walk.area_now(), collected = walk.collected, s = walk.nav.s_at(L.x, L.z) } or { mode = G.mode } end
+  function GAME.ask(i) ask_remove(i); return inspect and inspect.S.active end
+  function GAME.answer(yes) inspect.answer(yes); return inspect.S.result end
+  function GAME.mode() return G.mode end
   GAME.G = G
   return game
 end
