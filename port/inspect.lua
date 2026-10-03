@@ -15,7 +15,7 @@ local ITM = require('port.items')
 local HUD = require('port.hud')
 local Vector2, Vector3, Quaternion, Euler, Color = TM.Vector2, TM.Vector3, TM.Quaternion, TM.Euler, TM.Color
 local clamp, smoothstep, damp = U.clamp, U.smoothstep, U.damp
-local sin, cos, tan, exp, max, pi = math.sin, math.cos, math.tan, math.exp, math.max, math.pi
+local sin, cos, tan, exp, max, floor, pi = math.sin, math.cos, math.tan, math.exp, math.max, math.floor, math.pi
 
 local IN = {}
 local ORB_R = { 0.05, 0.036, 0.042, 0.028, 0.032 }
@@ -59,7 +59,8 @@ function IN.create(ctx)
   scene:add(holder)
 
   local S = { active = false, t = 0, idx = 5, model = nil, radius = 0.2, backdrop = 0, q = Quaternion.new(), wv = Vector2.new(0, 0), zoom = 1, zoom_t = 1,
-    idle = 0, closing = -1, drag = nil, saved = nil, hover = nil }
+    idle = 0, closing = -1, drag = nil, saved = nil, hover = nil,
+    remove = false, result = nil, buttons = {}, hot = nil }       -- (round 40: the view asks before an object is given up)
 
   local function orbs_hover(orbs)
     local ORBIT = {}
@@ -114,10 +115,14 @@ function IN.create(ctx)
   end
 
   local insp = { S = S, scene = scene, camera = camera, holder = holder }
-  function insp.open(i)
+  -- opts.remove: the object is about to be given up; the view asks whether (answer())
+  function insp.open(i, opts)
     if i == nil then i = S.idx end
     if S.active then return end
-    S.active = true; S.t = 0; S.closing = -1; S.idle = 0; S.zoom = 1; S.zoom_t = 1; S.wv:set(0, 0)
+    S.remove = (opts and opts.remove) and true or false
+    S.result = nil; S.hot = nil; S.buttons = {}
+    local z = S.remove and 0.85 or 1
+    S.active = true; S.t = 0; S.closing = -1; S.idle = 0; S.zoom = z; S.zoom_t = z; S.wv:set(0, 0)
     local hud = R.params.hud; R.params.hud = 0; R.params.world_override = nil; R.render(0); R.params.hud = hud
     back_mat.uniforms.tFrame.value = R.freeze()
     gpu_end()                 -- (rendered outside the frame's draw: hand the 2D pipeline its state back)
@@ -126,6 +131,7 @@ function IN.create(ctx)
   end
   function insp.close() if S.active and S.closing < 0 then S.closing = 0 end end
   function insp.next(d)
+    if S.remove then return end
     local i = S.idx
     local n = #ITEMS
     for _ = 1, n do i = (i + d + n) % n; if ITEMS[i + 1].build then break end end
@@ -138,9 +144,22 @@ function IN.create(ctx)
   end
   -- input (game.lua calls these while the view is up): mouse in game pixels; drag turns as
   -- inspect.js turns by CSS pixels over the canvas height
-  function insp.pointer_down(x, y) if S.active then S.drag = { x, y }; S.idle = 0 end end
+  local function button_at(x, y)
+    for name, b in pairs(S.buttons) do if x >= b[1] and x < b[1] + b[3] and y >= b[2] and y < b[2] + b[4] then return name end end
+  end
+  function insp.answer(yes)
+    if not (S.active and S.remove) or S.closing >= 0 then return end
+    S.result = yes and 'remove' or 'keep'
+    insp.close()
+  end
+  function insp.pointer_down(x, y)
+    if not S.active then return end
+    if S.remove then local b = button_at(x, y); if b then insp.answer(b == 'yes'); return end end
+    S.drag = { x, y }; S.idle = 0
+  end
   function insp.pointer_up() S.drag = nil end
   function insp.pointer_move(x, y)
+    if S.active and S.remove then S.hot = button_at(x, y) end
     if not S.active or not S.drag then return end
     local dx, dy = x - S.drag[1], y - S.drag[2]
     S.drag = { x, y }
@@ -169,9 +188,10 @@ function IN.create(ctx)
     if not S.active then return false end
     local a = smoothstep(0, 0.3, S.t)*(S.closing >= 0 and 1 - smoothstep(0, 0.28, S.closing) or 1)
     local dist = S.radius/tan(15*pi/180)/0.62/S.zoom
-    camera.position:set(0, 0, dist)
+    local oy = S.remove and S.radius*0.42/S.zoom or 0      -- (asking: the object a little higher, the question under it)
+    camera.position:set(0, -oy, dist)
     camera.near = dist*0.05; camera.far = dist*6; camera:update_projection_matrix()
-    camera:look_at(0, 0, 0)
+    camera:look_at(0, -oy, 0)
     holder.quaternion:copy(S.q)
     local e = 1 - a
     holder.position:set(0, -S.radius*0.9*e*e + S.radius*0.06, -S.radius*1.2*e)
@@ -191,11 +211,67 @@ function IN.create(ctx)
     if a <= 0 then return end
     HUD.alpha(a)
     local ink = 'rgba(8,6,5,0.9)'
+    if S.remove then
+      -- the question, and its two answers (clicked, or Y / N)
+      HUD.text(it.name, R.W/2, R.H - 116, '#f2e3c2', 2, 'center', nil, ink)
+      HUD.text('THE ' .. it.power .. ' POWER', R.W/2, R.H - 96, '#a8987c', 1, 'center', nil, ink)
+      HUD.text('[ YOUR TEXT ]', R.W/2, R.H - 82, '#6f6252', 1, 'center', nil, ink)
+      HUD.text('ARE YOU SURE YOU WANT TO REMOVE THIS ITEM?', R.W/2, R.H - 60, '#f2e3c2', 1, 'center', nil, ink)
+      local bw, bh, gap = 58, 15, 14
+      local y = R.H - 44
+      local bx = { yes = floor(R.W/2 - gap/2 - bw), no = floor(R.W/2 + gap/2) }
+      for _, name in ipairs({ 'yes', 'no' }) do
+        local hot = S.hot == name
+        S.buttons[name] = { bx[name], y, bw, bh }
+        HUD.rect(bx[name], y, bw, bh, hot and 'rgba(242,227,194,0.9)' or 'rgba(20,16,13,0.85)')
+        HUD.rect(bx[name], y, bw, 1, 'rgba(168,152,124,0.8)'); HUD.rect(bx[name], y + bh - 1, bw, 1, 'rgba(168,152,124,0.8)')
+        HUD.rect(bx[name], y, 1, bh, 'rgba(168,152,124,0.8)'); HUD.rect(bx[name] + bw - 1, y, 1, bh, 'rgba(168,152,124,0.8)')
+        HUD.text(name == 'yes' and 'YES' or 'NO', bx[name] + bw/2, y + 4, hot and '#141009' or '#f2e3c2', 1, 'center')
+      end
+      HUD.text('DRAG: TURN   WHEEL: CLOSER   Y: YES   N OR ESC: NO', R.W/2, R.H - 12, '#6a5e4e', 1, 'center', nil, ink)
+      HUD.alpha(1)
+      return
+    end
     HUD.text(it.name, R.W/2, R.H - 64, '#f2e3c2', 2, 'center', nil, ink)
     HUD.text('THE ' .. it.power .. ' POWER', R.W/2, R.H - 44, '#a8987c', 1, 'center', nil, ink)
     HUD.text('[ YOUR TEXT ]', R.W/2, R.H - 30, '#6f6252', 1, 'center', nil, ink)
     HUD.text("DRAG: TURN   WHEEL: CLOSER   A D: NEXT   M: THE HAND'S METAL   I: PUT AWAY", R.W/2, R.H - 12, '#6a5e4e', 1, 'center', nil, ink)
     HUD.alpha(1)
+  end
+  -- an icon of object i (px square): the view's own render of it, small, against black, read back
+  -- from the final frame (rows bottom-up, as GL keeps them). Call outside a frame's draw.
+  function insp.icon(i, px)
+    local was_active = S.active
+    build(i)
+    local v = ITEMS[i + 1].view or { 0.55, 0.4, 0.0 }
+    S.q:set_from_euler(Euler.new(v[1], v[2], v[3], 'YXZ'))
+    if S.hover then S.hover(1.3) end
+    S.active = true; S.t = 1; S.closing = -1; S.remove = false
+    -- (the orbs hover apart and the lens is thin glass: they read better a little larger)
+    S.zoom = px*0.86/(2*0.62*R.H/2)*(({ [3] = 1.55, [5] = 1.2 })[i] or 1)
+    local BU = back_mat.uniforms
+    local tf, black, hud, bloom = BU.tFrame.value, BU.uBlack.value, R.params.hud, R.params.bloom.strength
+    BU.tFrame.value = BU.tFrame.value or R.freeze()
+    BU.uBlack.value = 1
+    R.params.hud = 0
+    insp.render_setup()
+    BU.uGlow.value = 0.7
+    R.render(0)
+    local rt = R.targets.rt_final
+    local x0, y0 = floor(R.W/2 - px/2), floor(R.H/2 - px/2 + 0.06*0.62*R.H/2*S.zoom + 0.5)
+    local bytes = gpu_read(rt.gpu, x0, y0, px, px)
+    -- opaque (the final frame's alpha is not the picture's)
+    local t = {}
+    local A255 = string.char(255)
+    for k = 1, #bytes, 4 do t[#t + 1] = bytes:sub(k, k + 2) .. A255 end
+    bytes = table.concat(t)
+    gpu_end()
+    BU.tFrame.value, BU.uBlack.value, R.params.hud, R.params.bloom.strength = tf, black, hud, bloom
+    R.params.world_override = nil
+    S.active = was_active
+    S.zoom = 1
+    local tex = gpu_texture(px, px, { format = 'rgba8', min = 'nearest', mag = 'nearest', data = bytes })
+    return gpu_texture_image(tex)
   end
   function insp.rebuild() if S.active then local q = S.q:clone(); build(S.idx); S.q:copy(q) end end
   function insp.pose(yaw, pitch, roll, zoom)
