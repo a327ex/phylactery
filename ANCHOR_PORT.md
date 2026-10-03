@@ -162,6 +162,12 @@ running renderer: `web/src/devtrace.js`, `GAME.trace_programs()`; 65 programs as
 `record = false` is gone from main.lua, and the recordings play back byte-identical on the desktop
 and play in the browser. Busiest scene ~1.1 MB/s.
 
+**Recordings smaller (2026-10-03, APR v15).** boot.lua sets `gpu_precision(14)`: matrix uniforms,
+dynamic attributes and gpu_tube's rings reach the GPU rounded to 14 mantissa bits (game state is
+not touched, the digests stay identical). Against the three.js build this adds sub-pixel
+differences (a dust mote one pixel over; dither levels in the haze), on top of the GPU floor below.
+Recordings went from ~1.9 MB/s to ~0.6 MB/s.
+
 ### Progress (2026-09-30)
 - **Engine: the gpu layer** (`gpu_*` in anchor.c, section "GPU"): programs from source, meshes
   of named float attributes (+ instanced, updated in place), 16/32-bit indices, 2D / 3D textures

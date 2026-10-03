@@ -205,6 +205,45 @@ function C.build(R)
     group = group, ground_y = C.ground_y, egg = egg, sun = sun, LAYOUT = L, GU = GU, rock_geo = statics[5] and statics[5].geometry,
     rock_tex = A.texture('cave_rock'), DARK = DARK, statics = statics, assets = A,
   }
+  -- round 41: the surfaces. AS EXPORTED = the three.js build's textures on its UVs (one projection per
+  -- triangle, so on the curved shell the pattern jumps at triangle edges); SLABS and QUIET =
+  -- tools/cave_look.py's textures (4 m tiles, close tones, no dark crack round every patch) on its
+  -- continuous UVs for the shell (wall, dome, tunnel, floor). The rocks keep their UVs.
+  local SURF = {
+    { name = 'AS EXPORTED' },
+    { name = 'SLABS', rock = 'cave_rock_slabs', floor = 'cave_floor_slabs' },
+    { name = 'QUIET', rock = 'cave_rock_quiet', floor = 'cave_floor_quiet' },
+  }
+  local tex_meta = A.manifest.textures
+  for _, s in ipairs(SURF) do
+    for _, t in ipairs({ s.rock or false, s.floor or false }) do
+      if t and not tex_meta[t] then
+        local meta = {}
+        for k, v in pairs(tex_meta.cave_rock) do meta[k] = v end
+        meta.w, meta.h, meta['repeat'] = 128, 128, { 0.5, 0.5 }
+        tex_meta[t] = meta
+      end
+    end
+  end
+  local shells = {}
+  for i, e in ipairs(X.meshes) do
+    if e.geo == 'cave_0' or e.geo == 'cave_1' or e.geo == 'cave_2' or e.geo == 'cave_3' then
+      local g = statics[i].geometry
+      shells[#shells + 1] = { g = g, uv = g.attributes.uv, uvc = A.attribute(e.geo, 'uvc', 2) }
+    end
+  end
+  cave.SURF = SURF
+  function cave.set_surface(i)
+    local n = #SURF
+    local s = SURF[((i % n) + n) % n + 1]
+    for _, sh in ipairs(shells) do
+      local uv = s.rock and sh.uvc or sh.uv
+      if sh.g.attributes.uv ~= uv then sh.g.attributes.uv = uv; sh.g.gpu_dirty = true end
+    end
+    for _, k in ipairs({ 'rock', 'wall', 'dome' }) do M[k].map = A.texture(s.rock or X.materials[k].map) end
+    M.floor.map = A.texture(s.floor or X.materials.floor.map)
+    return s.name
+  end
   function cave.set_dome_visible(on) for _, m in ipairs(dome_mats) do m.color_write = on; m.depth_write = on end end
   function cave.set_darkness(i)
     local n = #DARK
