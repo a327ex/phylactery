@@ -2,7 +2,7 @@
   ui_style.lua -- round 42 (owner, 2026-10-03: the inventory smaller; its icons "some idealized version
   of them generated in a style that works with the rest of the game"; the font and the UI style
   itself to fit too). The player's UI in a few directions, each axis behind a key:
-    F1 a whole direction (bundle)   F2 the icons   F3 the fonts   F4 the frames
+    F1 a whole direction (bundle)   F2 the icons   F4 the frames   (the font: FACETED, hud.lua)
   Icons: tools/icons.py (assets/ui/icons/<style>_<i>.png), except 'render' (the inspect view's own
   render, as before, smaller). Fonts: hud.lua's registry (tools/hud_fonts.py). Frames: drawn here.
 ]]
@@ -15,37 +15,15 @@ UI.PAD = 3            -- slot padding
 UI.GAP = 4
 
 UI.ICONS = { 'render', 'relic', 'engraved', 'ember', 'glyph' }
-UI.FONTS = {
-  { name = 'CLASSIC', title = 'classic', title_scale = 2, body = 'classic', body_scale = 1 },
-  { name = 'SILKSCREEN', title = 'silk', title_scale = 2, body = 'silk', body_scale = 1 },
-  { name = 'MANUSCRIPT', title = 'jacquard', title_scale = 1, body = 'bastarda', body_scale = 1 },
-  { name = 'PIXELIFY + TINY', title = 'pixelify', title_scale = 1, body = 'tiny', body_scale = 1 },
-  { name = 'TINY', title = 'tiny', title_scale = 2, body = 'tiny', body_scale = 1 },
-  -- round 43 (owner: EMBER, but its font "doesn't fit. Ember looks like the cave in a way, so the
-  -- font should be somewhat related"): cut, scratched, carved and worn letters, lit as the icons are
-  { name = 'FACETED', title = 'facet', title_scale = 2, body = 'facet', body_scale = 1, fill = 'ember', title_fx = 'rim' },
-  { name = 'RUNIC', title = 'rune', title_scale = 2, body = 'rune', body_scale = 1, fill = 'ember', title_fx = 'rim' },
-  { name = 'CARVED', title = 'cinzel', title_scale = 1, body = 'marcellus', body_scale = 1, fill = 'ember' },
-  { name = 'WORN', title = 'fell18', title_scale = 1, body = 'fell', body_scale = 1, fill = 'ember' },
-  { name = 'SHARP', title = 'sharp16', title_scale = 1, body = 'sharp', body_scale = 1, fill = 'ember' },
-  -- round 44 (owner: "Could we try non-pixel fonts?"): the same kinds of letter, smooth, at the
-  -- window's resolution (hud.lua's full-resolution layer)
-  { name = 'SMOOTH CINZEL', title = 's_cinzel_t', body = 's_cinzel_b' },
-  { name = 'SMOOTH FELL', title = 's_fell_t', body = 's_fell_b' },
-  { name = 'SMOOTH UNCIAL', title = 's_uncial_t', body = 's_uncial_b' },
-  { name = 'SMOOTH SHARP', title = 's_sharp_t', body = 's_sharp_b' },
-  { name = 'SMOOTH MARCELLUS', title = 's_marcellus_t', body = 's_marcellus_b' },
-  { name = 'SMOOTH GRENZE', title = 's_grenze_t', body = 's_grenze_b' },
-}
 UI.FRAMES = { 'boxed', 'bare', 'plate', 'brackets', 'lamp' }
 UI.BUNDLES = {
-  { name = 'CURRENT', icons = 1, fonts = 1, frame = 1 },
-  { name = 'RELIC', icons = 2, fonts = 2, frame = 3 },
-  { name = 'MANUSCRIPT', icons = 3, fonts = 3, frame = 4 },
-  { name = 'EMBER', icons = 4, fonts = 12, frame = 5 },
-  { name = 'GLYPH', icons = 5, fonts = 5, frame = 2 },
+  { name = 'CURRENT', icons = 1, frame = 1 },
+  { name = 'RELIC', icons = 2, frame = 3 },
+  { name = 'MANUSCRIPT', icons = 3, frame = 4 },
+  { name = 'EMBER', icons = 4, frame = 5 },
+  { name = 'GLYPH', icons = 5, frame = 2 },
 }
-UI.S = { bundle = 4, icons = 4, fonts = 12, frame = 5 }   -- starts on EMBER (his pick, round 42), SMOOTH FELL (round 44)
+UI.S = { bundle = 4, icons = 4, frame = 5 }   -- EMBER (his pick, round 42); the font is FACETED (round 43, hud.lua)
 
 local CREAM, DIM, DARK, BRONZE = '#f2e3c2', '#a8987c', '#6f6252', '#e0a070'
 UI.CREAM, UI.DIM, UI.DARK = CREAM, DIM, DARK
@@ -71,25 +49,21 @@ local function glow_tex(w)
   return glow
 end
 
-function UI.apply()
-  local f = UI.FONTS[UI.S.fonts]
-  HUD.style = { title = f.title, body = f.body, title_scale = f.title_scale, body_scale = f.body_scale, fill = f.fill, title_fx = f.title_fx, body_fx = f.body_fx }
-end
+function UI.apply() end
 function UI.set_bundle(i)
   local n = #UI.BUNDLES
   UI.S.bundle = ((i - 1) % n + n) % n + 1
   local b = UI.BUNDLES[UI.S.bundle]
-  UI.S.icons, UI.S.fonts, UI.S.frame = b.icons, b.fonts, b.frame
+  UI.S.icons, UI.S.frame = b.icons, b.frame
   UI.apply()
 end
 local function cyc(k, list) UI.S[k] = UI.S[k] % #list + 1; UI.apply() end
 function UI.next_icons() cyc('icons', UI.ICONS) end
-function UI.next_fonts() cyc('fonts', UI.FONTS) end
 function UI.next_frame() cyc('frame', UI.FRAMES) end
 function UI.describe()
   local b = UI.BUNDLES[UI.S.bundle]
-  local same = b.icons == UI.S.icons and b.fonts == UI.S.fonts and b.frame == UI.S.frame
-  return (same and b.name or 'MIXED') .. ': ICONS ' .. UI.ICONS[UI.S.icons]:upper() .. ', FONT ' .. UI.FONTS[UI.S.fonts].name .. ', FRAME ' .. UI.FRAMES[UI.S.frame]:upper()
+  local same = b.icons == UI.S.icons and b.frame == UI.S.frame
+  return (same and b.name or 'MIXED') .. ': ICONS ' .. UI.ICONS[UI.S.icons]:upper() .. ', FRAME ' .. UI.FRAMES[UI.S.frame]:upper()
 end
 
 -- the slot's box (state: 'on', 'hot' or 'empty'), then its icon
