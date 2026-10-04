@@ -22,7 +22,26 @@ FONTS = [
     ('pixelify', 'PixelifySans[wght].ttf', 11, False),
     ('bastarda', 'JacquardaBastarda9-Regular.ttf', 13, False),
     ('jacquard', 'Jacquard12-Regular.ttf', 21, False),
+    # round 43 (EMBER's text: carved, worn, cut)
+    ('cinzel', 'Cinzel[wght].ttf', 18, True),
+    ('cinzel12', 'Cinzel[wght].ttf', 12, True),
+    ('marcellus', 'MarcellusSC-Regular.ttf', 12, False),
+    ('fell', 'IMFeENsc28P.ttf', 12, False),
+    ('fell18', 'IMFeENsc28P.ttf', 18, False),
+    ('sharp', 'MedievalSharp.ttf', 12, False),
+    ('sharp16', 'MedievalSharp.ttf', 16, False),
 ]
+# round 43: fonts drawn here (tools/bitmap_fonts.py): capitals, 1 px between letters
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bitmap_fonts as BF
+BITMAPS = [('facet', BF.FACET, 7), ('rune', BF.RUNE, 8)]
+TIGHT = {'cinzel', 'cinzel12', 'marcellus', 'fell', 'fell18', 'sharp', 'sharp16'}
+
+def lua_key(ch):
+    if ch == "'": return '"\'"'
+    if ch == '\\': return "'\\\\'"
+    return repr(ch)
 CHARS = [chr(c) for c in range(33, 127)]
 
 def glyph_pixels(font, ch, size):
@@ -43,14 +62,31 @@ def main():
         h = bottom - cap_top + 1
         space = round(font.getlength(' '))
         out.append('  %s = { h = %d, cap = %d, upper = %s, space = %d, glyphs = {' % (name, h, -cap_top, 'true' if upper else 'false', space))
+        tight = name in TIGHT
         for ch in CHARS:
             px = g[ch]
             adv = round(font.getlength(ch))
+            if tight and px:
+                # (non-pixel fonts: each letter's own pixels, then an even gap; rounded advances
+                # and dropped kerning broke their rhythm at these sizes)
+                x0 = min(x for x, _ in px); x1 = max(x for x, _ in px)
+                px = [(x - x0, y) for x, y in px]
+                adv = x1 - x0 + 1 + (2 if size >= 16 else 1)
             flat = ','.join('%d,%d' % (x, y - cap_top) for x, y in px)
             key = repr(ch) if ch not in ("'", '\\') else ('"\'"' if ch == "'" else "'\\\\'")
             out.append('    [%s] = { w = %d, px = { %s } },' % (key, adv, flat))
         out.append('  } },')
         print('%-9s size %2d: height %d (capitals %d), space %d' % (name, size, h, -cap_top, space))
+    for name, table, rows in BITMAPS:
+        glyphs = dict(BF.PUNCT); glyphs.update(table)
+        out.append('  %s = { h = %d, cap = %d, upper = true, space = 3, glyphs = {' % (name, rows, rows))
+        for ch, rr in sorted(glyphs.items()):
+            off = rows - len(rr)                                  # (shorter glyphs sit on the baseline)
+            px = [(x, y + off) for y, row in enumerate(rr) for x, c in enumerate(row) if c == '#']
+            flat = ','.join('%d,%d' % q for q in px)
+            out.append('    [%s] = { w = %d, px = { %s } },' % (lua_key(ch), len(rr[0]) + 1, flat))
+        out.append('  } },')
+        print('%-9s drawn: %d rows, %d glyphs' % (name, rows, len(glyphs)))
     out.append('}')
     open(os.path.join(ROOT, 'port', 'hud_fonts.lua'), 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
 
