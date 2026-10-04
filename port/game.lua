@@ -344,7 +344,6 @@ function GM.create(R, hud_layer)
     if hit('v') then G.surface = (G.surface + 1) % #cave.SURF; cave.set_surface(G.surface) end
     if hit('f1') then UI.set_bundle(UI.S.bundle + 1) end
     if hit('f2') then UI.next_icons() end
-    if hit('f3') then UI.next_fonts() end
     if hit('f4') then UI.next_frame() end
     if hit('c') and G.mode == 'tunnel' then set_tunnel_light(G.tlight + 1) end
   end
@@ -438,8 +437,7 @@ function GM.create(R, hud_layer)
     end
     if not G.hud then return end
     -- (the testing text keeps the old font: it is not the game's UI)
-    local ui_style = HUD.style
-    HUD.style = { title = 'classic', body = 'classic' }
+    HUD.plain = true
     local c = CAMS[G.cam + 1]
     local W, H = R.W, R.H
     local label = G.cam == CAM_EGG and 'Y' or (G.cam == CAM_FREE and '4' or tostring(G.cam + 1))
@@ -451,7 +449,7 @@ function GM.create(R, hud_layer)
       HUD.text(c.note, 8, 19, '#a8987c', 1, 'left', nil, INK)
     end
     if G.mode == 'tunnel' then HUD.text('C TUNNEL LIGHT: ' .. G.TLIGHT[G.tlight + 1].name, 8, H - 191, '#f2e3c2', 1, 'left', nil, INK) end
-    HUD.text('F1-F4 UI: ' .. UI.describe(), 8, H - 202, '#f2e3c2', 1, 'left', nil, INK)
+    HUD.text('F1 F2 F4 UI: ' .. UI.describe(), 8, H - 202, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('V CAVE SURFACE: ' .. cave.SURF[G.surface + 1].name, 8, H - 180, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('U COIL: ' .. CL.COIL_MODES[snakes.coil_mode + 1], 8, H - 169, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('N HIS HAND: ' .. lich.HANDS[END.hand + 1], 8, H - 158, '#f2e3c2', 1, 'left', nil, INK)
@@ -482,7 +480,7 @@ function GM.create(R, hud_layer)
     HUD.text('CLICK AN OBJECT, OR 5-0: REMOVE IT   I: LOOK AT THEM', W - 8, H - 37, '#f2e3c2', 1, 'right', nil, INK)
     HUD.text('WASD OR HOLD LEFT MOUSE: MOVE', W - 8, H - 26, '#8a7c66', 1, 'right', nil, INK)
     HUD.text('1-4 Y CAMERA   V C U N Z M O K X L F J R G P B   H HIDE', W - 8, H - 15, '#8a7c66', 1, 'right', nil, INK)
-    HUD.style = ui_style
+    HUD.plain = false
   end
   local function ss(a, b, x) local t = clamp((x - a)/(b - a), 0, 1); return t*t*(3 - 2*t) end
   local function draw_over()
@@ -666,10 +664,9 @@ function GM.create(R, hud_layer)
       goal = goal and { r3(goal.x), r3(goal.z) } or nil }
   end
   function GAME.dark(i) G.dark = i; return cave.set_darkness(i) end
-  function GAME.ui(bundle, icons, fonts, frame)
+  function GAME.ui(bundle, icons, frame)
     if bundle then UI.set_bundle(bundle) end
     if icons then UI.S.icons = icons end
-    if fonts then UI.S.fonts = fonts end
     if frame then UI.S.frame = frame end
     UI.apply()
     return UI.describe()
