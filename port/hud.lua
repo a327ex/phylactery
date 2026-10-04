@@ -77,12 +77,52 @@ end
 FONT[' '] = { w = 3, px = {} }
 HUD.FONT = FONT
 
-local function glyphs(str) return str:upper() end
+-- round 42: fonts by name. 'classic' = the 5x7 above (drawn at any scale, 1 px between letters);
+-- the others come from tools/hud_fonts.py (TrueType pixel fonts as glyph tables, drawn at their own
+-- size: their advances include the spacing). HUD.style names the title font (texts drawn at scale
+-- 2: names) and the body font (the rest).
+local FONTS = { classic = { glyphs = FONT, h = 7, upper = true, track = 1, scalable = true } }
+for name, f in pairs(require('port.hud_fonts')) do
+  f.glyphs[' '] = { w = f.space, px = {} }
+  f.track = 0
+  FONTS[name] = f
+end
+HUD.FONTS = FONTS
+HUD.style = { title = 'classic', body = 'classic' }
+-- (a style may give each role its own scale: title_scale, body_scale; pixel fonts stay crisp at whole multiples)
+local function font_for(scale)
+  local st = HUD.style
+  local title = (scale or 1) >= 2
+  local name = title and st.title or st.body
+  local f = FONTS[name] or FONTS.classic
+  return f, (title and st.title_scale or st.body_scale) or (scale or 1), name
+end
+HUD.font_for = font_for
+-- a text's height in pixels (its capitals' top to its lowest descender) at this scale
+function HUD.text_height(scale) local f, s = font_for(scale); return f.h*s end
+
+local function glyphs(str, f) return f.upper and str:upper() or str end
+-- the game's texts are written in capitals; a mixed-case font gets them as names (Title Case) or as
+-- sentences (each run between wide gaps starts with a capital), whichever role draws them
+local SMALL = { the = true, ['of'] = true, a = true, an = true, ['and'] = true, ['or'] = true, to = true, ['in'] = true }
+local function recase(str, title)
+  if not str:find('%u') or str:find('%l') then return str end
+  local low = str:lower()
+  if title then
+    local n = 0
+    return (low:gsub('(%a[%a\']*)', function(w) n = n + 1; if n > 1 and SMALL[w] then return w end; return w:sub(1, 1):upper() .. w:sub(2) end))
+  end
+  low = low:gsub('^(%W*)(%a)', function(p, c) return p .. c:upper() end)
+  low = low:gsub('(%s%s+%W*)(%a)', function(p, c) return p .. c:upper() end)
+  return low
+end
+HUD.recase = recase
 function HUD.text_width(str, scale)
-  scale = scale or 1
+  local f, s = font_for(scale)
+  local G = f.glyphs
   local w = 0
-  for ch in glyphs(tostring(str)):gmatch('.') do w = w + ((FONT[ch] or FONT['?']).w + 1)*scale end
-  return max(0, w - scale)
+  for ch in glyphs(tostring(str), f):gmatch('.') do w = w + ((G[ch] or G['?']).w + f.track)*s end
+  return max(0, w - f.track*s)
 end
 
 -- CSS colours: '#rrggbb' or 'rgba(r,g,b,a)' -> r, g, b, a (0..1)
@@ -104,14 +144,16 @@ HUD.css = css
 
 -- one text as a texture: hud_font.js's draw_text, composited source-over (straight alpha)
 local cache, cache_n, cache_order = {}, 0, {}
-local function raster(str, color, scale, shadow, outline, drop)
-  local key = str .. '\0' .. color .. '\0' .. scale .. '\0' .. (shadow or '') .. '\0' .. (outline or '') .. '\0' .. (drop or '')
+local function raster(str, color, scale0, shadow, outline, drop)
+  local fnt, scale, fname = font_for(scale0)
+  local key = fname .. '\0' .. str .. '\0' .. color .. '\0' .. scale .. '\0' .. (shadow or '') .. '\0' .. (outline or '') .. '\0' .. (drop or '')
   local e = cache[key]
   if e then e.used = HUD.frame; return e end
-  str = glyphs(str)
-  local tw = HUD.text_width(str, scale)
+  local G = fnt.glyphs
+  str = glyphs(str, fnt)
+  local tw = HUD.text_width(str, scale0)
   local pad = 2 + scale
-  local W, Hh = tw + 2*pad, 7*scale + 2*pad
+  local W, Hh = tw + 2*pad, fnt.h*scale + 2*pad
   local pix = {}          -- [y*W + x] = { r, g, b, a }
   local function put(x, y, c)
     x = x + pad; y = y + pad
@@ -128,10 +170,10 @@ local function raster(str, color, scale, shadow, outline, drop)
   local function each(fn)
     local px = 0
     for ch in str:gmatch('.') do
-      local f = FONT[ch] or FONT['?']
+      local f = G[ch] or G['?']
       local p = f.px
       for i = 1, #p, 2 do fn(px + p[i]*scale, p[i + 1]*scale) end
-      px = px + (f.w + 1)*scale
+      px = px + (f.w + fnt.track)*scale
     end
   end
   local function pass(ox, oy, c) each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do put(x + ox + i, y + oy + j, c) end end end) end
@@ -190,6 +232,13 @@ function HUD.alpha(a) galpha = a end
 -- draw_text(g, str, x, y, color, scale, align, shadow, opts) with the canvas `g` implied
 function HUD.text(str, x, y, color, scale, align, shadow, opts)
   scale = scale or 1; align = align or 'left'
+  do local f = font_for(scale); if not f.upper then str = recase(tostring(str), scale >= 2) end end
+  if type(opts) == 'table' and opts.font then
+    -- (a one-off font for this text)
+    local keep = HUD.style; HUD.style = { title = opts.font, body = opts.font }
+    HUD.text(str, x, y, color, scale, align, shadow, { outline = opts.outline, shadow = opts.shadow }); HUD.style = keep
+    return
+  end
   str = tostring(str)
   local w = HUD.text_width(str, scale)
   local cx = align == 'center' and x - w/2 or (align == 'right' and x - w or x)
@@ -206,6 +255,10 @@ end
 -- an image (a gpu texture's image, rows bottom-up as GL keeps them: drawn flipped) at x, y
 function HUD.image(img, x, y, w, h)
   ops[#ops + 1] = { t = 'img', img = img, x = x, y = y, w = w, h = h, a = galpha }
+end
+-- a 2D texture (texture_load: rows top-down) at x, y, its own size
+function HUD.texture(tex, x, y, w, h)
+  ops[#ops + 1] = { t = 'tex', e = { tex = tex, w = w, h = h }, x = x, y = y, a = galpha }
 end
 function HUD.flush(layer)
   for _, o in ipairs(ops) do

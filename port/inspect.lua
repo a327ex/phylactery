@@ -206,36 +206,40 @@ function IN.create(ctx)
   end
   function insp.draw_hud()
     if not S.active then return end
+    local UI = require('port.ui_style')
     local it = ITEMS[S.idx + 1]
     local a = smoothstep(0.15, 0.45, S.t)*(S.closing >= 0 and 1 - smoothstep(0, 0.15, S.closing) or 1)
     if a <= 0 then return end
     HUD.alpha(a)
     local ink = 'rgba(8,6,5,0.9)'
+    -- (round 42: laid out from the fonts' own heights, from the bottom up)
+    local h1, h2 = HUD.text_height(1), HUD.text_height(2)
+    local cx = R.W/2
+    local y = R.H - 6 - h1
     if S.remove then
+      HUD.text('DRAG: TURN   WHEEL: CLOSER   Y: YES   N OR ESC: NO', cx, y, UI.DARK, 1, 'center', nil, ink)
       -- the question, and its two answers (clicked, or Y / N)
-      HUD.text(it.name, R.W/2, R.H - 116, '#f2e3c2', 2, 'center', nil, ink)
-      HUD.text('THE ' .. it.power .. ' POWER', R.W/2, R.H - 96, '#a8987c', 1, 'center', nil, ink)
-      HUD.text('[ YOUR TEXT ]', R.W/2, R.H - 82, '#6f6252', 1, 'center', nil, ink)
-      HUD.text('ARE YOU SURE YOU WANT TO REMOVE THIS ITEM?', R.W/2, R.H - 60, '#f2e3c2', 1, 'center', nil, ink)
-      local bw, bh, gap = 58, 15, 14
-      local y = R.H - 44
-      local bx = { yes = floor(R.W/2 - gap/2 - bw), no = floor(R.W/2 + gap/2) }
+      local bh = h1 + 8
+      local bw = math.max(58, HUD.text_width('YES', 1) + 24, HUD.text_width('NO', 1) + 24)
+      local gap = 14
+      y = y - 10 - bh
+      local bx = { yes = floor(cx - gap/2 - bw), no = floor(cx + gap/2) }
       for _, name in ipairs({ 'yes', 'no' }) do
-        local hot = S.hot == name
         S.buttons[name] = { bx[name], y, bw, bh }
-        HUD.rect(bx[name], y, bw, bh, hot and 'rgba(242,227,194,0.9)' or 'rgba(20,16,13,0.85)')
-        HUD.rect(bx[name], y, bw, 1, 'rgba(168,152,124,0.8)'); HUD.rect(bx[name], y + bh - 1, bw, 1, 'rgba(168,152,124,0.8)')
-        HUD.rect(bx[name], y, 1, bh, 'rgba(168,152,124,0.8)'); HUD.rect(bx[name] + bw - 1, y, 1, bh, 'rgba(168,152,124,0.8)')
-        HUD.text(name == 'yes' and 'YES' or 'NO', bx[name] + bw/2, y + 4, hot and '#141009' or '#f2e3c2', 1, 'center')
+        UI.button(bx[name], y, bw, bh, name == 'yes' and 'YES' or 'NO', S.hot == name)
       end
-      HUD.text('DRAG: TURN   WHEEL: CLOSER   Y: YES   N OR ESC: NO', R.W/2, R.H - 12, '#6a5e4e', 1, 'center', nil, ink)
-      HUD.alpha(1)
-      return
+      y = y - 8 - h1
+      HUD.text('ARE YOU SURE YOU WANT TO REMOVE THIS ITEM?', cx, y, UI.CREAM, 1, 'center', nil, ink)
+      y = y - 12 - h1
+    else
+      HUD.text("DRAG: TURN   WHEEL: CLOSER   A D: NEXT   M: THE HAND'S METAL   I: PUT AWAY", cx, y, UI.DARK, 1, 'center', nil, ink)
+      y = y - 10 - h1
     end
-    HUD.text(it.name, R.W/2, R.H - 64, '#f2e3c2', 2, 'center', nil, ink)
-    HUD.text('THE ' .. it.power .. ' POWER', R.W/2, R.H - 44, '#a8987c', 1, 'center', nil, ink)
-    HUD.text('[ YOUR TEXT ]', R.W/2, R.H - 30, '#6f6252', 1, 'center', nil, ink)
-    HUD.text("DRAG: TURN   WHEEL: CLOSER   A D: NEXT   M: THE HAND'S METAL   I: PUT AWAY", R.W/2, R.H - 12, '#6a5e4e', 1, 'center', nil, ink)
+    HUD.text('[ YOUR TEXT ]', cx, y, UI.DARK, 1, 'center', nil, ink)
+    y = y - 4 - h1
+    HUD.text('THE ' .. it.power .. ' POWER', cx, y, UI.DIM, 1, 'center', nil, ink)
+    y = y - 5 - h2
+    HUD.text(it.name, cx, y, UI.CREAM, 2, 'center', nil, ink)
     HUD.alpha(1)
   end
   -- an icon of object i (px square): the view's own render of it, small, against black, read back
@@ -272,6 +276,42 @@ function IN.create(ctx)
     S.zoom = 1
     local tex = gpu_texture(px, px, { format = 'rgba8', min = 'nearest', mag = 'nearest', data = bytes })
     return gpu_texture_image(tex)
+  end
+  -- round 42 (the icons' sources): object i as icon() frames it, px square, its RGBA bytes (rows
+  -- bottom-up) over a black backdrop, or over a flat grey one (grey = true): the two differ only
+  -- where the backdrop shows, which gives tools/icons.py each object's cut-out (glass included)
+  local grey_tex = nil
+  function insp.icon_raw(i, px, grey, empty)
+    local was_active = S.active
+    build(i)
+    holder.visible = not empty                -- empty: the backdrop alone (the cut-out's reference)
+    local v = ITEMS[i + 1].view or { 0.55, 0.4, 0.0 }
+    S.q:set_from_euler(Euler.new(v[1], v[2], v[3], 'YXZ'))
+    if S.hover then S.hover(1.3) end
+    S.active = true; S.t = 1; S.closing = -1; S.remove = false
+    S.zoom = px*0.86/(2*0.62*R.H/2)*(({ [3] = 1.55, [5] = 1.2 })[i] or 1)
+    local BU = back_mat.uniforms
+    local tf, black, hud = BU.tFrame.value, BU.uBlack.value, R.params.hud
+    if grey and not grey_tex then
+      local g = string.rep(string.char(160, 160, 160, 255), 16)
+      grey_tex = T.Texture.new(gpu_texture(4, 4, { format = 'rgba8', min = 'nearest', mag = 'nearest', data = g }), 4, 4)
+    end
+    BU.tFrame.value = grey and grey_tex or (BU.tFrame.value or R.freeze())
+    BU.uBlack.value = grey and 0 or 1
+    R.params.hud = 0
+    insp.render_setup()
+    BU.uGlow.value = 0.7
+    R.render(0)
+    local rt = R.targets.rt_final
+    local x0, y0 = floor(R.W/2 - px/2), floor(R.H/2 - px/2 + 0.06*0.62*R.H/2*S.zoom + 0.5)
+    local bytes = gpu_read(rt.gpu, x0, y0, px, px)
+    gpu_end()
+    BU.tFrame.value, BU.uBlack.value, R.params.hud = tf, black, hud
+    R.params.world_override = nil
+    holder.visible = true
+    S.active = was_active
+    S.zoom = 1
+    return bytes
   end
   function insp.rebuild() if S.active then local q = S.q:clone(); build(S.idx); S.q:copy(q) end end
   function insp.pose(yaw, pitch, roll, zoom)

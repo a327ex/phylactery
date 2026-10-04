@@ -206,12 +206,14 @@ function C.build(R)
     rock_tex = A.texture('cave_rock'), DARK = DARK, statics = statics, assets = A,
   }
   -- round 41: the surfaces. AS EXPORTED = the three.js build's textures on its UVs (one projection per
-  -- triangle, so on the curved shell the pattern jumps at triangle edges); SLABS and QUIET =
+  -- triangle, so on the curved shell the pattern jumps at triangle edges); SLABS, MIX (round 42: his
+  -- pick, between the two) and QUIET =
   -- tools/cave_look.py's textures (4 m tiles, close tones, no dark crack round every patch) on its
   -- continuous UVs for the shell (wall, dome, tunnel, floor). The rocks keep their UVs.
   local SURF = {
     { name = 'AS EXPORTED' },
     { name = 'SLABS', rock = 'cave_rock_slabs', floor = 'cave_floor_slabs' },
+    { name = 'MIX', rock = 'cave_rock_mix', floor = 'cave_floor_mix' },
     { name = 'QUIET', rock = 'cave_rock_quiet', floor = 'cave_floor_quiet' },
   }
   local tex_meta = A.manifest.textures
