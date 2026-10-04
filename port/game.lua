@@ -28,6 +28,7 @@ local BEAM = require('port.beam')
 local LENS = require('port.lens')
 local CL = require('port.coil')
 local HUD = require('port.hud')
+local UI = require('port.ui_style')
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
 local clamp, smoothstep = U.clamp, U.smoothstep
 local sqrt, abs, sin, cos, atan2, exp, floor, ceil, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.ceil, math.min, math.max, math.pi
@@ -39,11 +40,12 @@ function GM.create(R, hud_layer)
   local cave = CAVE.build(R)
   local lich = LICH.create(R, { GU = cave.GU })
   local EGG = cave.egg.position
-  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = true, dark = 1, surface = 1, tlight = 2,
+  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = true, dark = 1, surface = 2, tlight = 2,
     static = { eye = { -3.6, 9.8, -10.4 }, tgt = { 0.4, 0.1, 2.4 } },
     free = { yaw = 200, pitch = 18, dist = 4.5 }, egg_view = { yaw = 195, pitch = 32, dist = 3.4 } }
   G.R = R; G.cave = cave; G.lich = lich
   cave.set_surface(G.surface)
+  UI.set_bundle(UI.S.bundle)
 
   -- where he can go (the room camera's frame blocks him too)
   local room_cam = T.PerspectiveCamera.new(50, R.W/R.H, 0.1, 200)
@@ -340,10 +342,14 @@ function GM.create(R, hud_layer)
     for i, pk in ipairs(POWER_KEYS) do if hit(pk) or hit('kp' .. pk) then held = {}; mouse.down = false; ask_remove(i - 1) end end
     if hit('b') then G.dark = (G.dark + 1) % #cave.DARK; cave.set_darkness(G.dark) end
     if hit('v') then G.surface = (G.surface + 1) % #cave.SURF; cave.set_surface(G.surface) end
+    if hit('f1') then UI.set_bundle(UI.S.bundle + 1) end
+    if hit('f2') then UI.next_icons() end
+    if hit('f3') then UI.next_fonts() end
+    if hit('f4') then UI.next_frame() end
     if hit('c') and G.mode == 'tunnel' then set_tunnel_light(G.tlight + 1) end
   end
   -- the inventory: the six objects he carries, top right, each its own little render (inspect.icon)
-  local INV = { px = 34, pad = 3, gap = 4, y = 8 }
+  local INV = { px = UI.ICON, pad = UI.PAD, gap = UI.GAP, y = 8 }   -- round 42: smaller (was 34 px)
   local icons = {}
   local function slot_rect(i)
     local w = INV.px + INV.pad*2
@@ -406,18 +412,17 @@ function GM.create(R, hud_layer)
   local function draw_inventory()
     local mx, my = mouse.px, mouse.py
     local hot = slot_at(mx, my)
+    if UI.force_hot then hot = UI.force_hot end   -- (captures: a slot shown as hovered)
     for i = 0, 5 do
       local x, y, w, h = slot_rect(i)
       local on = powers.is_on(powers.ALL[i + 1])
-      local edge = (hot == i and on) and 'rgba(242,227,194,0.95)' or 'rgba(120,106,86,0.75)'
-      HUD.rect(x, y, w, h, 'rgba(8,6,5,0.8)')
-      HUD.rect(x, y, w, 1, edge); HUD.rect(x, y + h - 1, w, 1, edge); HUD.rect(x, y, 1, h, edge); HUD.rect(x + w - 1, y, 1, h, edge)
-      if on and icons[i] then HUD.image(icons[i], x + INV.pad, y + INV.pad, INV.px, INV.px) end
+      UI.slot(x, y, w, h, not on and 'empty' or (hot == i and 'hot' or 'on'))
+      if on then UI.icon(i, x, y, w, h, icons[i]) end
     end
     if hot and powers.is_on(powers.ALL[hot + 1]) then
       local ITM = require('port.items')
       local _, y, _, h = slot_rect(hot)
-      HUD.text(ITM.ITEMS[hot + 1].name, R.W - 8, y + h + 4, '#f2e3c2', 1, 'right', nil, INK)
+      HUD.text(ITM.ITEMS[hot + 1].name, R.W - 8, y + h + 6, '#f2e3c2', 1, 'right', nil, INK)
     end
   end
   local function draw_hud()
@@ -432,6 +437,9 @@ function GM.create(R, hud_layer)
       end
     end
     if not G.hud then return end
+    -- (the testing text keeps the old font: it is not the game's UI)
+    local ui_style = HUD.style
+    HUD.style = { title = 'classic', body = 'classic' }
     local c = CAMS[G.cam + 1]
     local W, H = R.W, R.H
     local label = G.cam == CAM_EGG and 'Y' or (G.cam == CAM_FREE and '4' or tostring(G.cam + 1))
@@ -443,6 +451,7 @@ function GM.create(R, hud_layer)
       HUD.text(c.note, 8, 19, '#a8987c', 1, 'left', nil, INK)
     end
     if G.mode == 'tunnel' then HUD.text('C TUNNEL LIGHT: ' .. G.TLIGHT[G.tlight + 1].name, 8, H - 191, '#f2e3c2', 1, 'left', nil, INK) end
+    HUD.text('F1-F4 UI: ' .. UI.describe(), 8, H - 202, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('V CAVE SURFACE: ' .. cave.SURF[G.surface + 1].name, 8, H - 180, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('U COIL: ' .. CL.COIL_MODES[snakes.coil_mode + 1], 8, H - 169, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('N HIS HAND: ' .. lich.HANDS[END.hand + 1], 8, H - 158, '#f2e3c2', 1, 'left', nil, INK)
@@ -473,6 +482,7 @@ function GM.create(R, hud_layer)
     HUD.text('CLICK AN OBJECT, OR 5-0: REMOVE IT   I: LOOK AT THEM', W - 8, H - 37, '#f2e3c2', 1, 'right', nil, INK)
     HUD.text('WASD OR HOLD LEFT MOUSE: MOVE', W - 8, H - 26, '#8a7c66', 1, 'right', nil, INK)
     HUD.text('1-4 Y CAMERA   V C U N Z M O K X L F J R G P B   H HIDE', W - 8, H - 15, '#8a7c66', 1, 'right', nil, INK)
+    HUD.style = ui_style
   end
   local function ss(a, b, x) local t = clamp((x - a)/(b - a), 0, 1); return t*t*(3 - 2*t) end
   local function draw_over()
@@ -656,6 +666,14 @@ function GM.create(R, hud_layer)
       goal = goal and { r3(goal.x), r3(goal.z) } or nil }
   end
   function GAME.dark(i) G.dark = i; return cave.set_darkness(i) end
+  function GAME.ui(bundle, icons, fonts, frame)
+    if bundle then UI.set_bundle(bundle) end
+    if icons then UI.S.icons = icons end
+    if fonts then UI.S.fonts = fonts end
+    if frame then UI.S.frame = frame end
+    UI.apply()
+    return UI.describe()
+  end
   function GAME.surface(i) G.surface = i % #cave.SURF; return cave.set_surface(i) end
   function GAME.tunnel_light(i) return set_tunnel_light(i) end
   function GAME.inspect(i) inspect.open(i); return items and require('port.items').ITEMS[inspect.S.idx + 1].name end

@@ -1,0 +1,156 @@
+--[[
+  ui_style.lua -- round 42 (owner, 2026-10-03: the inventory smaller; its icons "some idealized version
+  of them generated in a style that works with the rest of the game"; the font and the UI style
+  itself to fit too). The player's UI in a few directions, each axis behind a key:
+    F1 a whole direction (bundle)   F2 the icons   F3 the fonts   F4 the frames
+  Icons: tools/icons.py (assets/ui/icons/<style>_<i>.png), except 'render' (the inspect view's own
+  render, as before, smaller). Fonts: hud.lua's registry (tools/hud_fonts.py). Frames: drawn here.
+]]
+local HUD = require('port.hud')
+local UI = {}
+local floor = math.floor
+
+UI.ICON = 24          -- the icon's side (was 34)
+UI.PAD = 3            -- slot padding
+UI.GAP = 4
+
+UI.ICONS = { 'render', 'relic', 'engraved', 'ember', 'glyph' }
+UI.FONTS = {
+  { name = 'CLASSIC', title = 'classic', title_scale = 2, body = 'classic', body_scale = 1 },
+  { name = 'SILKSCREEN', title = 'silk', title_scale = 2, body = 'silk', body_scale = 1 },
+  { name = 'MANUSCRIPT', title = 'jacquard', title_scale = 1, body = 'bastarda', body_scale = 1 },
+  { name = 'PIXELIFY + TINY', title = 'pixelify', title_scale = 1, body = 'tiny', body_scale = 1 },
+  { name = 'TINY', title = 'tiny', title_scale = 2, body = 'tiny', body_scale = 1 },
+}
+UI.FRAMES = { 'boxed', 'bare', 'plate', 'brackets', 'lamp' }
+UI.BUNDLES = {
+  { name = 'CURRENT', icons = 1, fonts = 1, frame = 1 },
+  { name = 'RELIC', icons = 2, fonts = 2, frame = 3 },
+  { name = 'MANUSCRIPT', icons = 3, fonts = 3, frame = 4 },
+  { name = 'EMBER', icons = 4, fonts = 4, frame = 5 },
+  { name = 'GLYPH', icons = 5, fonts = 5, frame = 2 },
+}
+UI.S = { bundle = 2, icons = 2, fonts = 2, frame = 3 }   -- starts on RELIC
+
+local CREAM, DIM, DARK, BRONZE = '#f2e3c2', '#a8987c', '#6f6252', '#e0a070'
+UI.CREAM, UI.DIM, UI.DARK = CREAM, DIM, DARK
+
+local tex = {}
+local function icon_tex(style, i)
+  local k = style .. i
+  if not tex[k] then tex[k] = texture_load(string.format('assets/ui/icons/%s_%d.png', style, i)) end
+  return tex[k]
+end
+local glow = nil
+local function glow_tex(w)
+  if glow then return glow end
+  local px = {}
+  for y = 0, w - 1 do for x = 0, w - 1 do
+    local dx, dy = (x + 0.5)/w*2 - 1, (y + 0.5)/w*2 - 1
+    local r = math.sqrt(dx*dx + dy*dy)
+    local a = math.max(0, 1 - r)^1.6
+    a = floor(a*4 + 0.5)/4*0.85                         -- (a few flat steps, as the cave's light)
+    px[#px + 1] = string.char(150, 96, 54, floor(a*255 + 0.5))
+  end end
+  glow = texture_create(w, w, table.concat(px))
+  return glow
+end
+
+function UI.apply()
+  local f = UI.FONTS[UI.S.fonts]
+  HUD.style = { title = f.title, body = f.body, title_scale = f.title_scale, body_scale = f.body_scale }
+end
+function UI.set_bundle(i)
+  local n = #UI.BUNDLES
+  UI.S.bundle = ((i - 1) % n + n) % n + 1
+  local b = UI.BUNDLES[UI.S.bundle]
+  UI.S.icons, UI.S.fonts, UI.S.frame = b.icons, b.fonts, b.frame
+  UI.apply()
+end
+local function cyc(k, list) UI.S[k] = UI.S[k] % #list + 1; UI.apply() end
+function UI.next_icons() cyc('icons', UI.ICONS) end
+function UI.next_fonts() cyc('fonts', UI.FONTS) end
+function UI.next_frame() cyc('frame', UI.FRAMES) end
+function UI.describe()
+  local b = UI.BUNDLES[UI.S.bundle]
+  local same = b.icons == UI.S.icons and b.fonts == UI.S.fonts and b.frame == UI.S.frame
+  return (same and b.name or 'MIXED') .. ': ICONS ' .. UI.ICONS[UI.S.icons]:upper() .. ', FONT ' .. UI.FONTS[UI.S.fonts].name .. ', FRAME ' .. UI.FRAMES[UI.S.frame]:upper()
+end
+
+-- the slot's box (state: 'on', 'hot' or 'empty'), then its icon
+local function edges(x, y, w, h, top, bot)
+  HUD.rect(x, y, w, 1, top); HUD.rect(x, y, 1, h, top)
+  HUD.rect(x, y + h - 1, w, 1, bot); HUD.rect(x + w - 1, y, 1, h, bot)
+end
+local function corners(x, y, w, h, c, arm)
+  HUD.rect(x, y, arm, 1, c); HUD.rect(x, y, 1, arm, c)
+  HUD.rect(x + w - arm, y, arm, 1, c); HUD.rect(x + w - 1, y, 1, arm, c)
+  HUD.rect(x, y + h - 1, arm, 1, c); HUD.rect(x, y + h - arm, 1, arm, c)
+  HUD.rect(x + w - arm, y + h - 1, arm, 1, c); HUD.rect(x + w - 1, y + h - arm, 1, arm, c)
+end
+function UI.slot(x, y, w, h, state)
+  local fr = UI.FRAMES[UI.S.frame]
+  local hot, empty = state == 'hot', state == 'empty'
+  if fr == 'boxed' then
+    HUD.rect(x, y, w, h, 'rgba(8,6,5,0.8)')
+    local e = hot and 'rgba(242,227,194,0.95)' or 'rgba(120,106,86,0.75)'
+    edges(x, y, w, h, e, e)
+  elseif fr == 'bare' then
+    if empty then
+      for _, d in ipairs({ { 2, 2 }, { w - 3, 2 }, { 2, h - 3 }, { w - 3, h - 3 } }) do HUD.rect(x + d[1], y + d[2], 1, 1, 'rgba(168,152,124,0.45)') end
+    elseif hot then
+      HUD.rect(x + floor(w/2) - 3, y + h + 1, 7, 1, CREAM)
+    end
+  elseif fr == 'plate' then
+    HUD.rect(x, y, w, h, empty and 'rgba(14,11,8,0.9)' or 'rgba(34,27,21,0.94)')
+    if empty then edges(x, y, w, h, 'rgba(6,5,4,0.9)', 'rgba(70,58,46,0.7)')
+    else
+      edges(x, y, w, h, hot and 'rgba(224,160,112,0.95)' or 'rgba(86,72,57,0.95)', 'rgba(9,7,5,0.95)')
+      HUD.rect(x + 1, y + 1, w - 2, 1, hot and 'rgba(160,112,72,0.6)' or 'rgba(58,48,38,0.8)')
+    end
+  elseif fr == 'brackets' then
+    if not empty then HUD.rect(x + 1, y + 1, w - 2, h - 2, 'rgba(10,8,6,0.45)') end
+    corners(x, y, w, h, hot and CREAM or (empty and 'rgba(168,152,124,0.35)' or 'rgba(168,152,124,0.85)'), hot and 5 or 4)
+  elseif fr == 'lamp' then
+    if not empty then HUD.texture(glow_tex(w + 8), x - 4, y - 4, w + 8, w + 8) end
+    if hot then HUD.rect(x + floor(w/2) - 3, y + h + 2, 7, 1, CREAM) end
+    if empty then for _, d in ipairs({ { 2, 2 }, { w - 3, 2 }, { 2, h - 3 }, { w - 3, h - 3 } }) do HUD.rect(x + d[1], y + d[2], 1, 1, 'rgba(168,152,124,0.4)') end end
+  end
+end
+-- the icon of object i in the slot's middle; render_img = the inspect view's own (style 'render')
+function UI.icon(i, x, y, w, h, render_img)
+  local st = UI.ICONS[UI.S.icons]
+  local ix, iy = x + floor((w - UI.ICON)/2), y + floor((h - UI.ICON)/2)
+  if st == 'render' then
+    if render_img then HUD.image(render_img, ix, iy, UI.ICON, UI.ICON) end
+  else
+    HUD.texture(icon_tex(st, i), ix, iy, UI.ICON, UI.ICON)
+  end
+end
+
+-- a button with its label (the inspect view's YES / NO)
+function UI.button(x, y, w, h, label, hot)
+  local fr = UI.FRAMES[UI.S.frame]
+  local th = HUD.text_height(1)
+  local ty = y + floor((h - th)/2 + 0.5)
+  if fr == 'boxed' then
+    HUD.rect(x, y, w, h, hot and 'rgba(242,227,194,0.9)' or 'rgba(20,16,13,0.85)')
+    edges(x, y, w, h, 'rgba(168,152,124,0.8)', 'rgba(168,152,124,0.8)')
+    HUD.text(label, x + w/2, ty, hot and '#141009' or CREAM, 1, 'center')
+  elseif fr == 'plate' then
+    HUD.rect(x, y, w, h, hot and 'rgba(58,44,32,0.96)' or 'rgba(34,27,21,0.94)')
+    edges(x, y, w, h, hot and 'rgba(224,160,112,0.95)' or 'rgba(86,72,57,0.95)', 'rgba(9,7,5,0.95)')
+    HUD.text(label, x + w/2, ty, hot and CREAM or DIM, 1, 'center', nil, 'rgba(8,6,5,0.85)')
+  elseif fr == 'brackets' then
+    corners(x, y, w, h, hot and CREAM or 'rgba(168,152,124,0.7)', hot and 5 or 3)
+    HUD.text(label, x + w/2, ty, hot and CREAM or DIM, 1, 'center', nil, 'rgba(8,6,5,0.85)')
+  else   -- bare, lamp: the word, underlined when it is the one
+    HUD.text(label, x + w/2, ty, hot and CREAM or DIM, 1, 'center', nil, 'rgba(8,6,5,0.85)')
+    if hot then
+      local tw = HUD.text_width(label, 1)
+      HUD.rect(floor(x + w/2 - tw/2), ty + th + 2, tw, 1, CREAM)
+    end
+  end
+end
+
+return UI

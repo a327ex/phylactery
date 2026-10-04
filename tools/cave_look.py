@@ -134,6 +134,37 @@ def floor_quiet(seed=21):
         return c
     return paint(S, f)
 
+# MIX (owner, 2026-10-03: "a mix of SLABS and QUIET ... quiet is too smooth and clashes a bit with the
+# rest of the game"): the slabs' patches, their tones half as far apart, over QUIET's broad mottling;
+# the warm chip and the pits kept, both rarer.
+def rock_mix(seed=11):
+    lo, hi = mix(ROCK['lo'], ROCK['mid'], 0.45), mix(ROCK['mid'], ROCK['base'], 0.6)
+    def f(x, y):
+        d1, d2, cid = cells2(x + 0.5, y + 0.5, S, S, 6, seed)
+        n = fbm(x, y, S, S, 3, seed + 3, 3)                      # QUIET's mottling
+        t = 0.5 + (cid - 0.5)*0.55 + (n - 0.5)*0.7                # the patch's own tone, shifted by the mottling
+        k = max(0, min(3, int(t*4)))
+        c = mix(lo, hi, k/3)
+        if fbm(x, y, S, S, 10, seed + 9, 2) > 0.7: c = mix(c, lo, 0.25)
+        if d2 - d1 < 0.06 and cid > 0.85 and lattice_hash(x, y, seed + 21) > 0.5: c = mix(c, BRONZE, 0.14)
+        if lattice_hash(x, y, seed + 31) > 0.99: c = mix(c, ROCK['deep'], 0.4)
+        return c
+    return paint(S, f)
+
+def floor_mix(seed=21):
+    lo, hi = mix(FLOOR['lo'], FLOOR['base'], 0.4), mix(FLOOR['base'], FLOOR['hi'], 0.22)
+    def f(x, y):
+        d1, d2, cid = cells2(x + 0.5, y + 0.5, S, S, 12, seed)
+        n = fbm(x, y, S, S, 4, seed + 5, 3)
+        t = 0.5 + (cid - 0.5)*0.5 + (n - 0.5)*0.8
+        k = max(0, min(2, int(t*3)))
+        c = mix(lo, hi, k/2)
+        g = lattice_hash(x, y, seed + 99)
+        if g > 0.975: c = mix(c, FLOOR['hi'], 0.3)
+        elif g < 0.025: c = mix(c, FLOOR['deep'], 0.42)
+        return c
+    return paint(S, f)
+
 # --------------------------------------------------------------------------------------------- UVs
 def read_f32(name, attr, size):
     b = open(os.path.join(ROOT, 'geo', '%s.%s.f32' % (name, attr)), 'rb').read()
@@ -210,7 +241,8 @@ def tunnel_uv(pos):
 def main():
     os.makedirs(os.path.join(ROOT, 'tex'), exist_ok=True)
     for name, img in (('cave_rock_slabs', rock_slabs()), ('cave_floor_slabs', floor_slabs()),
-                      ('cave_rock_quiet', rock_quiet()), ('cave_floor_quiet', floor_quiet())):
+                      ('cave_rock_quiet', rock_quiet()), ('cave_floor_quiet', floor_quiet()),
+                      ('cave_rock_mix', rock_mix()), ('cave_floor_mix', floor_mix())):
         open(os.path.join(ROOT, 'tex', name + '.rgba'), 'wb').write(img.tobytes())
         print('wrote', name)
     # cave_0 wall, cave_1 dome (the lathe), cave_2 tunnel, cave_3 floor (assets/port/cave.lua meshes)
@@ -227,7 +259,7 @@ def main():
         from PIL import Image
         out = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scratch', 'look')
         os.makedirs(out, exist_ok=True)
-        for name in ('cave_rock_slabs', 'cave_floor_slabs', 'cave_rock_quiet', 'cave_floor_quiet'):
+        for name in ('cave_rock_slabs', 'cave_floor_slabs', 'cave_rock_quiet', 'cave_floor_quiet', 'cave_rock_mix', 'cave_floor_mix'):
             a = np.frombuffer(open(os.path.join(ROOT, 'tex', name + '.rgba'), 'rb').read(), dtype=np.uint8).reshape(S, S, 4)
             Image.fromarray(np.tile(a, (2, 2, 1))).resize((S*4, S*4), Image.NEAREST).save(os.path.join(out, name + '.png'))
         for name in ('cave_rock', 'cave_floor'):
