@@ -21,16 +21,23 @@ UI.FONTS = {
   { name = 'MANUSCRIPT', title = 'jacquard', title_scale = 1, body = 'bastarda', body_scale = 1 },
   { name = 'PIXELIFY + TINY', title = 'pixelify', title_scale = 1, body = 'tiny', body_scale = 1 },
   { name = 'TINY', title = 'tiny', title_scale = 2, body = 'tiny', body_scale = 1 },
+  -- round 43 (owner: EMBER, but its font "doesn't fit. Ember looks like the cave in a way, so the
+  -- font should be somewhat related"): cut, scratched, carved and worn letters, lit as the icons are
+  { name = 'FACETED', title = 'facet', title_scale = 2, body = 'facet', body_scale = 1, fill = 'ember', title_fx = 'rim' },
+  { name = 'RUNIC', title = 'rune', title_scale = 2, body = 'rune', body_scale = 1, fill = 'ember', title_fx = 'rim' },
+  { name = 'CARVED', title = 'cinzel', title_scale = 1, body = 'marcellus', body_scale = 1, fill = 'ember' },
+  { name = 'WORN', title = 'fell18', title_scale = 1, body = 'fell', body_scale = 1, fill = 'ember' },
+  { name = 'SHARP', title = 'sharp16', title_scale = 1, body = 'sharp', body_scale = 1, fill = 'ember' },
 }
 UI.FRAMES = { 'boxed', 'bare', 'plate', 'brackets', 'lamp' }
 UI.BUNDLES = {
   { name = 'CURRENT', icons = 1, fonts = 1, frame = 1 },
   { name = 'RELIC', icons = 2, fonts = 2, frame = 3 },
   { name = 'MANUSCRIPT', icons = 3, fonts = 3, frame = 4 },
-  { name = 'EMBER', icons = 4, fonts = 4, frame = 5 },
+  { name = 'EMBER', icons = 4, fonts = 6, frame = 5 },
   { name = 'GLYPH', icons = 5, fonts = 5, frame = 2 },
 }
-UI.S = { bundle = 2, icons = 2, fonts = 2, frame = 3 }   -- starts on RELIC
+UI.S = { bundle = 4, icons = 4, fonts = 6, frame = 5 }   -- starts on EMBER (his pick, round 42)
 
 local CREAM, DIM, DARK, BRONZE = '#f2e3c2', '#a8987c', '#6f6252', '#e0a070'
 UI.CREAM, UI.DIM, UI.DARK = CREAM, DIM, DARK
@@ -58,7 +65,7 @@ end
 
 function UI.apply()
   local f = UI.FONTS[UI.S.fonts]
-  HUD.style = { title = f.title, body = f.body, title_scale = f.title_scale, body_scale = f.body_scale }
+  HUD.style = { title = f.title, body = f.body, title_scale = f.title_scale, body_scale = f.body_scale, fill = f.fill, title_fx = f.title_fx, body_fx = f.body_fx }
 end
 function UI.set_bundle(i)
   local n = #UI.BUNDLES

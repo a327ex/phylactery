@@ -146,7 +146,12 @@ HUD.css = css
 local cache, cache_n, cache_order = {}, 0, {}
 local function raster(str, color, scale0, shadow, outline, drop)
   local fnt, scale, fname = font_for(scale0)
-  local key = fname .. '\0' .. str .. '\0' .. color .. '\0' .. scale .. '\0' .. (shadow or '') .. '\0' .. (outline or '') .. '\0' .. (drop or '')
+  -- round 43: the style's treatment of this role: fill 'ember' (a warm fall from top to bottom),
+  -- fx 'rim' (a dark letter, its upper left edge lit warm, as EMBER's icons)
+  local title_role = (scale0 or 1) >= 2
+  local fill = HUD.style.fill
+  local fx = title_role and HUD.style.title_fx or HUD.style.body_fx
+  local key = fname .. '\0' .. (fill or '') .. '\0' .. (fx or '') .. '\0' .. str .. '\0' .. color .. '\0' .. scale .. '\0' .. (shadow or '') .. '\0' .. (outline or '') .. '\0' .. (drop or '')
   local e = cache[key]
   if e then e.used = HUD.frame; return e end
   local G = fnt.glyphs
@@ -178,6 +183,7 @@ local function raster(str, color, scale0, shadow, outline, drop)
   end
   local function pass(ox, oy, c) each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do put(x + ox + i, y + oy + j, c) end end end) end
   if shadow then pass(scale, scale, css(shadow)) end
+  local function K2(x, y) return (y + 2048)*8192 + x + 2048 end
   if outline then
     local on, seen, ring = {}, {}, {}
     local function K(x, y) return (y + 2048)*8192 + x + 2048 end
@@ -200,7 +206,30 @@ local function raster(str, color, scale0, shadow, outline, drop)
     local oc = css(outline)
     for i = 1, #ring, 2 do put(ring[i], ring[i + 1], oc) end
   end
-  pass(0, 0, css(color))
+  if not fill and not fx then pass(0, 0, css(color))
+  else
+    local base = css(color)
+    local on = {}
+    each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do on[K2(x + i, y + j)] = true end end end)
+    local H = fnt.h*scale
+    local light, mid, dark = { 0.965, 0.84, 0.63, 1 }, { 0.62, 0.36, 0.2, 1 }, { 0.16, 0.11, 0.075, 1 }
+    each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do
+      local px, py = x + i, y + j
+      local c
+      if fx == 'rim' then
+        if not on[K2(px, py - 1)] or not on[K2(px - 1, py)] then c = light
+        elseif not on[K2(px - 1, py - 1)] or not on[K2(px, py - 2)] or not on[K2(px - 2, py)] then c = mid
+        else c = dark end
+      else
+        local t = math.max(0, math.min(1, py/math.max(1, H - 1)))
+        -- the colour, lighter at the top, falling to a deeper, warmer one at the bottom
+        local top = { math.min(1, base[1]*1.06 + 0.03), math.min(1, base[2]*1.04 + 0.02), math.min(1, base[3]*0.98), base[4] }
+        local bot = { base[1]*0.92, base[2]*0.66, base[3]*0.42, base[4] }
+        c = { top[1] + (bot[1] - top[1])*t, top[2] + (bot[2] - top[2])*t, top[3] + (bot[3] - top[3])*t, base[4] }
+      end
+      put(px, py, c)
+    end end end)
+  end
   -- RGBA rows, top first
   local rows = {}
   for y = 0, Hh - 1 do
