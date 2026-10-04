@@ -27,6 +27,9 @@ do
     if not n then return nil end
     local nn = string.format('%02d', n)
     local src = { vs = file_read_string('assets/port/programs/' .. nn .. '.vs.glsl'), fs = file_read_string('assets/port/programs/' .. nn .. '.fs.glsl') }
+    -- round 45: the orbs' markings (port/orbmarks.lua), patched into their tracer as it loads
+    local mk = require('port.orbmarks').patch_for(key)
+    if mk then src.fs = mk(src.fs) end
     if key == 'post.final|post|0|-' then
       -- the HUD: three.js's canvas texture held straight alpha; an Anchor layer holds premultiplied
       local a, b = src.fs:find('c = mix(c, hud.rgb, hud.a*uHud);', 1, true)

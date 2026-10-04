@@ -34,19 +34,37 @@ local function icon_tex(style, i)
   if not tex[k] then tex[k] = texture_load(string.format('assets/ui/icons/%s_%d.png', style, i)) end
   return tex[k]
 end
-local glow = nil
-local function glow_tex(w)
-  if glow then return glow end
+local glows = {}
+-- the lamp's glow: a few flat steps, as the cave's light; hot = the light come up on it (round 45)
+local function glow_tex(w, hot)
+  local key = w .. (hot and 'h' or '')
+  if glows[key] then return glows[key] end
   local px = {}
   for y = 0, w - 1 do for x = 0, w - 1 do
     local dx, dy = (x + 0.5)/w*2 - 1, (y + 0.5)/w*2 - 1
     local r = math.sqrt(dx*dx + dy*dy)
-    local a = math.max(0, 1 - r)^1.6
-    a = floor(a*4 + 0.5)/4*0.85                         -- (a few flat steps, as the cave's light)
-    px[#px + 1] = string.char(150, 96, 54, floor(a*255 + 0.5))
+    local a = math.max(0, 1 - r)^(hot and 1.25 or 1.6)
+    a = floor(a*4 + 0.5)/4*(hot and 1 or 0.85)
+    if hot then px[#px + 1] = string.char(196, 124, 66, floor(a*255 + 0.5))
+    else px[#px + 1] = string.char(150, 96, 54, floor(a*255 + 0.5)) end
   end end
-  glow = texture_create(w, w, table.concat(px))
-  return glow
+  glows[key] = texture_create(w, w, table.concat(px))
+  return glows[key]
+end
+-- a wide glow behind a word (the lamp frame's buttons, hot)
+local function word_glow(w, h)
+  local key = 'w' .. w .. 'x' .. h
+  if glows[key] then return glows[key] end
+  local px = {}
+  for y = 0, h - 1 do for x = 0, w - 1 do
+    local dx, dy = (x + 0.5)/w*2 - 1, (y + 0.5)/h*2 - 1
+    local r = math.sqrt(dx*dx*0.9 + dy*dy)
+    local a = math.max(0, 1 - r)^1.3
+    a = floor(a*4 + 0.5)/4*0.9
+    px[#px + 1] = string.char(196, 124, 66, floor(a*255 + 0.5))
+  end end
+  glows[key] = texture_create(w, h, table.concat(px))
+  return glows[key]
 end
 
 function UI.apply() end
@@ -87,8 +105,6 @@ function UI.slot(x, y, w, h, state)
   elseif fr == 'bare' then
     if empty then
       for _, d in ipairs({ { 2, 2 }, { w - 3, 2 }, { 2, h - 3 }, { w - 3, h - 3 } }) do HUD.rect(x + d[1], y + d[2], 1, 1, 'rgba(168,152,124,0.45)') end
-    elseif hot then
-      HUD.rect(x + floor(w/2) - 3, y + h + 1, 7, 1, CREAM)
     end
   elseif fr == 'plate' then
     HUD.rect(x, y, w, h, empty and 'rgba(14,11,8,0.9)' or 'rgba(34,27,21,0.94)')
@@ -101,24 +117,27 @@ function UI.slot(x, y, w, h, state)
     if not empty then HUD.rect(x + 1, y + 1, w - 2, h - 2, 'rgba(10,8,6,0.45)') end
     corners(x, y, w, h, hot and CREAM or (empty and 'rgba(168,152,124,0.35)' or 'rgba(168,152,124,0.85)'), hot and 5 or 4)
   elseif fr == 'lamp' then
-    if not empty then HUD.texture(glow_tex(w + 8), x - 4, y - 4, w + 8, w + 8) end
-    if hot then HUD.rect(x + floor(w/2) - 3, y + h + 2, 7, 1, CREAM) end
+    -- (round 45, owner: no underline, no name: the object itself is lit when hovered)
+    if not empty then
+      if hot then HUD.texture(glow_tex(w + 12, true), x - 6, y - 6, w + 12, w + 12)
+      else HUD.texture(glow_tex(w + 8), x - 4, y - 4, w + 8, w + 8) end
+    end
     if empty then for _, d in ipairs({ { 2, 2 }, { w - 3, 2 }, { 2, h - 3 }, { w - 3, h - 3 } }) do HUD.rect(x + d[1], y + d[2], 1, 1, 'rgba(168,152,124,0.4)') end end
   end
 end
 -- the icon of object i in the slot's middle; render_img = the inspect view's own (style 'render')
-function UI.icon(i, x, y, w, h, render_img)
+function UI.icon(i, x, y, w, h, render_img, hot)
   local st = UI.ICONS[UI.S.icons]
   local ix, iy = x + floor((w - UI.ICON)/2), y + floor((h - UI.ICON)/2)
   if st == 'render' then
     if render_img then HUD.image(render_img, ix, iy, UI.ICON, UI.ICON) end
   else
-    HUD.texture(icon_tex(st, i), ix, iy, UI.ICON, UI.ICON)
+    HUD.texture(icon_tex((hot and st == 'ember') and 'ember_hot' or st, i), ix, iy, UI.ICON, UI.ICON)
   end
 end
 
 -- a button with its label (the inspect view's YES / NO)
-function UI.button(x, y, w, h, label, hot)
+function UI.button(x, y, w, h, label, hot, primary)
   local fr = UI.FRAMES[UI.S.frame]
   local th = HUD.text_height(1)
   local ty = y + floor((h - th)/2 + 0.5)
@@ -133,12 +152,13 @@ function UI.button(x, y, w, h, label, hot)
   elseif fr == 'brackets' then
     corners(x, y, w, h, hot and CREAM or 'rgba(168,152,124,0.7)', hot and 5 or 3)
     HUD.text(label, x + w/2, ty, hot and CREAM or DIM, 1, 'center', nil, 'rgba(8,6,5,0.85)')
-  else   -- bare, lamp: the word, underlined when it is the one
-    HUD.text(label, x + w/2, ty, hot and CREAM or DIM, 1, 'center', nil, 'rgba(8,6,5,0.85)')
+  else   -- bare, lamp: the word; the one under the pointer glows (round 45: no underlines)
     if hot then
       local tw = HUD.text_width(label, 1)
-      HUD.rect(floor(x + w/2 - tw/2), ty + th + 2, tw, 1, CREAM)
+      local gw, gh = tw + 28, th + 16
+      HUD.texture(word_glow(gw, gh), floor(x + w/2 - gw/2), floor(ty + th/2 - gh/2), gw, gh)
     end
+    HUD.text(label, x + w/2, ty, (hot or primary) and CREAM or DIM, 1, 'center', nil, 'rgba(8,6,5,0.85)')
   end
 end
 

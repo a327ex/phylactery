@@ -137,7 +137,7 @@ def engraved(i, rgb, alpha):
     rgba[edge, :3] = CREAM; rgba[edge, 3] = 255
     return Image.fromarray(rgba.astype(np.uint8), 'RGBA')
 
-def ember(i, rgb, alpha):
+def ember(i, rgb, alpha, hot_state=False):
     box = crop_box(alpha, 6)
     c, a = down(rgb, alpha, box, S - 2)
     c = np.pad(c, ((1, 1), (1, 1), (0, 0))); a = np.pad(a, 1)
@@ -156,6 +156,19 @@ def ember(i, rgb, alpha):
     lum = (c * np.array([0.3, 0.59, 0.11])).sum(2)
     hot = mask & ~r1 & ~r2 & (lum > np.percentile(lum[mask], 93))
     rgba[hot, :3] = np.array([120, 70, 40])
+    if hot_state:
+        # round 45 (owner: hovering highlights the object in its own style, no underline, no name):
+        # the light comes up on it: the rim whiter and a step deeper, the body warmed from the lit
+        # side, its bright details glowing like embers
+        r3 = (edge_dir(mask & ~r1 & ~r2, -1, 0) | edge_dir(mask & ~r1 & ~r2, 0, -1)) & mask & ~r1 & ~r2
+        rgba[r1, :3] = np.array([255, 240, 205])
+        rgba[r2, :3] = np.array([226, 152, 88])
+        rgba[r3, :3] = np.array([122, 72, 40])
+        body = mask & ~r1 & ~r2 & ~r3
+        yy, xx = np.mgrid[0:S, 0:S]
+        warm = np.clip(1.0 - (xx + yy) / (1.6 * S), 0, 1)[..., None]
+        rgba[body, :3] = (np.array([30, 21, 15]) * (1 - warm) + np.array([74, 44, 26]) * warm)[body]
+        rgba[hot, :3] = np.array([236, 150, 80])
     return Image.fromarray(rgba.astype(np.uint8), 'RGBA')
 
 def glyph(i):
@@ -223,6 +236,7 @@ def main():
                                         ('engraved', lambda: engraved(i, rgb, alpha)), ('ember', lambda: ember(i, rgb, alpha)), ('glyph', lambda: glyph(i)))):
             im = fn()
             im.save(os.path.join(OUT, '%s_%d.png' % (name, i)))
+            if name == 'ember': ember(i, rgb, alpha, True).save(os.path.join(OUT, 'ember_hot_%d.png' % i))
             sheet.alpha_composite(im.resize((S * 4, S * 4), Image.NEAREST), (5 + i * (S * 4 + 6), 5 + k * S * 4))
     sheet.save(os.path.join(ROOT, 'scratch', 'icons', 'styles_sheet.png'))
     print('wrote', OUT)
