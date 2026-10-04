@@ -41,6 +41,9 @@ end
 
 G.screen_layer = layer_new('screen')
 G.hud_layer = layer_new('hud')
+-- round 44: smooth text at the window's resolution, over the upscaled game (hud.lua HUD.hi_layer)
+G.ui_layer = layer_create('ui_hi', 'smooth', 640*2, 360*2)
+require('port.hud').hi_layer = G.ui_layer
 G.R = POST.create({ programs = G.programs })
 G.R.set_hud(G.hud_layer)
 G.R.statics = LD.group('statics')
