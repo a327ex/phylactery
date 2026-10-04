@@ -28,16 +28,24 @@ UI.FONTS = {
   { name = 'CARVED', title = 'cinzel', title_scale = 1, body = 'marcellus', body_scale = 1, fill = 'ember' },
   { name = 'WORN', title = 'fell18', title_scale = 1, body = 'fell', body_scale = 1, fill = 'ember' },
   { name = 'SHARP', title = 'sharp16', title_scale = 1, body = 'sharp', body_scale = 1, fill = 'ember' },
+  -- round 44 (owner: "Could we try non-pixel fonts?"): the same kinds of letter, smooth, at the
+  -- window's resolution (hud.lua's full-resolution layer)
+  { name = 'SMOOTH CINZEL', title = 's_cinzel_t', body = 's_cinzel_b' },
+  { name = 'SMOOTH FELL', title = 's_fell_t', body = 's_fell_b' },
+  { name = 'SMOOTH UNCIAL', title = 's_uncial_t', body = 's_uncial_b' },
+  { name = 'SMOOTH SHARP', title = 's_sharp_t', body = 's_sharp_b' },
+  { name = 'SMOOTH MARCELLUS', title = 's_marcellus_t', body = 's_marcellus_b' },
+  { name = 'SMOOTH GRENZE', title = 's_grenze_t', body = 's_grenze_b' },
 }
 UI.FRAMES = { 'boxed', 'bare', 'plate', 'brackets', 'lamp' }
 UI.BUNDLES = {
   { name = 'CURRENT', icons = 1, fonts = 1, frame = 1 },
   { name = 'RELIC', icons = 2, fonts = 2, frame = 3 },
   { name = 'MANUSCRIPT', icons = 3, fonts = 3, frame = 4 },
-  { name = 'EMBER', icons = 4, fonts = 6, frame = 5 },
+  { name = 'EMBER', icons = 4, fonts = 12, frame = 5 },
   { name = 'GLYPH', icons = 5, fonts = 5, frame = 2 },
 }
-UI.S = { bundle = 4, icons = 4, fonts = 6, frame = 5 }   -- starts on EMBER (his pick, round 42)
+UI.S = { bundle = 4, icons = 4, fonts = 12, frame = 5 }   -- starts on EMBER (his pick, round 42), SMOOTH FELL (round 44)
 
 local CREAM, DIM, DARK, BRONZE = '#f2e3c2', '#a8987c', '#6f6252', '#e0a070'
 UI.CREAM, UI.DIM, UI.DARK = CREAM, DIM, DARK

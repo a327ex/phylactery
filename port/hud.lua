@@ -87,6 +87,28 @@ for name, f in pairs(require('port.hud_fonts')) do
   f.track = 0
   FONTS[name] = f
 end
+-- round 44 (owner: "Could we try non-pixel fonts?"): TrueType drawn by the engine, anti-aliased, into a
+-- full-resolution layer over the upscaled game (HUD.hi_layer, HUD.HI times the game's pixels: boot.lua
+-- makes it). Sizes in game pixels; each name is one font at one size.
+HUD.HI = 2
+HUD.hi_layer = nil
+local SMOOTH = {
+  s_cinzel_t = { 'Cinzel[wght].ttf', 16 },        s_cinzel_b = { 'Cinzel[wght].ttf', 10.5 },
+  s_fell_t = { 'IMFeENsc28P.ttf', 17 },           s_fell_b = { 'IMFeENrm28P.ttf', 12 },
+  s_uncial_t = { 'UncialAntiqua-Regular.ttf', 15 }, s_uncial_b = { 'UncialAntiqua-Regular.ttf', 10.5 },
+  s_sharp_t = { 'MedievalSharp.ttf', 16 },        s_sharp_b = { 'MedievalSharp.ttf', 11 },
+  s_marcellus_t = { 'MarcellusSC-Regular.ttf', 15 }, s_marcellus_b = { 'Marcellus-Regular.ttf', 11 },
+  s_grenze_t = { 'Grenze[wght].ttf', 17 },        s_grenze_b = { 'Grenze[wght].ttf', 12 },
+}
+for name, d in pairs(SMOOTH) do FONTS[name] = { smooth = true, path = 'assets/fonts/' .. d[1], size = d[2], h = d[2], upper = false, track = 0, glyphs = {} } end
+local function smooth_ready(f, name)
+  if not f.id then
+    f.id = 'hud_' .. name
+    font_load(f.id, f.path, math.floor(f.size*HUD.HI + 0.5), 'smooth')
+    f.h = font_get_height(f.id)/HUD.HI
+  end
+  return f.id
+end
 HUD.FONTS = FONTS
 HUD.style = { title = 'classic', body = 'classic' }
 -- (a style may give each role its own scale: title_scale, body_scale; pixel fonts stay crisp at whole multiples)
@@ -99,7 +121,11 @@ local function font_for(scale)
 end
 HUD.font_for = font_for
 -- a text's height in pixels (its capitals' top to its lowest descender) at this scale
-function HUD.text_height(scale) local f, s = font_for(scale); return f.h*s end
+function HUD.text_height(scale)
+  local f, s, name = font_for(scale)
+  if f.smooth then smooth_ready(f, name); return math.floor(f.h + 0.5) end
+  return f.h*s
+end
 
 local function glyphs(str, f) return f.upper and str:upper() or str end
 -- the game's texts are written in capitals; a mixed-case font gets them as names (Title Case) or as
@@ -118,7 +144,8 @@ local function recase(str, title)
 end
 HUD.recase = recase
 function HUD.text_width(str, scale)
-  local f, s = font_for(scale)
+  local f, s, name = font_for(scale)
+  if f.smooth then return font_get_text_width(smooth_ready(f, name), tostring(str))/HUD.HI end
   local G = f.glyphs
   local w = 0
   for ch in glyphs(tostring(str), f):gmatch('.') do w = w + ((G[ch] or G['?']).w + f.track)*s end
@@ -274,6 +301,13 @@ function HUD.text(str, x, y, color, scale, align, shadow, opts)
   cx = floor(cx + 0.5); y = floor(y + 0.5)
   local outline = type(opts) == 'string' and opts or (type(opts) == 'table' and opts.outline or nil)
   local drop = type(opts) == 'table' and opts.shadow or nil
+  do
+    local f, _, name = font_for(scale)
+    if f.smooth then
+      ops[#ops + 1] = { t = 'ttf', id = smooth_ready(f, name), str = str, x = cx, y = y, c = css(color), a = galpha, halo = outline or shadow }
+      return
+    end
+  end
   local e = raster(str, color, scale, shadow, outline, drop)
   ops[#ops + 1] = { t = 'tex', e = e, x = cx - e.pad, y = y - e.pad, a = galpha }
 end
@@ -289,9 +323,23 @@ end
 function HUD.texture(tex, x, y, w, h)
   ops[#ops + 1] = { t = 'tex', e = { tex = tex, w = w, h = h }, x = x, y = y, a = galpha }
 end
+local HALO = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 }, { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }
+local function packed(c, a) return color(floor(c[1]*255 + 0.5), floor(c[2]*255 + 0.5), floor(c[3]*255 + 0.5), floor(math.max(0, math.min(1, c[4]*a))*255 + 0.5))() end
 function HUD.flush(layer)
+  local hi, K = HUD.hi_layer, HUD.HI
   for _, o in ipairs(ops) do
-    if o.t == 'img' then
+    if o.t == 'ttf' then
+      if hi then
+        local x, y = o.x*K, o.y*K
+        -- a soft dark halo and a drop under it (the outline/shadow the pixel texts carry), then the text
+        if o.halo then
+          local ink = { 0.03, 0.022, 0.018, 1 }
+          layer_draw_text(hi, o.str, o.id, x, y + 3, packed(ink, 0.55*o.a))
+          for _, d in ipairs(HALO) do layer_draw_text(hi, o.str, o.id, x + d[1]*1.5, y + d[2]*1.5, packed(ink, 0.35*o.a)) end
+        end
+        layer_draw_text(hi, o.str, o.id, x, y, packed(o.c, o.a))
+      end
+    elseif o.t == 'img' then
       layer_push(layer, o.x + o.w/2, o.y + o.h/2, 0, 1, -1)
       layer_draw_texture(layer, o.img, 0, 0, color(255, 255, 255, floor(o.a*255 + 0.5))())
       layer_pop(layer)
