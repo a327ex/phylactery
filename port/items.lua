@@ -67,6 +67,8 @@ function IT.trace_hook(mesh, mat, sun, scale_from_world)
     local k = sc:set_from_matrix_scale(self.matrix_world).x
     UU.uToWorld.value:set_from_matrix4(self.matrix_world):multiply_scalar(1/k)
     if sun then UU.uSunDir.value:copy(sun.dir); UU.uSunCol.value:copy(sun.col) end
+    -- (round 45: the orbs' markings: which ball this is, and the finish)
+    if UU.uMark then UU.uMark.value = self.user_data.mark or 0; UU.uMarkStyle.value = require('port.orbmarks').style end
   end
 end
 
@@ -104,7 +106,7 @@ function IT.create(ctx)
     g:traverse(function(o) if o.is_mesh then o.cast_shadow = not o.user_data.no_shadow; o.receive_shadow = true end end)
     -- the traced stones (the gem: one mesh; the orbs: each sphere)
     if i == 5 then local m = g.children[1]; IT.trace_hook(m, m.material, sun, false) end
-    if i == 4 then for _, ix in ipairs(X.world[i].orbs) do local m = g.children[ix + 1]; IT.trace_hook(m, m.material, sun, true) end end
+    if i == 4 then for k, ix in ipairs(X.world[i].orbs) do local m = g.children[ix + 1]; m.user_data.mark = k - 1; IT.trace_hook(m, m.material, sun, true) end end
     return g
   end
   local W = {}

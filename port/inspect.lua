@@ -60,7 +60,8 @@ function IN.create(ctx)
 
   local S = { active = false, t = 0, idx = 5, model = nil, radius = 0.2, backdrop = 0, q = Quaternion.new(), wv = Vector2.new(0, 0), zoom = 1, zoom_t = 1,
     idle = 0, closing = -1, drag = nil, saved = nil, hover = nil,
-    remove = false, result = nil, buttons = {}, hot = nil }       -- (round 40: the view asks before an object is given up)
+    remove = false, result = nil, buttons = {}, hot = nil,         -- (round 40: the view asks before an object is given up)
+    accept = false }                                               -- (round 45: a newly found one waits for ACCEPT ARTIFACT)
 
   local function orbs_hover(orbs)
     local ORBIT = {}
@@ -102,7 +103,7 @@ function IN.create(ctx)
     if i == 4 then local m = g.children[1]; ITM.trace_hook(m, m.material, gem_sun, false) end
     if #d.orbs > 0 then
       local orbs = {}
-      for _, ix in ipairs(d.orbs) do local m = g.children[ix + 1]; m.user_data.r = m.user_data.r or m.scale.x; ITM.trace_hook(m, m.material, sun, true); orbs[#orbs + 1] = m end
+      for k, ix in ipairs(d.orbs) do local m = g.children[ix + 1]; m.user_data.r = m.user_data.r or m.scale.x; m.user_data.mark = k - 1; ITM.trace_hook(m, m.material, sun, true); orbs[#orbs + 1] = m end
       S.hover = orbs_hover(orbs)
     end
     local c, size = d.box.c, d.box.s
@@ -120,8 +121,9 @@ function IN.create(ctx)
     if i == nil then i = S.idx end
     if S.active then return end
     S.remove = (opts and opts.remove) and true or false
+    S.accept = (opts and opts.accept) and true or false
     S.result = nil; S.hot = nil; S.buttons = {}
-    local z = S.remove and 0.85 or 1
+    local z = (S.remove or S.accept) and 0.85 or 1
     S.active = true; S.t = 0; S.closing = -1; S.idle = 0; S.zoom = z; S.zoom_t = z; S.wv:set(0, 0)
     local hud = R.params.hud; R.params.hud = 0; R.params.world_override = nil; R.render(0); R.params.hud = hud
     back_mat.uniforms.tFrame.value = R.freeze()
@@ -131,7 +133,7 @@ function IN.create(ctx)
   end
   function insp.close() if S.active and S.closing < 0 then S.closing = 0 end end
   function insp.next(d)
-    if S.remove then return end
+    if S.remove or S.accept then return end
     local i = S.idx
     local n = #ITEMS
     for _ = 1, n do i = (i + d + n) % n; if ITEMS[i + 1].build then break end end
@@ -152,14 +154,20 @@ function IN.create(ctx)
     S.result = yes and 'remove' or 'keep'
     insp.close()
   end
+  function insp.accept()
+    if not (S.active and S.accept) or S.closing >= 0 then return end
+    S.result = 'accept'
+    insp.close()
+  end
   function insp.pointer_down(x, y)
     if not S.active then return end
     if S.remove then local b = button_at(x, y); if b then insp.answer(b == 'yes'); return end end
+    if S.accept then local b = button_at(x, y); if b then insp.accept(); return end end
     S.drag = { x, y }; S.idle = 0
   end
   function insp.pointer_up() S.drag = nil end
   function insp.pointer_move(x, y)
-    if S.active and S.remove then S.hot = button_at(x, y) end
+    if S.active and (S.remove or S.accept) then S.hot = button_at(x, y) end
     if not S.active or not S.drag then return end
     local dx, dy = x - S.drag[1], y - S.drag[2]
     S.drag = { x, y }
@@ -188,7 +196,7 @@ function IN.create(ctx)
     if not S.active then return false end
     local a = smoothstep(0, 0.3, S.t)*(S.closing >= 0 and 1 - smoothstep(0, 0.28, S.closing) or 1)
     local dist = S.radius/tan(15*pi/180)/0.62/S.zoom
-    local oy = S.remove and S.radius*0.42/S.zoom or 0      -- (asking: the object a little higher, the question under it)
+    local oy = (S.remove or S.accept) and S.radius*0.42/S.zoom or 0      -- (asking: the object a little higher, the question under it)
     camera.position:set(0, -oy, dist)
     camera.near = dist*0.05; camera.far = dist*6; camera:update_projection_matrix()
     camera:look_at(0, -oy, 0)
@@ -216,7 +224,17 @@ function IN.create(ctx)
     local h1, h2 = HUD.text_height(1), HUD.text_height(2)
     local cx = R.W/2
     local y = R.H - 6 - h1
-    if S.remove then
+    if S.accept then
+      -- round 45: found on the way; it is his once accepted
+      HUD.text('DRAG: TURN   WHEEL: CLOSER   ENTER: ACCEPT', cx, y, UI.DARK, 1, 'center', nil, ink)
+      local label = 'ACCEPT ARTIFACT'
+      local bh = h1 + 8
+      local bw = math.max(96, HUD.text_width(label, 1) + 28)
+      y = y - 10 - bh
+      S.buttons.accept = { floor(cx - bw/2), y, bw, bh }
+      UI.button(floor(cx - bw/2), y, bw, bh, label, S.hot == 'accept', true)
+      y = y - 12 - h1
+    elseif S.remove then
       HUD.text('DRAG: TURN   WHEEL: CLOSER   Y: YES   N OR ESC: NO', cx, y, UI.DARK, 1, 'center', nil, ink)
       -- the question, and its two answers (clicked, or Y / N)
       local bh = h1 + 8
@@ -250,7 +268,7 @@ function IN.create(ctx)
     local v = ITEMS[i + 1].view or { 0.55, 0.4, 0.0 }
     S.q:set_from_euler(Euler.new(v[1], v[2], v[3], 'YXZ'))
     if S.hover then S.hover(1.3) end
-    S.active = true; S.t = 1; S.closing = -1; S.remove = false
+    S.active = true; S.t = 1; S.closing = -1; S.remove = false; S.accept = false
     -- (the orbs hover apart and the lens is thin glass: they read better a little larger)
     S.zoom = px*0.86/(2*0.62*R.H/2)*(({ [3] = 1.55, [5] = 1.2 })[i] or 1)
     local BU = back_mat.uniforms
@@ -288,7 +306,7 @@ function IN.create(ctx)
     local v = ITEMS[i + 1].view or { 0.55, 0.4, 0.0 }
     S.q:set_from_euler(Euler.new(v[1], v[2], v[3], 'YXZ'))
     if S.hover then S.hover(1.3) end
-    S.active = true; S.t = 1; S.closing = -1; S.remove = false
+    S.active = true; S.t = 1; S.closing = -1; S.remove = false; S.accept = false
     S.zoom = px*0.86/(2*0.62*R.H/2)*(({ [3] = 1.55, [5] = 1.2 })[i] or 1)
     local BU = back_mat.uniforms
     local tf, black, hud = BU.tFrame.value, BU.uBlack.value, R.params.hud

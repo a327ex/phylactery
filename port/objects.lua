@@ -63,6 +63,7 @@ function OB.builder(A, mats_desc, opts)
     local U = {}
     local any = false
     for k, v in pairs(d.uniforms or {}) do U[k] = { value = decode(v) }; any = true end
+    if d.name == 'item.orbs' then U.uMark = { value = 0 }; U.uMarkStyle = { value = 0 } end   -- (round 45: port/orbmarks.lua)
     if d.type == 'ShaderMaterial' then m.uniforms = U; m.user_data.U = U
     elseif any then m.custom = U; m.user_data.U = U end
     if opts.gi and d.type ~= 'ShaderMaterial' then FX.gi_dynamic(m, opts.gi) end
