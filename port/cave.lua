@@ -274,6 +274,36 @@ function C.build(R)
       end
     end
   end
+  -- round 47: the old tube kept only to z_tube (its collar and first stretch, where the door
+  -- stands), and the egg room's floor strip down it only to z_floor (the rest is inside rock now)
+  function cave.cut_tunnel(z_tube, z_floor)
+    for _, sh in ipairs(shells) do
+      local g = sh.g
+      local cut = (g.name == 'cave_2' and z_tube) or (g.name == 'cave_3' and z_floor)
+      if cut and not sh.cut then
+        local pos = g.attributes.position:ensure_array()
+        local keep = {}
+        for t = 0, #pos//9 - 1 do
+          local zc = (pos[t*9 + 3] + pos[t*9 + 6] + pos[t*9 + 9])/3
+          local xc = (pos[t*9 + 1] + pos[t*9 + 4] + pos[t*9 + 7])/3
+          keep[t] = g.name == 'cave_2' and zc > cut or not (zc < cut and math.abs(xc) < 6)
+        end
+        local function filt(a)
+          local src = a:ensure_array()
+          local n, out = a.item_size*3, {}
+          for t = 0, #src//n - 1 do if keep[t] then for k = 1, n do out[#out + 1] = src[t*n + k] end end end
+          return T.BufferAttribute.new(out, a.item_size)
+        end
+        local was_uvc = g.attributes.uv == sh.uvc
+        for name, a in pairs(g.attributes) do if a ~= sh.uv and a ~= sh.uvc then g.attributes[name] = filt(a) end end
+        sh.uv, sh.uvc = filt(sh.uv), filt(sh.uvc)
+        g.attributes.uv = was_uvc and sh.uvc or sh.uv
+        g.bounding_sphere = nil
+        g.gpu_dirty = true
+        sh.cut = true
+      end
+    end
+  end
   cave.M = M
   function cave.set_dome_visible(on) for _, m in ipairs(dome_mats) do m.color_write = on; m.depth_write = on end end
   function cave.set_darkness(i)

@@ -40,7 +40,7 @@ function GM.create(R, hud_layer)
   local cave = CAVE.build(R)
   local lich = LICH.create(R, { GU = cave.GU })
   -- round 45: the lich's own mask, flat white (port/lichmask.lua; F5 cycles it for comparison)
-  local lmask = require('port.lichmask').create(lich, cave.GU)
+  local lmask = require('port.lichmask').create(lich, cave.GU, R)
   local EGG = cave.egg.position
   local G = { t = 0, tick = 0, cam = 0, manual = false, hud = true, dark = 1, surface = 2, tlight = 2,
     static = { eye = { -3.6, 9.8, -10.4 }, tgt = { 0.4, 0.1, 2.4 } },
@@ -104,7 +104,8 @@ function GM.create(R, hud_layer)
   -- round 45: the way in (the grotto, the longer tunnel, the six objects waiting on it)
   local way = nil
   if G.mode == 'tunnel' and inspect then
-    way = require('port.way').create({ R = R, cave = cave, lich = lich, mover = mover, items = items, inspect = inspect, fx = fx, warp = warp, powers = powers })
+    -- (round 47: the rooms behind the door replace round 45's way; port/rooms.lua, same interface)
+    way = require('port.rooms').create({ R = R, cave = cave, lich = lich, mover = mover, items = items, inspect = inspect, fx = fx, warp = warp, powers = powers })
     nav.cur = way.nav
   end
   G.way = way
@@ -134,6 +135,11 @@ function GM.create(R, hud_layer)
   snakes.on_won = function() END.won = true; END.over = 0; held = {}; mouse.down = false; goal = nil; lich.hit(1.7) end
   -- round 37 (owner: "The cut to black should be instant, the text can fade in")
   local OVER = { hold = 1.8, fade = 0, text_at = 0.8, text_in = 1.4 }
+  -- round 47 (owner: "we should only zoom in on the liches face at the end ... when the game ends"):
+  -- after the win the camera pushes in on his face, then the cut to black; F8 turns it off. (LICH_ROOM=1
+  -- keeps round 37's 1.8 s hold, so its digest run stays the same)
+  local END_ZOOM = { on = true, dur = 2.6, extra = 1.4 }
+  if not os.getenv('LICH_ROOM') then OVER.hold = OVER.hold + END_ZOOM.extra end
   local MESSAGE = { '[ YOUR MESSAGE ]' }                -- his to write; one entry per line
   local function over_black() return END.won and END.over >= OVER.hold + OVER.fade end
   local end_rng = U.make_rng(77)
@@ -227,6 +233,19 @@ function GM.create(R, hud_layer)
     cave.set_dome_visible(c.dome ~= false)
     local C = R.world_camera
     C.fov = (G.cam == 0 and G.look and G.look.fov) or (G.cam == 0 and G.mode == 'tunnel' and select(3, tunnel_rig())) or c.fov; C:update_projection_matrix()
+    -- the end: in on his face (round 47)
+    if END.won and END_ZOOM.on and G.cam == 0 and not G.look then
+      local k = smoothstep(0.15, END_ZOOM.dur, END.over)
+      k = k*k*(3 - 2*k)
+      if k > 0 then
+        local hp = lich.head_pos()
+        local yaw = mover.yaw()
+        local fe = v(hp.x + sin(yaw)*0.95, hp.y + 0.38, hp.z + cos(yaw)*0.95)
+        eye = eye:clone():lerp(fe, k)
+        tgt = tgt:clone():lerp(hp, k)
+        C.fov = C.fov + (34 - C.fov)*k; C:update_projection_matrix()
+      end
+    end
     C.position:copy(eye)
     C.up:set(0, 1, 0)
     C:look_at(tgt)
@@ -366,12 +385,13 @@ function GM.create(R, hud_layer)
     if hit('f4') then UI.next_frame() end
     if hit('f5') then lmask.set_look(lmask.look + 1) end
     if hit('f7') then local MK = require('port.orbmarks'); MK.set_style(MK.style + 1) end
+    if hit('f8') then END_ZOOM.on = not END_ZOOM.on end
     if hit('f6') and way and G.mode == 'tunnel' then
       -- (testing) on to the next object: everything before it already his
       local n = 0
       for i = 0, 5 do if powers.is_on(powers.ALL[i + 1]) then n = n + 1 end end
       local x, z, yaw = way.reset((n + 1) % 7)
-      mover.place(x, z, yaw); F:copy(L); held = {}; goal = nil
+      mover.place(x, z, yaw); F:copy(L); held = {}; goal = nil; lmask.snap()
     end
     if hit('c') and G.mode == 'tunnel' then set_tunnel_light(G.tlight + 1) end
   end
@@ -466,7 +486,7 @@ function GM.create(R, hud_layer)
     local label = G.cam == CAM_EGG and 'Y' or (G.cam == CAM_FREE and '4' or tostring(G.cam + 1))
     if G.cam == 0 and G.mode == 'tunnel' then
       local zn = way and select(4, way.rig()) or 'THE TUNNEL'
-      HUD.text('1 THE WAY IN: ' .. zn, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
+      HUD.text('1 ' .. zn, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
       HUD.text('F6: ON TO THE NEXT OBJECT (TESTING)   F5 HIS MASK: ' .. require('port.lichmask').LOOKS[lmask.look + 1].name, 8, 19, '#a8987c', 1, 'left', nil, INK)
       HUD.text('F7 ORB MARKINGS: ' .. require('port.orbmarks').STYLES[require('port.orbmarks').style + 1], 8, 30, '#a8987c', 1, 'left', nil, INK)
     else
@@ -559,13 +579,16 @@ function GM.create(R, hud_layer)
   end
   G.enter_room = enter_room
   if G.mode == 'tunnel' then
-    local pl = {}
-    R.world_scene:traverse(function(o) if o.is_point_light then pl[#pl + 1] = o end end)
-    for k = 1, 2 do
-      local l = pl[k]
-      lamps[k] = { l = l, keep = { position = l.position:clone(), color = l.color:clone(), intensity = l.intensity, distance = l.distance, decay = l.decay } }
+    -- (round 47: the rooms light themselves with all nine; the old tube's two lamps only without them)
+    if not way then
+      local pl = {}
+      R.world_scene:traverse(function(o) if o.is_point_light then pl[#pl + 1] = o end end)
+      for k = 1, 2 do
+        local l = pl[k]
+        lamps[k] = { l = l, keep = { position = l.position:clone(), color = l.color:clone(), intensity = l.intensity, distance = l.distance, decay = l.decay } }
+      end
+      set_tunnel_light(G.tlight)
     end
-    set_tunnel_light(G.tlight)
     for _, sn in ipairs(snakes.S) do sn.m.visible = false; sn.eyes[1].visible = false; sn.eyes[2].visible = false end
   end
   -- each object's icon for the inventory (rendered once, now, outside any frame's draw)
@@ -575,6 +598,7 @@ function GM.create(R, hud_layer)
     local x, z, yaw = way.reset(0)
     mover.place(x, z, yaw); F:copy(L)
   end
+  -- (his mask takes its place on its first tick)
 
   -- ------------------------------------------------------------------ sim + render
   local function tick()
@@ -602,7 +626,9 @@ function GM.create(R, hud_layer)
       if way then
         way.tick(G.t, DT)
         if way.cut then way.cut = false; basis.hold = true end
+        if way.nav_swap then nav.cur = way.nav_swap; way.nav_swap = nil end   -- (the door is open)
       end
+      lmask.tick(DT)
       if L.z > -9 and not room_nav.is_blocked(L.x, L.z) and room_nav.dist(L.x, L.z) > 0.1 then enter_room() end
       return
     end
@@ -611,6 +637,7 @@ function GM.create(R, hud_layer)
     lich.pose(G.t, DT, mover.motion)
     powers.after_pose(G.t)
     lich.update(G.t)
+    lmask.tick(DT)
     cave.update(G.t, DT)
     snakes.set_ember(fire.ember_colour())
     snakes.update(G.t, DT)
@@ -723,7 +750,7 @@ function GM.create(R, hud_layer)
   -- round 45's harness: start before object i (0-6), where he is along the way
   function GAME.way(i)
     if not way then return nil end
-    local x, z, yaw = way.reset(i); mover.place(x, z, yaw); F:copy(L); held = {}; goal = nil
+    local x, z, yaw = way.reset(i); mover.place(x, z, yaw); F:copy(L); held = {}; goal = nil; lmask.snap()
     return { x, z, yaw }
   end
   function GAME.way_state()
