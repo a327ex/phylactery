@@ -129,9 +129,15 @@ local function build_geometry(s)
   return g, C, MR
 end
 
--- worn by the lich's head node: the eyes' line on the skull's (y 0.03 in the head's frame), its
--- back clear of the skull's face (front of the maxilla at z 0.103)
-function LM.create(lich, GU)
+-- round 47 (owner, 2026-10-05: "His mask has to be a bit in front of him, not glued to his face,
+-- like it's maintained by telekinesis. So it also lags his vertical movement by a bit."): held in
+-- front of the skull's face (its eyes' line on the skull's, y 0.03 in the head's frame, 7 cm out),
+-- not worn: each tick it follows where the head would hold it, sideways and in turn closely, up
+-- and down late (a softer spring), with a slow drift of its own.
+local Vector3, Quaternion, Matrix4 = require('port.three.math').Vector3, require('port.three.math').Quaternion, require('port.three.math').Matrix4
+LM.HOLD = { y = 0.03 - EY*0.95, z = 0.183 }
+LM.SPRING = { xz = 140, y = 34, turn = 9 }        -- (stiffness, 1/s^2; turning as a rate)
+function LM.create(lich, GU, R)
   local A = ITM.assets()
   local X = A.manifest.items
   local B = OB.builder(A, X.mats, { gi = GU })
@@ -141,9 +147,38 @@ function LM.create(lich, GU)
   local m = T.Mesh.new(g, mat)
   m.name = 'lich.mask'
   m.cast_shadow = true; m.receive_shadow = true
-  m.position:set(0, 0.03 - EY*S, 0.1105)
-  lich.nodes.head:add(m)
-  local M = { mesh = m, look = 0 }
+  R.world_scene:add(m)
+  local head = lich.nodes.head
+  local tp, tq, ts = Vector3.new(), Quaternion.new(), Vector3.new()
+  local hold = Vector3.new()
+  local M = { mesh = m, look = 0, p = nil, v = Vector3.new(), t = 0 }
+  local function target()
+    head:update_world_matrix(true, false)
+    hold:set(0, LM.HOLD.y, LM.HOLD.z):apply_matrix4(head.matrix_world)
+    head.matrix_world:decompose(tp, tq, ts)
+    return hold, tq
+  end
+  -- where it is held, at once (a start, a jump)
+  function M.snap()
+    local p, q = target()
+    M.p = p:clone(); M.v:set(0, 0, 0)
+    m.position:copy(M.p); m.quaternion:copy(q)
+  end
+  function M.tick(dt)
+    local p, q = target()
+    if not M.p then M.snap(); return end
+    M.t = M.t + dt
+    local P, V, K = M.p, M.v, LM.SPRING
+    -- critically damped springs: x and z close, y late
+    local function axis(c, k)
+      local d = 2*math.sqrt(k)
+      V[c] = V[c] + ((p[c] - P[c])*k - V[c]*d)*dt
+      P[c] = P[c] + V[c]*dt
+    end
+    axis('x', K.xz); axis('y', K.y); axis('z', K.xz)
+    m.position:set(P.x, P.y + math.sin(M.t*1.3)*0.004, P.z)
+    m.quaternion:slerp(q, 1 - math.exp(-K.turn*dt))
+  end
   function M.set_look(i)
     M.look = ((i % #LM.LOOKS) + #LM.LOOKS) % #LM.LOOKS
     local L = LM.LOOKS[M.look + 1]
