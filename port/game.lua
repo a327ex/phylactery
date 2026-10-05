@@ -238,9 +238,14 @@ function GM.create(R, hud_layer)
       local k = smoothstep(0.15, END_ZOOM.dur, END.over)
       k = k*k*(3 - 2*k)
       if k > 0 then
+        -- (along the way his face points: in the hurt pose it is thrown back, looking up)
         local hp = lich.head_pos()
-        local yaw = mover.yaw()
-        local fe = v(hp.x + sin(yaw)*0.95, hp.y + 0.38, hp.z + cos(yaw)*0.95)
+        local hm = lich.nodes.head.matrix_world.elements
+        local fx_, fy_, fz_ = hm[9], hm[10], hm[11]
+        local fl = sqrt(fx_*fx_ + fy_*fy_ + fz_*fz_)
+        fx_, fy_, fz_ = fx_/fl, fy_/fl, fz_/fl
+        if fy_ < -0.2 then fy_ = -0.2 end
+        local fe = v(hp.x + fx_*1.05, hp.y + fy_*1.05 + 0.12, hp.z + fz_*1.05)
         eye = eye:clone():lerp(fe, k)
         tgt = tgt:clone():lerp(hp, k)
         C.fov = C.fov + (34 - C.fov)*k; C:update_projection_matrix()
