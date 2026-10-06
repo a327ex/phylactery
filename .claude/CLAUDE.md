@@ -18,7 +18,9 @@ never `x and nil or y`, random draws in the JS's evaluation order. Drive it with
 (its own camera and grid) with every object in an inventory; removing one goes through the model
 viewer's question. `LICH_ROOM=1` in the environment starts in the room exactly as before (keep that
 path identical: `tools/digest_run.lua` runs with it). The walk of round 39 is set aside in
-`archive/the-walk/` (tag `walk-round39`).
+`archive/the-walk/` (tag `walk-round39`). Round 50's waves and bouts (snakes.lua `opts.varied`,
+powers.lua `ctx.varied`, the group versions in beam/lift/rock/lens/fire) are on only without
+LICH_ROOM; with it, the old respawn timers and fair rotation run exactly as before.
 
 **three.js first (owner, 2026-09-27)**, like Brutal Behavior: the game lives in `web/`
 (`index.html` + `src/*.js`, three.js 0.170 from jsdelivr, local modules import each other only

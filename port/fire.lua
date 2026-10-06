@@ -112,6 +112,20 @@ function F.create(R, cave, seed)
     return b
   end
 
+  -- round 50: flames licking up off the floor where his sweep passes (no body under them: a short line of fire)
+  local function lick(x, y, z)
+    for _ = 1, 2 do
+      local p = flames.spawn()
+      p.x = x + rng.spread(0.12); p.z = z + rng.spread(0.12); p.y = y + 0.03
+      p.vx = rng.spread(0.25); p.vz = rng.spread(0.25); p.vy = rng.float(0.6, 1.4)
+      p.life = rng.float(0.3, 0.62); p.max = p.life
+      p.s0 = rng.float(0.13, 0.25); p.s1 = p.s0*0.3
+      p.h = rng.next()
+    end
+    if rng.next() < 0.3 then emit_spark({ x = x, y = y, z = z }, 1) end
+    if rng.next() < 0.25 then emit_smoke({ x = x, y = y, z = z }, 0.08, 0.6, 0.5) end
+  end
+
   local UT, UDT, UL = 0, 0, LOOKS[1]
   local function write_flame(p, i, pos, col, size)
     local t, dt, L = UT, UDT, UL
@@ -221,7 +235,7 @@ function F.create(R, cave, seed)
     flames.mat.uniforms.uScale.value = s; sparks.mat.uniforms.uScale.value = s; smoke.mat.uniforms.uScale.value = s
   end
 
-  local fire = { start = start, update = update, set_camera = set_camera, ash = ash, LOOKS = LOOKS, BURN = BURN, flame_at = flame_at }
+  local fire = { start = start, update = update, set_camera = set_camera, ash = ash, lick = lick, LOOKS = LOOKS, BURN = BURN, flame_at = flame_at }
   function fire.get_look() return look end
   function fire.set_look(i) local n = #LOOKS; look = ((i % n) + n) % n end
   function fire.char(b, i) local a = arrive_t(b, i); return smoothstep(a, a + BURN.char, b.t) end

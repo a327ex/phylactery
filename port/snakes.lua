@@ -7,6 +7,10 @@
   Rings are 0-based in the formulas (S_AT(i)) and 1-based in the tables (spine[i + 1]).
   The coiled bodies lie over each other through a grid over their rings (the same lifts as
   snakes.js's search over every pair).
+  Round 50 (owner, 2026-10-05: "snakes are spawning all at the same time often"): with opts.varied
+  (the game's default; LICH_ROOM=1 keeps the old flow, the three.js build's) a snake that dies waits
+  in a pool, and a wave director sends them: ONE, a PAIR, a PACK from one side, a SPREAD from several
+  sides at once, a STREAM in a line, with quiet stretches between (WAVES below).
 ]]
 local TM = require('port.three.math')
 local T = require('port.three.core')
@@ -54,9 +58,14 @@ for i = 0, RINGS - 1 do SA[i + 1] = S_AT(i); RAD[i + 1] = radius_at(SA[i + 1]); 
 local CXS, CYS = {}, {}
 for j = 0, SIDES - 1 do local ang = j/SIDES*math.pi*2; CXS[j + 1] = math.sin(ang); CYS[j + 1] = -math.cos(ang) end
 
-function SN.create(R, cave, get_lich_pos, fire, count, seed)
+SN.WAVES = { 'ONE', 'PAIR', 'PACK', 'SPREAD', 'STREAM' }
+local WAVE_W = { 2.2, 2.0, 2.4, 1.4, 1.1 }
+
+function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   count = count or 8; seed = seed or 5
   local rng = U.make_rng(seed)
+  local varied = opts and opts.varied or false
+  local wrng = U.make_rng(seed*977 + 3)          -- the waves' own draws (the old flow's rng stays as it was)
   local A = R.statics
   local mat = MAT.MeshStandardMaterial.new({ name = 'snakes.body', map = A.texture('snake_scales'), roughness = 0.3, metalness = 0.0 })
   local uEmber, uSnakeT = { value = Color.new(3.2, 0.75, 0.1) }, { value = 0 }
@@ -116,15 +125,19 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed)
 
   local function set_vis(s, v) s.m.visible = v; s.eyes[1].visible = v; s.eyes[2].visible = v end
 
-  local function spawn(s, delay)
-    local th
-    repeat th = rng.float(0, pi*2) until not (abs(atan2(sin(th + pi/2), cos(th + pi/2))) < 0.5)
-    local r = rng.float(14.0, 15.8)
+  -- w (round 50, the waves): { th = angle, speed = m/s }, drawn with the waves' rng; nil = the old draws
+  local function spawn(s, delay, w)
+    local g = w and wrng or rng
+    local th = w and w.th
+    if not th then repeat th = g.float(0, pi*2) until not (abs(atan2(sin(th + pi/2), cos(th + pi/2))) < 0.5) end
+    local r = g.float(14.0, 15.8)
     s.x = cos(th)*r; s.z = sin(th)*r
-    s.dir = atan2(-s.z, -s.x) + rng.spread(0.3)
-    s.phase = rng.float(0, 6.28); s.speed = rng.float(1.0, 1.35)
-    s.wave = rng.float(0.95, 1.2)
-    s.amp = rng.float(0.55, 0.75)
+    s.dir = atan2(-s.z, -s.x) + g.spread(0.3)
+    s.phase = g.float(0, 6.28); s.speed = g.float(1.0, 1.35)
+    if w and w.speed then s.speed = w.speed end
+    s.wave = g.float(0.95, 1.2)
+    s.amp = g.float(0.55, 0.75)
+    s.pooled = false
     s.trail = {}
     for i = 0, 399 do s.trail[i + 1] = { s.x - cos(s.dir)*i*0.01, s.z - sin(s.dir)*i*0.01 } end
     -- (each point keeps [3] = its distance to the next: the walks along the trail read it)
@@ -137,8 +150,108 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed)
     for k = 1, #a do a[k] = 0 end
     ab.needs_update = true
   end
-  for i = 0, count - 1 do local s = make_mesh(); spawn(s, i*1.6); S[#S + 1] = s end
-  local function respawn(s) spawn(s, rng.float(RESPAWN[1], RESPAWN[2])) end
+  -- round 50: the pool and the waves. A snake that dies (or a new one for the count) waits hidden
+  -- until a wave sends it; a wave picks its shape, its side(s), its pace, then a gap before the next.
+  local POOLED = huge
+  local function to_pool(s) s.delay = POOLED; s.pooled = true; s.fx = nil; s.burn = nil; s.sink = -1; s.dying = -1; s.coil = nil; s.claim = nil; s.leak = 0; s.leak_at = nil; s.scale = 1; s.sag = 0; s.burnt = false; set_vis(s, false) end
+  local function valid_th(th) return not (abs(atan2(sin(th + pi/2), cos(th + pi/2))) < 0.55) end
+  local function side_th()
+    local th
+    repeat th = wrng.float(0, pi*2) until valid_th(th)
+    return th
+  end
+  local DIR = { next = 0.4, n = 0, log = {}, force = nil, last = nil, lull = false, clock = 0 }
+  local function pooled() local out = {}; for _, s in ipairs(S) do if s.pooled then out[#out + 1] = s end end; return out end
+  -- the arrivals of one wave: a list of { delay, angle, speed }, and the gap before the next wave
+  local function plan_wave(kind, avail)
+    local out, gap = {}, 0
+    local base = wrng.float(1.0, 1.3)
+    if kind == 'ONE' then
+      out[1] = { 0, side_th(), wrng.float(1.0, 1.35) }
+      gap = wrng.float(1.4, 3.2)
+    elseif kind == 'PAIR' then
+      local c = side_th()
+      for k = 1, 2 do
+        local th
+        repeat th = c + wrng.spread(0.45) until valid_th(th)
+        out[k] = { (k - 1)*wrng.float(0.3, 1.1), th, base + wrng.spread(0.06) }
+      end
+      gap = wrng.float(2.4, 4.4)
+    elseif kind == 'PACK' then
+      local n = min(avail, wrng.int(3, 5))
+      local c = side_th()
+      for k = 1, n do
+        local th
+        repeat th = c + wrng.spread(0.26) until valid_th(th)
+        out[k] = { wrng.float(0, 0.7), th, base + wrng.spread(0.04) }
+      end
+      gap = wrng.float(4.0, 7.0)
+    elseif kind == 'SPREAD' then
+      local n = min(avail, wrng.int(3, 4))
+      local c = wrng.float(0, pi*2)
+      for k = 1, n do
+        local th = c + (k - 1)*pi*2/n + wrng.spread(0.3)
+        local tries = 0
+        while not valid_th(th) and tries < 20 do th = th + 0.2; tries = tries + 1 end
+        out[k] = { wrng.float(0, 0.5), th, base + wrng.spread(0.05) }
+      end
+      gap = wrng.float(4.0, 6.5)
+    else -- STREAM: one after another along one line
+      local n = min(avail, wrng.int(4, 6))
+      local c = side_th()
+      local step = wrng.float(0.7, 1.2)
+      for k = 1, n do
+        local th
+        repeat th = c + wrng.spread(0.12) until valid_th(th)
+        out[k] = { (k - 1)*step, th, base }
+      end
+      gap = (n - 1)*step + wrng.float(2.0, 4.0)
+    end
+    return out, gap
+  end
+  local function send_wave(kind)
+    local pool = pooled()
+    if #pool == 0 then return nil end
+    if kind == nil then
+      local tot = 0
+      for k = 1, #SN.WAVES do tot = tot + WAVE_W[k] end
+      repeat
+        local r = wrng.next()*tot
+        kind = SN.WAVES[#SN.WAVES]
+        for k = 1, #SN.WAVES do r = r - WAVE_W[k]; if r <= 0 then kind = SN.WAVES[k]; break end end
+      until kind ~= DIR.last or kind == 'ONE'             -- (no two big waves of the same shape in a row)
+    end
+    -- a wave bigger than the pool waits until it can come whole (a pack of one is no pack)
+    local need = (kind == 'ONE' and 1) or (kind == 'PAIR' and 2) or (kind == 'STREAM' and 4) or 3
+    if #pool < need then return nil end
+    local plan, gap = plan_wave(kind, #pool)
+    for k, a in ipairs(plan) do spawn(pool[k], a[1], { th = a[2], speed = a[3] }) end
+    DIR.n = DIR.n + 1; DIR.last = kind
+    DIR.log[#DIR.log + 1] = { kind = kind, n = #plan, t = DIR.clock }
+    if #DIR.log > 40 then table.remove(DIR.log, 1) end
+    DIR.lull = wrng.next() < 0.22
+    return gap + (DIR.lull and wrng.float(3.0, 6.0) or 0)
+  end
+  local function direct(dt)
+    DIR.clock = DIR.clock + dt
+    if DIR.force then
+      local g = send_wave(DIR.force)
+      if g then DIR.force = nil; DIR.next = max(DIR.next, g) end
+    end
+    DIR.next = DIR.next - dt
+    if DIR.next > 0 then return end
+    local g = send_wave()
+    DIR.next = g or 0.5
+  end
+
+  if varied then
+    for _ = 0, count - 1 do local s = make_mesh(); spawn(s, 0); to_pool(s); S[#S + 1] = s end
+  else
+    for i = 0, count - 1 do local s = make_mesh(); spawn(s, i*1.6); S[#S + 1] = s end
+  end
+  local function respawn(s)
+    if varied then to_pool(s) else spawn(s, rng.float(RESPAWN[1], RESPAWN[2])) end
+  end
 
   local P, UU = {}, {}
   local Tv, Nn, Bn, UP = Vector3.new(), Vector3.new(), Vector3.new(0, 1, 0), Vector3.new(0, 1, 0)
@@ -188,7 +301,11 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed)
     s.claim = nil
     coiled[#coiled + 1] = s
     if api.on_coil then api.on_coil(s) end
-    if not api.won then local q = make_mesh(); spawn(q, rng.float(1.0, 3.0)); S[#S + 1] = q end
+    if not api.won then
+      local q = make_mesh()
+      if varied then spawn(q, 0); to_pool(q) else spawn(q, rng.float(1.0, 3.0)) end
+      S[#S + 1] = q
+    end
   end
 
   local function coil_tick(s, dt)
@@ -461,6 +578,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed)
 
   local function update(t, dt)
     uSnakeT.value = t
+    if varied and not api.won then direct(dt) end
     local n = #S
     local k = 1
     while k <= #S do
@@ -549,6 +667,10 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed)
     on_dissolve = nil, coil = coil, coiled = coiled, WIN = WIN, on_coil = nil, on_grip = nil, on_won = nil,
     coverage = 0, won = false, won_t = -1, coil_mode = 0 }
   function api.set_coil_mode(i) coil_mode = ((i % 2) + 2) % 2; api.coil_mode = coil_mode end
+  -- round 50: the waves (testing: send one now; the director's state)
+  api.varied = varied
+  function api.send(kind) DIR.force = kind; return kind end
+  function api.waves() return { next = DIR.next, n = DIR.n, last = DIR.last, lull = DIR.lull, log = DIR.log, pooled = #pooled() } end
   return api
 end
 

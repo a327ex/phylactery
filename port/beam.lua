@@ -3,6 +3,8 @@
   fingertip, one per snake in the fan of where he points, each a curve leaving along his finger
   (fx ribbon style 4 in pieces), burning into its snake, which fills with the light and bursts into
   warped streaks and a little gore; recoil on his arm (lich.kick / lich.press).
+  Round 50: B.shot, the revolver (3+ snakes in one bout): one beam at a time, each from where his
+  finger was when it fired, faster, with its own hard kick; powers.lua turns him to each in turn.
 ]]
 local TM = require('port.three.math')
 local T = require('port.three.core')
@@ -169,11 +171,11 @@ function BE.create(ctx)
       if b.phase == 'shoot' then
         local goal = at(b)
         local d = V:sub_vectors(goal, b.head):length()
-        local step = SHOOT_V*dt
+        local step = (b.v or SHOOT_V)*dt
         if d <= step then
           b.head:copy(goal); b.at = goal:clone()
           if not b.s.fx or b.s.fx.placeholder then b.s.fx = pierce_fx(b.s, b.ring) end
-          bite(goal, not ch.bit); ch.bit = true
+          bite(goal, not ch.bit and not b.shot); ch.bit = true
           b.phase = 'burn'; b.pt = 0
         else b.head:add_scaled_vector(V, step/d) end
       elseif b.phase == 'burn' then
@@ -245,10 +247,10 @@ function BE.create(ctx)
     for _, b in ipairs(ch.beams) do
       local sg = b.seg
       if sg then
-        sg.p0:copy(TIP)
+        sg.p0:copy(b.from or TIP)
         sg.p1:copy(b.phase == 'shoot' and b.head or at(b))
         local w = W1*ch.k_on*b.k*flick*pop
-        lay(sg, true, min(W0, w), w, b.k, ph0)
+        lay(sg, not b.from, min(W0, w), w, b.k, ph0)
       end
     end
     local k = ch.kmax
@@ -307,6 +309,30 @@ function BE.create(ctx)
       spark(TIP, 0, { vx = V.x, vy = V.y, vz = V.z, grav = 3, drag = 2.5, life = rng.float(0.15, 0.3), s0 = 0.018, s1 = 0.006, fin = 0.01 })
     end
   end
+  -- round 50: one revolver shot at s (powers.lua has turned him to it): a beam from where the finger is
+  -- now (it stays there as he turns to the next), quicker than the cast's, and its own hard kick
+  function B.shot(s, ring, arm)
+    if arm == nil then arm = 1 end
+    lich.fingertip(arm, TIP)
+    lich.finger_dir(arm, FD)
+    TIP:add_scaled_vector(FD, 0.004)
+    if not ch then ch = { t = 0, arm = arm, a0 = yaw_to(s.spine[20 + 1]), pop = 0, k_on = 0, bit = false, kmax = 1, beams = {}, volley = true } end
+    ch.volley = true
+    if snakes.free(s) then snakes.take(s, { placeholder = true, tick = function() end }) end
+    local b = beam_of(s, ring, 0)
+    b.v = SHOOT_V*2.2; b.shot = true; b.from = TIP:clone(); b.seg = new_seg(TIP)
+    ch.beams[#ch.beams + 1] = b
+    ch.pop = 1
+    lich.kick(arm, 1.25)
+    for _ = 1, 14 do
+      local x = rng.spread(1)
+      local y = rng.spread(1)
+      local z = rng.spread(1)
+      V:set(x, y, z); V:add_scaled_vector(FD, -V:dot(FD)):set_length(rng.float(0.8, 1.8)):add_scaled_vector(FD, rng.float(-0.2, 0.9))
+      spark(TIP, 0, { vx = V.x, vy = V.y, vz = V.z, grav = 3, drag = 2.5, life = rng.float(0.15, 0.32), s0 = 0.022, s1 = 0.006, fin = 0.01 })
+    end
+    fx.mote({ x = TIP.x, y = TIP.y, z = TIP.z, life = 0.07, s0 = 0.2, s1 = 0.05, r = 6, g = 6, b = 6, fin = 0.01 })
+  end
   function B.chain() return ch and #ch.beams or 0 end
   function B.extend(more)
     if not ch then return false end
@@ -334,7 +360,10 @@ function BE.create(ctx)
   end
   function B.let_go() B.cut() end
   function B.busy() return ch ~= nil end
-  function B.aim_point() return ch and at(ch.beams[1]) or nil end
+  function B.aim_point()
+    if ch and ch.volley then return at(ch.beams[#ch.beams]) end
+    return ch and at(ch.beams[1]) or nil
+  end
   return B
 end
 

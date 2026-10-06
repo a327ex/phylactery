@@ -3,6 +3,8 @@
   (transmissive glass), gathers the sunlight into a cone and a patch on the floor that tightens to
   a point beside the snake, then fires a fire laser that sweeps across it and cuts it (cut_fx);
   the glass dissolves into glints. No gesture; several lenses at once with fewer powers.
+  Round 50: three or more in one cast (the bouts, powers.lua): one larger lens, and its burning point
+  draws one long cut through them all, from beside the first through each in turn (cast_group).
 ]]
 local TM = require('port.three.math')
 local T = require('port.three.core')
@@ -18,6 +20,7 @@ local FORM, CONVERGE, SPEED, SWEEP, LEAD, OFF, FADE, CUT_R = 0.4, 0.8, 3.0, 2.6,
 local LENS_R = 0.38
 local LIGHTS_OFF = 0.15
 local CUT_MIN, CUT_MAX = 1.0, 2.6
+local GROUP_SPEED, GROUP_BIG, GROUP_TAIL = 5.0, 1.45, 0.7
 LE.LENS_LOOKS = { 'FIRE LASER (TITAN, PHRIKE)', 'THE PRISMATIC BEAM, IN FIRE' }
 local NLOOKS = #LE.LENS_LOOKS
 local function jround(x) return floor(x + 0.5) end
@@ -168,7 +171,7 @@ function LE.create(ctx)
     out.y = cave.ground_y(out.x, out.z) + 0.02
     return out
   end
-  local function spawn(s, k, quick)
+  local function spawn(s, k, quick, group)
     quick = quick or false
     local L
     for _, q in ipairs(LENSES) do if not q.on then L = q; break end end
@@ -181,13 +184,54 @@ function LE.create(ctx)
     local light
     for _, x in ipairs(LIGHTS) do if not x.lens then light = x; break end end
     local q = { L = L, s = s, ring = ring, t = quick and FORM + CONVERGE - 0.12 or 0, t0q = quick, pos = pos, side = rng.sign(),
-      spot = Vector3.new(), a = Vector3.new(), b = Vector3.new(), fired = false, core = nil, flare = 0, light = light, dur = SWEEP/SPEED }
+      spot = Vector3.new(), a = Vector3.new(), b = Vector3.new(), fired = false, core = nil, flare = 0, light = light, dur = SWEEP/SPEED,
+      group = group, big = group and GROUP_BIG or 1 }
     if q.light then q.light.lens = q end
     beside(q, q.spot)
     L.on = true
     L.m.position:copy(pos); L.m.scale:set_scalar(0.001); L.m.visible = true; L.sh.visible = true
     active[#active + 1] = q
     return pos
+  end
+
+  -- round 50: the long cut's path: from beside the first, nearest-next through the rest (each at its own
+  -- ring, followed while it crawls), then a little past the last
+  local function group_path(q)
+    local left = {}
+    for _, s in ipairs(q.group) do if snakes.free(s) then left[#left + 1] = { s = s, ring = aim_ring() } end end
+    local order, at = {}, q.a:clone()
+    while #left > 0 do
+      local bi, bd = 1, 1e9
+      for i, e in ipairs(left) do local p = e.s.spine[e.ring + 1]; local d = hyp(p.x - at.x, p.z - at.z); if d < bd then bd = d; bi = i end end
+      local e = table.remove(left, bi)
+      order[#order + 1] = e
+      at = e.s.spine[e.ring + 1]
+    end
+    return { nodes = order, start = q.a:clone(), len = 0 }
+  end
+  local TAIL = Vector3.new()
+  local function path_at(q, f, out)
+    local P = q.path
+    local pts = { P.start }
+    for _, e in ipairs(P.nodes) do
+      if snakes.free(e.s) or not e.p then e.p = (e.p or Vector3.new()):copy(e.s.spine[e.ring + 1]) end
+      pts[#pts + 1] = e.p
+    end
+    local n = #pts
+    TAIL:sub_vectors(pts[n], pts[n - 1]); TAIL.y = 0
+    if TAIL:length_sq() < 1e-6 then TAIL:set(1, 0, 0) end
+    TAIL:normalize()
+    pts[n + 1] = pts[n]:clone():add_scaled_vector(TAIL, GROUP_TAIL)
+    local len = 0
+    for i = 2, #pts do len = len + hyp(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z) end
+    P.len = len
+    local want = f*len
+    for i = 2, #pts do
+      local l = hyp(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z)
+      if want <= l or i == #pts then return out:lerp_vectors(pts[i - 1], pts[i], l > 0 and min(1, want/l) or 1) end
+      want = want - l
+    end
+    return out
   end
 
   local function update(t, dt)
@@ -201,7 +245,7 @@ function LE.create(ctx)
       local t_form, t_conv, sweep_t = q.t/FORM, (q.t - FORM)/CONVERGE, q.t - FORM - CONVERGE
       local gone = smoothstep(q.dur + OFF, q.dur + OFF + FADE, sweep_t)
       local grow = smoothstep(0, FORM, q.t)
-      local size = LENS_R*grow*(1 - 0.4*gone)
+      local size = LENS_R*grow*(1 - 0.4*gone)*q.big
       m.scale:set(size, size, size)
       m.visible = size > 0.004 and gone < 0.999
       L.sh.material.uniforms.uA.value = (grow*(1 - smoothstep(FORM, FORM + 0.4, q.t)) + gone*0.8 + 0.7*q.flare)*(1 - gone*gone)
@@ -210,19 +254,32 @@ function LE.create(ctx)
       UU.uRim.value = (0.3 + 2.2*q.flare*q.flare)*grow*(1 - gone)
       m.position:copy(q.pos):add(Vector3.new(sin(t*0.9 + i)*0.04, sin(t*1.3 + i*2)*0.05, cos(t*0.8 + i)*0.04))
       local lp = m.position:clone()
-      if not q.fired and not snakes.free(q.s) then retarget(q) end
+      if not q.fired and not snakes.free(q.s) then
+        local nx = nil
+        if q.group then for _, s in ipairs(q.group) do if snakes.free(s) then nx = s; break end end end
+        if nx then q.s = nx else retarget(q) end
+      end
       local st = q.t - FORM - CONVERGE
       if st < 0 then beside(q, q.spot)
       elseif not q.fired or q.core or st <= q.dur + OFF then
         if not q.fired then
           q.fired = true
           q.a:copy(q.spot); beside(q, q.a)
-          local p = frame_at(q.s, q.ring)
-          local dir = Vector3.new():sub_vectors(p, q.a); dir.y = 0; dir:normalize()
-          q.b:copy(q.a):add_scaled_vector(dir, SWEEP)
+          if q.group then
+            q.path = group_path(q)
+            if #q.path.nodes == 0 then q.path = nil end
+          end
+          if q.path then
+            path_at(q, 0, q.b)
+            q.dur = max(0.4, q.path.len/GROUP_SPEED)
+          else
+            local p = frame_at(q.s, q.ring)
+            local dir = Vector3.new():sub_vectors(p, q.a); dir.y = 0; dir:normalize()
+            q.b:copy(q.a):add_scaled_vector(dir, SWEEP)
+          end
         end
         local f = min(1, sweep_t/q.dur)
-        q.spot:lerp_vectors(q.a, q.b, f)
+        if q.path then path_at(q, f, q.spot) else q.spot:lerp_vectors(q.a, q.b, f) end
         q.spot.y = cave.ground_y(q.spot.x, q.spot.z) + 0.02
       end
       m:look_at(q.spot); m:rotate_x(pi/2)
@@ -367,6 +424,10 @@ function LE.create(ctx)
     local out = {}
     for k, s in ipairs(targets) do local p = spawn(s, k - 1, quick); if p then out[#out + 1] = p end end
     return out
+  end
+  function P.cast_group(targets)
+    local p = spawn(targets[1], 0, false, targets)
+    return p and { p } or {}
   end
   function P.busy_count() return #active end
   function P.get_look() return look end

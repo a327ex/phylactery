@@ -9,6 +9,9 @@
   clicking one (or 5-0) brings up the model viewer with its title, its text and one button, THROW: he
   throws it the way he is facing as the viewer goes away; walking back to it picks it up again.
   (The ways in of rounds 40, 45 and 47 are set aside in archive/.)
+  Round 50 (owner, 2026-10-05): the snakes come in waves (snakes.lua) and the lich handles them in bouts
+  with group versions of the attacks (powers.lua); F3 forces one way of handling them, F9 / F10 send a
+  pack / a spread now (testing). LICH_ROOM=1 keeps the old flow (the three.js build's, for the digests).
   Fixed 60 Hz ticks as main.js steps them. GAME (a global) is the harness: the same calls as
   window.GAME in the three.js build, for anchor drive eval.
 ]]
@@ -71,14 +74,15 @@ function GM.create(R, hud_layer)
   local mover = MV.create(nav, lich, START, atan2(EGG.x - START.x, EGG.z - START.z))
   local L = mover.p
   local fire = FIRE.create(R, cave)
-  local snakes = SN.create(R, cave, function() return L end, fire)
+  local VARIED = not os.getenv('LICH_ROOM')
+  local snakes = SN.create(R, cave, function() return L end, fire, nil, nil, { varied = VARIED })
   G.mover = mover; G.snakes = snakes; G.fire = fire
 
   local fx = FXM.create(R, cave)
   local gore = GORE.create(R, cave, snakes, fx, U.make_rng(41))
   local warp = WARP.create(R)
   local powers = PW.create({ R = R, cave = cave, snakes = snakes, fx = fx, gore = gore, warp = warp, fire = fire, lich = lich, mover = mover, egg = EGG,
-    get_L = function() return L end, rng = U.make_rng(29) })
+    get_L = function() return L end, rng = U.make_rng(29), varied = VARIED })
   G.powers = powers; G.fx = fx; G.gore = gore; G.warp = warp
   gore.follow(function() return L end)
   local POWER_KEYS = { '5', '6', '7', '8', '9', '0' }
@@ -358,6 +362,9 @@ function GM.create(R, hud_layer)
     if hit('f5') then lmask.set_look(lmask.look + 1) end
     if hit('f7') then local MK = require('port.orbmarks'); MK.set_style(MK.style + 1) end
     if hit('f8') then END_ZOOM.on = not END_ZOOM.on end
+    if hit('f3') then powers.force_plan(powers.get_force() + 1) end
+    if hit('f9') then snakes.send('PACK') end
+    if hit('f10') then snakes.send('SPREAD') end
   end
   -- the inventory: the six objects he carries, top right, each its own little render (inspect.icon)
   local INV = { px = UI.ICON, pad = UI.PAD, gap = UI.GAP, y = 8 }   -- round 42: smaller (was 34 px)
@@ -452,6 +459,11 @@ function GM.create(R, hud_layer)
     HUD.text(c.note, 8, 19, '#a8987c', 1, 'left', nil, INK)
     HUD.text('F5 HIS MASK: ' .. require('port.lichmask').LOOKS[lmask.look + 1].name .. '   F7 ORB MARKINGS: ' .. require('port.orbmarks').STYLES[require('port.orbmarks').style + 1]
       .. '   F8 END ZOOM: ' .. (END_ZOOM.on and 'ON' or 'OFF'), 8, 30, '#a8987c', 1, 'left', nil, INK)
+    if powers.varied then
+      local pl = powers.plan()
+      local now = pl and (pl.mode .. (pl.mode == 'ROTATION' and '' or ' (' .. table.concat(pl.set, '+') .. ')')) or '-'
+      HUD.text('F3 ATTACKS: ' .. PW.FORCES[powers.get_force() + 1] .. '   NOW: ' .. now .. '   F9 SEND A PACK   F10 SEND A SPREAD', 8, 41, '#f2e3c2', 1, 'left', nil, INK)
+    end
     HUD.text('F1 F2 F4 UI: ' .. UI.describe(), 8, H - 202, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('V CAVE SURFACE: ' .. cave.SURF[G.surface + 1].name, 8, H - 180, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('U COIL: ' .. CL.COIL_MODES[snakes.coil_mode + 1], 8, H - 169, '#f2e3c2', 1, 'left', nil, INK)
@@ -637,6 +649,12 @@ function GM.create(R, hud_layer)
   function GAME.ask(i) ask_remove(i); return inspect and inspect.S.active end
   function GAME.answer(yes) inspect.answer(yes); return inspect.S.result end
   function GAME.mode() return G.mode end
+  -- round 50: the bouts (force one way: an index into PW.FORCES; nil just reads) and the waves (send one)
+  function GAME.plan(i)
+    if i then powers.force_plan(i) end
+    return { force = PW.FORCES[powers.get_force() + 1], now = powers.plan(), log = powers.plans_log(), gesture = { powers.gesture_phase() }, groups = powers.groups() }
+  end
+  function GAME.wave(kind) if kind then snakes.send(kind) end; return snakes.waves() end
   -- round 48: THROW object i (as the viewer's button does, without the viewer)
   function GAME.throw(i) throw_power(i); return items and items.state()[i + 1] end
   GAME.G = G

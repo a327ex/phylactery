@@ -6,6 +6,15 @@
   URGENT of the egg forces a cast now. Fire, lift and beam are gestured; the lens and the rock are
   his mind alone; leakage happens by itself.
   JS's stable sorts are kept (ties broken by the original order).
+  Round 50 (owner, 2026-10-05: "the order of attacks that the lich does repeats predictably"): with
+  ctx.varied (the game's default; LICH_ROOM=1 keeps the old rotation, the three.js build's) the snakes
+  near the egg are handled in bouts, each drawn one of four ways: ALL ONE (one attack takes every snake
+  there, waiting for the group to come in), MIX OF 2, MIX OF 3 (those attacks in turn), ROTATION (any
+  attack each time, repeats and all). Three or more snakes taken by one attack get its group version:
+  the beam as revolver shots (he turns to each and fires), the fire as one sweep of his arm, the lift
+  pulled into one knot and burst at once (lift.lua), the rocks circling him then loosed together
+  (rock.lua), the lens as one long cut through them all (lens.lua). Something within URGENT still forces
+  a cast now, whatever the bout.
 ]]
 local TM = require('port.three.math')
 local U = require('port.util')
@@ -18,6 +27,8 @@ local Vector3 = TM.Vector3
 local sqrt, abs, sin, cos, atan2, floor, ceil, min, max, huge, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.floor, math.ceil, math.min, math.max, math.huge, math.pi
 
 local PW = {}
+PW.PLANS = { 'ALL ONE', 'MIX OF 2', 'MIX OF 3', 'ROTATION' }
+PW.FORCES = { 'AUTO', 'ALL FIRE', 'ALL LIFT', 'ALL BEAM', 'ALL ROCK', 'ALL LENS', 'MIX OF 2', 'MIX OF 3', 'ROTATION' }
 PW.ENGAGE, PW.URGENT, PW.LENS_ENGAGE = 3.4, 2.6, 6.0
 local ENGAGE, URGENT, LENS_ENGAGE = PW.ENGAGE, PW.URGENT, PW.LENS_ENGAGE
 local ON_T, HOLD, LOWER = 0.08, 0.45, 0.3
@@ -73,6 +84,114 @@ function PW.create(ctx)
     return stable_sort(out, d_egg)
   end
   lens.use_claims(function(s) return unclaimed(s) end, function(s) claim(s, 'LENS', 2.0) end)
+
+  -- ------------------------------------------------------------------ round 50: the bouts
+  local varied = ctx.varied or false
+  local prng = U.make_rng(4111)                 -- the bouts' own draws (the old rotation's untouched)
+  local fire_fx, cave = ctx.fire, ctx.cave
+  local CHOOSE = { FIRE, lift, beam, rock, lens }
+  local plan, force_plan, used_at, plans_log = nil, 0, {}, {}
+  local groups = { BEAM = 0, FIRE = 0, LIFT = 0, ROCK = 0, LENS = 0 }   -- group casts so far
+  local APPROACH, ALL_R, ALL_TAKE, PLAN_QUIET, PLAN_CD = 7.5, ENGAGE + 1.6, ENGAGE + 2.8, 1.2, 1.5
+  local VOLLEY_MIN, VOLLEY_MAX, SWEEP_W, SWEEP_V, SWEEP_SEG, SWEEP_LEAD = 0.17, 0.4, 2.6, 6.0, 0.12, 0.5
+  -- (a group coming in makes one attack for all of it likelier; a lone snake, a mix or a rotation)
+  local MODE_W, MODE_W_GROUP = { 0.18, 0.3, 0.25, 0.27 }, { 0.6, 0.15, 0.1, 0.15 }
+  local function choosable() local out = {}; for _, a in ipairs(CHOOSE) do if on[a] then out[#out + 1] = a end end; return out end
+  -- k of them, those unused longest a little likelier
+  local function draw(pool, k)
+    local set = {}
+    for _ = 1, min(k, #pool) do
+      local tot, w = 0, {}
+      for i, a in ipairs(pool) do w[i] = 1 + min(3, (clock - (used_at[a] or -30))/8); tot = tot + w[i] end
+      local r, pick = prng.next()*tot, #pool
+      for i = 1, #pool do r = r - w[i]; if r <= 0 then pick = i; break end end
+      set[#set + 1] = table.remove(pool, pick)
+    end
+    return set
+  end
+  local function new_plan()
+    local av = choosable()
+    if #av == 0 then plan = nil; return end
+    local coming_n = 0
+    for _, q in ipairs(snakes.S) do if unclaimed(q) and d_egg(q) < APPROACH + 2.5 then coming_n = coming_n + 1 end end
+    local mode, set
+    if force_plan >= 1 and force_plan <= 5 then
+      local a = CHOOSE[force_plan]
+      mode = 1; set = { on[a] and a or av[1] }
+    elseif force_plan >= 6 then mode = force_plan - 4
+    else
+      local W = coming_n >= 3 and MODE_W_GROUP or MODE_W
+      local r = prng.next()
+      mode = 4
+      for k = 1, 4 do r = r - W[k]; if r <= 0 then mode = k; break end end
+    end
+    if not set then
+      if (mode == 2 or mode == 4) and #av < 2 then mode = 1 end
+      if mode == 3 and #av < 3 then mode = #av >= 2 and 2 or 1 end
+      set = mode == 4 and av or draw(av, mode == 1 and 1 or mode)
+    end
+    local most = mode == 1 and prng.int(1, 2) or (mode == 4 and prng.int(3, 5) or prng.int(2, 4))
+    plan = { mode = mode, set = set, casts = 0, max = most, uses = {}, next = nil, quiet = 0, t0 = clock, group_seen = coming_n >= 3 }
+    local names = {}
+    for k, a in ipairs(set) do names[k] = a.name end
+    plans_log[#plans_log + 1] = { t = clock, mode = PW.PLANS[mode], set = table.concat(names, '+') }
+    if #plans_log > 60 then table.remove(plans_log, 1) end
+  end
+  -- the bout's next attack (kept until it is cast)
+  local function plan_pick()
+    if not plan then return nil end
+    if plan.next and on[plan.next] then return plan.next end
+    local set = {}
+    for _, a in ipairs(plan.set) do if on[a] then set[#set + 1] = a end end
+    plan.set = set
+    if #set == 0 then plan = nil; return nil end
+    local a
+    if plan.mode == 1 then a = set[1]
+    elseif plan.mode == 4 or prng.next() < 0.3 then a = set[prng.int(1, #set)]
+    else
+      local low = huge
+      for _, x in ipairs(set) do low = min(low, plan.uses[x] or 0) end
+      local c = {}
+      for _, x in ipairs(set) do if (plan.uses[x] or 0) == low then c[#c + 1] = x end end
+      a = c[prng.int(1, #c)]
+    end
+    plan.next = a
+    return a
+  end
+  local function plan_done(a)
+    used_at[a] = clock
+    if not plan then return end
+    plan.uses[a] = (plan.uses[a] or 0) + 1; plan.casts = plan.casts + 1
+    if plan.next == a then plan.next = nil end
+  end
+  local function reach_of(a) return a == lens and LENS_ENGAGE or (a.engage or ENGAGE) end
+  -- the snakes this cast takes now (nil: not yet)
+  local function want_targets(a, quick)
+    local all_one = plan and plan.mode == 1
+    local Rr = reach_of(a)
+    if all_one then Rr = max(Rr, ALL_TAKE) end
+    local th = threats(Rr)
+    if #th == 0 then return nil end
+    local cap
+    if all_one then
+      -- every snake there at once: wait while the group is still coming in (until the first is close
+      -- or all of it is within ALL_R), then take it, stragglers and all
+      if not quick and d_egg(th[1]) > ENGAGE and #th < 5 then
+        local coming, inside = 0, 0
+        for _, q in ipairs(snakes.S) do if unclaimed(q) and d_egg(q) < APPROACH then coming = coming + 1 end end
+        for _, q in ipairs(th) do if d_egg(q) < ALL_R then inside = inside + 1 end end
+        if coming > inside then return nil end
+      end
+      cap = 6
+    elseif plan and (plan.mode == 2 or plan.mode == 3) then cap = max(a.capacity(power), 2)
+    else cap = max(1, a.capacity(power)) end
+    if a == rock then cap = min(cap, rock.free_rocks()) end
+    if a == lens and cap < 3 then cap = min(cap, lens.free_lenses()) end
+    if cap <= 0 then return nil end
+    local out = {}
+    for k = 1, min(cap, #th) do out[k] = th[k] end
+    return out
+  end
   local G = { phase = 'idle', ab = nil, targets = {}, t = 0, on_t = 0, arm = 1, ring = 0, primary = nil, quick = false, w = 0, pw = 0, point = Vector3.new(), must_turn = false, still = 0 }
   local facing, drops, test_old = 0, 0, false
   local function rel_yaw(c) local L = get_L(); local a = atan2(c.x - L.x, c.z - L.z) - mover.yaw(); return atan2(sin(a), cos(a)) end
@@ -92,11 +211,48 @@ function PW.create(ctx)
     return x > -0.25*abs(z) and 1 or 0
   end
 
+  -- round 50: the group versions go one way round him, from the end nearer where he faces, across
+  -- the rest (starting after the widest empty gap between them)
+  local function order_round(targets)
+    local L = get_L()
+    local list = {}
+    for k, s in ipairs(targets) do local p = s.spine[jround(N*0.3) + 1]; list[k] = { s = s, a = atan2(p.x - L.x, p.z - L.z), k = k } end
+    table.sort(list, function(p, q) if p.a ~= q.a then return p.a < q.a end; return p.k < q.k end)
+    local n = #list
+    local gi, gap = 1, -1
+    for k = 1, n do
+      local a, b = list[k].a, list[k % n + 1].a
+      local g = k == n and b + 2*pi - a or b - a
+      if g > gap then gap = g; gi = k end
+    end
+    local out = {}
+    for k = 1, n do out[k] = list[(gi + k - 1) % n + 1].s end
+    local function off(q) return abs(rel_yaw(q.spine[jround(N*0.3) + 1])) end
+    if off(out[n]) < off(out[1]) then local rev = {}; for k = n, 1, -1 do rev[#rev + 1] = out[k] end; out = rev end
+    return out
+  end
+  local function group_of(ab, n) return varied and n >= 3 and (ab == beam or ab == FIRE) end
+
   local function start_gesture(ab, targets, quick)
-    for _, s in ipairs(targets) do claim(s, ab.name, 2.0) end
+    if group_of(ab, #targets) and not quick then targets = order_round(targets) end
+    local secs = (varied and #targets >= 3) and 2.0 + 0.45*#targets or 2.0
+    for _, s in ipairs(targets) do claim(s, ab.name, secs) end
     G.phase = 'aim'; G.ab = ab; G.targets = targets; G.t = 0; G.on_t = 0; G.still = 0; G.quick = quick
     G.primary = targets[1]; G.ring = ab.aim_ring()
     G.point:copy(G.primary.spine[G.ring + 1])
+    -- round 50: the fire's sweep starts a little before the first (the way it will go)
+    G.lead = nil
+    if group_of(ab, #targets) and ab == FIRE then
+      local L = get_L()
+      local p, q = targets[1].spine[G.ring + 1], targets[2].spine[G.ring + 1]      -- (the way its first step goes)
+      local a0, a1 = atan2(p.x - L.x, p.z - L.z), atan2(q.x - L.x, q.z - L.z)
+      local w = atan2(sin(a1 - a0), cos(a1 - a0))
+      G.sw_dir = w < 0 and -1 or 1
+      G.lead = SWEEP_LEAD
+      local a = a0 - G.sw_dir*SWEEP_LEAD
+      local d = hyp(p.x - L.x, p.z - L.z)
+      G.point:set(L.x + sin(a)*d, p.y, L.z + cos(a)*d)
+    end
     G.arm = pick_arm(G.point)
     G.must_turn = behind(G.point)
   end
@@ -121,7 +277,43 @@ function PW.create(ctx)
     end
     local function turn(a) return fair[a] <= low end
 
+    -- round 50: the bout decides which gesture and how many; the guarantee still forces one now
+    local function try_gesture_v()
+      if #gestured == 0 then return false end
+      local quick = #urgent > 0
+      local ab = plan_pick()
+      if quick then
+        if not (ab and ab.gesture) then
+          ab = nil
+          for _, a in ipairs(gestured) do if nxt[a] <= 0 and (not ab or (used_at[a] or -30) < (used_at[ab] or -30)) then ab = a end end
+          if not ab then
+            ab = gestured[1]
+            for k = 2, #gestured do local y = gestured[k]; if not (nxt[ab] <= nxt[y]) then ab = y end end
+          end
+        end
+        nxt[ab] = 0
+      elseif not (ab and ab.gesture) or nxt[ab] > 0 then return false end
+      local sel = want_targets(ab, quick)
+      if quick then
+        local first = stable_sort(urgent, d_egg)
+        local cap = max(#first, sel and #sel or 0, ab.capacity(power))
+        local out = {}
+        for _, q in ipairs(first) do out[#out + 1] = q end
+        if sel then for _, q in ipairs(sel) do if not urgent_set[q] and #out < cap then out[#out + 1] = q end end end
+        sel = out
+      elseif sel and facing == 1 then
+        local keep = {}
+        for _, q in ipairs(sel) do if not behind(q.spine[jround(N*0.3) + 1]) then keep[#keep + 1] = q end end
+        sel = keep
+      end
+      if not sel or #sel == 0 then return false end
+      start_gesture(ab, sel, quick)
+      plan_done(ab)
+      return true
+    end
+
     local function try_gesture()
+      if varied then return try_gesture_v() end
       local far = ENGAGE
       for _, a in ipairs(gestured) do far = max(far, a.engage or ENGAGE) end
       local th_all = threats(far)
@@ -164,6 +356,22 @@ function PW.create(ctx)
       return true
     end
 
+    if varied then
+      local near = false
+      for _, q in ipairs(snakes.S) do if snakes.free(q) and d_egg(q) < APPROACH then near = true; break end end
+      if plan then
+        plan.quiet = near and 0 or plan.quiet + dt
+        if plan.quiet > PLAN_QUIET or plan.casts >= plan.max then plan = nil end
+      end
+      -- a group coming in (three or more not yet taken) begins a bout of its own, once this one has acted
+      if plan and plan.casts >= 1 and plan.mode ~= 1 and not plan.group_seen then
+        local coming = 0
+        for _, q in ipairs(snakes.S) do if unclaimed(q) and d_egg(q) < APPROACH + 2.5 then coming = coming + 1 end end
+        if coming >= 3 then plan = nil end
+      end
+      if not plan and near then new_plan() end
+    end
+
     if G.phase == 'idle' then
       try_gesture()
     elseif G.phase == 'aim' then
@@ -175,6 +383,16 @@ function PW.create(ctx)
         G.phase = 'lower'; G.t = 0
       else
         G.point:copy(s.spine[G.ring + 1])
+        -- (round 50: a group can take a while; one of it nearing the egg hurries the gesture)
+        if varied and not G.quick then
+          for _, q in ipairs(G.targets) do if snakes.free(q) and d_egg(q) < URGENT then G.quick = true; break end end
+        end
+        if G.lead then
+          local L = get_L()
+          local a = atan2(G.point.x - L.x, G.point.z - L.z) - G.sw_dir*G.lead
+          local d = hyp(G.point.x - L.x, G.point.z - L.z)
+          G.point:set(L.x + sin(a)*d, G.point.y, L.z + cos(a)*d)
+        end
         local gy = gaze_to(G.point)
         local S = lich.springs
         local reach = max(-1.45, min(1.45, gy))
@@ -186,10 +404,109 @@ function PW.create(ctx)
           local targets = {}
           for _, q in ipairs(G.targets) do if snakes.free(q) then targets[#targets + 1] = q end end
           lich.fingertip(G.arm, TIP)
-          G.ab.cast(targets, TIP, G.ring, G.arm, G.quick)
+          if group_of(G.ab, #targets) then
+            -- round 50: the first shot / the first to catch fire; the rest in turn (volley / sweep below)
+            G.targets = targets; G.vi = 2; G.on_t = 0; G.tail = nil
+            groups[G.ab.name] = groups[G.ab.name] + 1
+            if G.ab == beam then beam.shot(targets[1], G.ring, G.arm); G.phase = 'volley'
+            else
+              -- from the lead-in, through each (each catches as it passes), and on a little past the last
+              local L = get_L()
+              G.vi = 1; G.tail = nil
+              G.sw_a = atan2(G.point.x - L.x, G.point.z - L.z); G.sw_d = hyp(G.point.x - L.x, G.point.z - L.z); G.sw_y = G.point.y; G.sf = 0
+              G.phase = 'sweep'
+            end
+          else
+            G.ab.cast(targets, TIP, G.ring, G.arm, G.quick)
+            G.phase = 'hold'
+          end
           count(G.ab, #targets)
-          nxt[G.ab] = G.ab.cooldown/power; last[G.ab] = clock
-          G.phase = 'hold'; G.t = 0
+          nxt[G.ab] = (varied and PLAN_CD or G.ab.cooldown)/power; last[G.ab] = clock
+          G.t = 0
+        end
+      end
+    elseif G.phase == 'volley' or G.phase == 'sweep' then
+      G.t = G.t + dt
+      -- the next one still there (one about to reach the egg goes first)
+      local s
+      for k = G.vi, #G.targets do
+        local q = G.targets[k]
+        if snakes.free(q) then
+          if not s then s = q; if k ~= G.vi then G.targets[G.vi], G.targets[k] = G.targets[k], G.targets[G.vi] end end
+          if G.phase == 'volley' and d_egg(q) < 1.9 and d_egg(q) < d_egg(s) then
+            G.targets[G.vi], G.targets[k] = G.targets[k], G.targets[G.vi]; s = q
+          end
+        end
+      end
+      if G.phase == 'sweep' and not s and not G.tail then
+        G.tail = G.sw_a + G.sw_dir*SWEEP_LEAD
+      end
+      -- the guarantee inside a group: one of it nearing the egg hurries the rest, and one about to reach
+      -- it is taken now (the next shot goes to it at once; the sweep's fire leaps to it)
+      local close = nil
+      for k = G.vi, #G.targets do
+        local q = G.targets[k]
+        if snakes.free(q) then
+          local d = d_egg(q)
+          if d < URGENT then G.quick = true end
+          if d < 1.6 and (not close or d < d_egg(close)) then close = q end
+        end
+      end
+      if close and G.phase == 'sweep' and on[G.ab] then snakes.ignite(close, G.ring) end
+      if not on[G.ab] then
+        for _, q in ipairs(G.targets) do q.claim = nil end
+        G.phase = 'lower'; G.t = 0; G.tail = nil
+      elseif G.tail then
+        -- the follow-through: the arm runs on past the last, the floor still catching
+        local L = get_L()
+        local da = atan2(sin(G.tail - G.sw_a), cos(G.tail - G.sw_a))
+        local step = SWEEP_W*dt
+        local a0 = G.sw_a
+        if abs(da) <= step then G.sw_a = G.tail; G.tail = nil; G.phase = 'hold'; G.t = 0
+        else G.sw_a = G.sw_a + (da > 0 and step or -step) end
+        for k = 1, 3 do
+          local a = a0 + (G.sw_a - a0)*k/3
+          local x, z = L.x + sin(a)*G.sw_d, L.z + cos(a)*G.sw_d
+          fire_fx.lick(x, cave.ground_y(x, z), z)
+        end
+        G.point:set(L.x + sin(G.sw_a)*G.sw_d, G.sw_y, L.z + cos(G.sw_a)*G.sw_d)
+      elseif not s then G.phase = 'hold'; G.t = 0
+      elseif G.phase == 'volley' then
+        -- the revolver: turn to it, and fire
+        G.point:copy(s.spine[G.ring + 1])
+        local gy = gaze_to(G.point)
+        local S = lich.springs
+        local reach = max(-1.45, min(1.45, gy))
+        G.on_t = abs(reach - (S.hy.x + S.cy.x)) < 0.2 and G.on_t + dt or 0
+        local lo, hi = G.quick and 0.1 or VOLLEY_MIN, G.quick and 0.25 or VOLLEY_MAX
+        if (close == s) or (G.t >= lo and ((G.on_t >= 0.03 and lich.arm_speed(G.arm) < 3.5 and abs(rel_yaw(G.point)) < FIRE_IN) or G.t >= hi)) then
+          beam.shot(s, G.ring, G.arm)
+          G.vi = G.vi + 1; G.t = 0; G.on_t = 0
+          if G.vi > #G.targets then G.phase = 'hold' end
+        end
+      else
+        -- the sweep: the point runs round him to the next, setting the floor alight on its way
+        local L = get_L()
+        local b = s.spine[G.ring + 1]
+        local a1, d1 = atan2(b.x - L.x, b.z - L.z), hyp(b.x - L.x, b.z - L.z)
+        local da = atan2(sin(a1 - G.sw_a), cos(a1 - G.sw_a))
+        local sw = G.quick and 1.8 or 1
+        local need = max(abs(da)/(SWEEP_W*sw), abs(d1 - G.sw_d)/(SWEEP_V*sw), SWEEP_SEG*(1 - G.sf)/sw)
+        local f = min(1, dt/max(dt, need))
+        local a0, d0, y0 = G.sw_a, G.sw_d, G.sw_y
+        G.sw_a = G.sw_a + da*f; G.sw_d = G.sw_d + (d1 - G.sw_d)*f; G.sw_y = G.sw_y + (b.y - G.sw_y)*f
+        G.sf = min(1, G.sf + dt/SWEEP_SEG)
+        for k = 1, 3 do
+          local u = k/3
+          local a, d = a0 + (G.sw_a - a0)*u, d0 + (G.sw_d - d0)*u
+          local x, z = L.x + sin(a)*d, L.z + cos(a)*d
+          fire_fx.lick(x, cave.ground_y(x, z), z)
+        end
+        G.point:set(L.x + sin(G.sw_a)*G.sw_d, G.sw_y, L.z + cos(G.sw_a)*G.sw_d)
+        if f >= 1 then
+          snakes.ignite(s, G.ring)
+          G.vi = G.vi + 1; G.sf = 0
+          if G.vi > #G.targets then G.tail = G.sw_a + G.sw_dir*SWEEP_LEAD end
         end
       end
     elseif G.phase == 'hold' then
@@ -218,13 +535,14 @@ function PW.create(ctx)
       G.w = min(1, G.w + dt/0.12)
       if test_old or abs(rel_yaw(G.point)) < ARM_UP then G.pw = min(1, G.pw + dt/(G.quick and 0.12 or 0.22))
       else G.pw = max(0, G.pw - dt/0.2) end
-    elseif G.phase == 'hold' then
+    elseif G.phase == 'hold' or G.phase == 'volley' or G.phase == 'sweep' then
       G.w = 1
       if test_old or abs(rel_yaw(G.point)) < ARM_UP then G.pw = min(1, G.pw + dt/0.15)
       else G.pw = max(0.2, G.pw - dt/0.15) end
     else G.w = max(0, G.w - dt/LOWER); G.pw = max(0, G.pw - dt/LOWER) end
-    local pointing = G.phase == 'aim' or G.phase == 'hold'
+    local pointing = G.phase == 'aim' or G.phase == 'hold' or G.phase == 'volley' or G.phase == 'sweep'
     mover.face.on = not test_old and pointing and (facing == 0 or G.must_turn)
+    if varied then mover.face.boost = (G.phase == 'volley' and 1.7) or (G.phase == 'sweep' and 1.3) or nil end
     if mover.face.on then local L = get_L(); mover.face.yaw = atan2(G.point.x - L.x, G.point.z - L.z) end
     local m = mover.motion
     m.gaze_w = G.w
@@ -239,7 +557,7 @@ function PW.create(ctx)
     -- the lens
     if on[lens] then
       local lone = #gestured == 0
-      local busy_hand = G.phase == 'aim'
+      local busy_hand = G.phase == 'aim' or G.phase == 'volley' or G.phase == 'sweep'
       local rush = nil
       if lone or busy_hand then
         rush = {}
@@ -253,6 +571,19 @@ function PW.create(ctx)
         for _, s in ipairs(targets) do claim(s, 'LENS-QUICK', 1.2) end
         lens.cast(targets, true)
         if #targets > 0 then count(lens, #targets); quick_lens = quick_lens + 1 end
+      elseif varied then
+        if plan_pick() == lens and nxt[lens] <= 0 and lens.free_lenses() > 0 then
+          local targets = want_targets(lens)
+          if targets then
+            local grp = #targets >= 3
+            for _, s in ipairs(targets) do claim(s, 'LENS', grp and 4.5 or 2.6) end
+            local at = grp and lens.cast_group(targets) or lens.cast(targets)
+            if grp then groups.LENS = groups.LENS + 1 end
+            count(lens, #targets); plan_done(lens)
+            if #at > 0 then LOOK.p:copy(at[1]); LOOK.t = 0 end
+            nxt[lens] = PLAN_CD/power; last[lens] = clock
+          end
+        end
       elseif nxt[lens] <= 0 and turn(lens) then
         local th = threats(LENS_ENGAGE)
         local n = min(lens.capacity(power), lens.free_lenses(), #th)
@@ -269,7 +600,7 @@ function PW.create(ctx)
     end
     -- the rock
     if on[rock] then
-      local busy_hand = G.phase == 'aim'
+      local busy_hand = G.phase == 'aim' or G.phase == 'volley' or G.phase == 'sweep'
       local rush = nil
       if #gestured == 0 or busy_hand then
         rush = {}
@@ -283,6 +614,20 @@ function PW.create(ctx)
         for _, s in ipairs(targets) do claim(s, 'ROCK-QUICK', 1.2) end
         rock.cast(targets, nil, 0, 1, true)
         count(rock, #targets)
+      elseif varied then
+        if plan_pick() == rock and nxt[rock] <= 0 and rock.free_rocks() > 0 then
+          local targets = want_targets(rock)
+          if targets then
+            local grp = #targets >= 3
+            for _, s in ipairs(targets) do claim(s, 'ROCK', grp and 4.0 or 2.6) end
+            rock.cast(targets, nil, 0, 1, false, grp)
+            if grp then groups.ROCK = groups.ROCK + 1 end
+            count(rock, #targets); plan_done(rock)
+            nxt[rock] = PLAN_CD/power; last[rock] = clock
+            local p = rock.hold_at()
+            if p and G.w < 0.05 then LOOK.p:copy(p); LOOK.t = 0 end
+          end
+        end
       elseif nxt[rock] <= 0 and turn(rock) and rock.free_rocks() > 0 then
         local th = threats(rock.engage)
         local n = min(rock.capacity(power), rock.free_rocks(), #th)
@@ -328,6 +673,19 @@ function PW.create(ctx)
     return { phase = G.phase, ab = G.ab and G.ab.name, t = G.t, power = power, on = names, next = nx, leak_reach = leak.reach(), uses = us, took = tk }
   end
   function P.quick_lens() return quick_lens end
+  -- round 50: the bouts (testing: force one way; what the bout is now; the last ones)
+  P.varied = varied
+  function P.force_plan(i) local n = #PW.FORCES; force_plan = ((i % n) + n) % n; plan = nil; return PW.FORCES[force_plan + 1] end
+  function P.get_force() return force_plan end
+  function P.plan()
+    if not plan then return nil end
+    local names = {}
+    for k, a in ipairs(plan.set) do names[k] = a.name end
+    return { mode = PW.PLANS[plan.mode], set = names, casts = plan.casts, max = plan.max, next = plan.next and plan.next.name }
+  end
+  function P.plans_log() return plans_log end
+  function P.groups() groups.LIFT = lift.knots(); return groups end
+  function P.gesture_phase() return G.phase, G.ab and G.ab.name, #G.targets end
   function P.get_facing() return facing end
   function P.set_facing(i) local n = #PW.FACINGS; facing = ((i % n) + n) % n end
   function P.drops() return drops end
