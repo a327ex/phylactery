@@ -11,6 +11,11 @@
   (the game's default; LICH_ROOM=1 keeps the old flow, the three.js build's) a snake that dies waits
   in a pool, and a wave director sends them: ONE, a PAIR, a PACK from one side, a SPREAD from several
   sides at once, a STREAM in a line, with quiet stretches between (WAVES below).
+  Round 50, fix (owner, 2026-10-06: "Snakes shouldn't go through rocks"): with opts.nav (a grid of the
+  cave's rocks alone, those taller than CLIMB blocking) a snake follows a route field round the rocks
+  to the egg (the cheapest way, kept off their edges), its weaving eases as it passes close to one, and
+  it is pushed out of any it still touches; lower stones it crawls over (the floor under its body rises
+  over them); a wave starts a snake only where the floor and the way behind it are clear.
 ]]
 local TM = require('port.three.math')
 local T = require('port.three.core')
@@ -66,6 +71,100 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   local rng = U.make_rng(seed)
   local varied = opts and opts.varied or false
   local wrng = U.make_rng(seed*977 + 3)          -- the waves' own draws (the old flow's rng stays as it was)
+  -- round 50 fix: the rocks (the route field, the floor over the stones it climbs)
+  local snav = varied and opts.nav or nil
+  local route_at, floor_at = nil, nil
+  local CLIMB, CLEAR, BODY, SPAWN_CLEAR, REACHABLE = 0.2, 0.22, 0.17, 0.45, 60
+  if snav then
+    local nx, nz, cell, x0, z0 = snav.nx, snav.nz, snav.cell, snav.x0, snav.z0
+    local NN = nx*nz
+    local function cx(k) return x0 + (k % nx + 0.5)*cell end
+    local function cz(k) return z0 + (k//nx + 0.5)*cell end
+    -- the cost of crossing each cell: a rock (or too near one for the body) very dear, its edge dearer
+    local cost = {}
+    for k = 0, NN - 1 do
+      local d = snav.dist(cx(k), cz(k))
+      cost[k] = d < CLEAR and 1000 or (d < CLEAR + 0.35 and 1.8 or 1)     -- (rock: as good as shut)
+    end
+    -- the cheapest way from every cell to the egg (Dijkstra over the 8 neighbours, from the egg's cell)
+    local D = {}
+    for k = 0, NN - 1 do D[k] = huge end
+    local heap, hk = {}, {}
+    local function push(d, k)
+      local n = #heap + 1
+      heap[n] = d; hk[n] = k
+      while n > 1 do
+        local p = n//2
+        if heap[p] <= heap[n] then break end
+        heap[p], heap[n] = heap[n], heap[p]; hk[p], hk[n] = hk[n], hk[p]; n = p
+      end
+    end
+    local function pop()
+      local d, k = heap[1], hk[1]
+      local n = #heap
+      heap[1] = heap[n]; hk[1] = hk[n]; heap[n] = nil; hk[n] = nil; n = n - 1
+      local i = 1
+      while true do
+        local l, r, m = i*2, i*2 + 1, i
+        if l <= n and heap[l] < heap[m] then m = l end
+        if r <= n and heap[r] < heap[m] then m = r end
+        if m == i then break end
+        heap[i], heap[m] = heap[m], heap[i]; hk[i], hk[m] = hk[m], hk[i]; i = m
+      end
+      return d, k
+    end
+    local E = cave.egg.position
+    local e0 = floor((E.z - z0)/cell)*nx + floor((E.x - x0)/cell)
+    D[e0] = 0; push(0, e0)
+    local NB = { { 1, 0, 1 }, { -1, 0, 1 }, { 0, 1, 1 }, { 0, -1, 1 }, { 1, 1, 1.4142 }, { 1, -1, 1.4142 }, { -1, 1, 1.4142 }, { -1, -1, 1.4142 } }
+    while #heap > 0 do
+      local d, k = pop()
+      if d <= D[k] then
+        local i, j = k % nx, k//nx
+        for _, nb in ipairs(NB) do
+          local ii, jj = i + nb[1], j + nb[2]
+          if ii >= 0 and jj >= 0 and ii < nx and jj < nz then
+            local q = jj*nx + ii
+            local nd = d + nb[3]*cell*0.5*(cost[k] + cost[q])
+            if nd < D[q] then D[q] = nd; push(nd, q) end
+          end
+        end
+      end
+    end
+    -- the stones it climbs: their height over the ground, spread a cell and smoothed
+    local bump, b2 = {}, {}
+    for k = 0, NN - 1 do
+      local x, z = cx(k), cz(k)
+      local h = snav.rock_top(x, z) - cave.ground_y(x, z)
+      bump[k] = (h > 0 and h <= CLIMB) and h or 0
+    end
+    for k = 0, NN - 1 do
+      local i, j, m = k % nx, k//nx, 0
+      for dj = -1, 1 do for di = -1, 1 do
+        local ii, jj = i + di, j + dj
+        if ii >= 0 and jj >= 0 and ii < nx and jj < nz then m = max(m, bump[jj*nx + ii]) end
+      end end
+      b2[k] = m
+    end
+    for k = 0, NN - 1 do
+      local i, j, sum, n = k % nx, k//nx, 0, 0
+      for dj = -1, 1 do for di = -1, 1 do
+        local ii, jj = i + di, j + dj
+        if ii >= 0 and jj >= 0 and ii < nx and jj < nz then sum = sum + b2[jj*nx + ii]; n = n + 1 end
+      end end
+      bump[k] = sum/n
+    end
+    local function sample(F, x, z)
+      local fx, fz = (x - x0)/cell - 0.5, (z - z0)/cell - 0.5
+      local i, j = floor(fx), floor(fz)
+      local u, v = fx - i, fz - j
+      local function at(a, b) return F[min(nz - 1, max(0, b))*nx + min(nx - 1, max(0, a))] end
+      return (at(i, j)*(1 - u) + at(i + 1, j)*u)*(1 - v) + (at(i, j + 1)*(1 - u) + at(i + 1, j + 1)*u)*v
+    end
+    route_at = function(x, z) return sample(D, x, z) end
+    floor_at = function(x, z) return cave.ground_y(x, z) + sample(bump, x, z) end
+  end
+  local function ground(x, z) return floor_at and floor_at(x, z) or cave.ground_y(x, z) end
   local A = R.statics
   local mat = MAT.MeshStandardMaterial.new({ name = 'snakes.body', map = A.texture('snake_scales'), roughness = 0.3, metalness = 0.0 })
   local uEmber, uSnakeT = { value = Color.new(3.2, 0.75, 0.1) }, { value = 0 }
@@ -132,12 +231,45 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     if not th then repeat th = g.float(0, pi*2) until not (abs(atan2(sin(th + pi/2), cos(th + pi/2))) < 0.5) end
     local r = g.float(14.0, 15.8)
     s.x = cos(th)*r; s.z = sin(th)*r
-    s.dir = atan2(-s.z, -s.x) + g.spread(0.3)
+    local start_dir = nil
+    if w and snav then
+      -- (round 50 fix: in a clear spot with a way to the egg, facing along it, the straight tail it
+      -- starts with clear behind it too; moving in and round until so)
+      local function route_dir(x, z)
+        local e = 0.2
+        local gx = route_at(x + e, z) - route_at(x - e, z)
+        local gz = route_at(x, z + e) - route_at(x, z - e)
+        if gx*gx + gz*gz < 1e-12 then return atan2(-z, -x) end
+        return atan2(-gz, -gx)
+      end
+      local function clear(x, z)
+        if snav.dist(x, z) < SPAWN_CLEAR or route_at(x, z) > REACHABLE then return false end
+        local a = route_dir(x, z)
+        local ca, sa = cos(a), sin(a)
+        for k = 1, 8 do
+          local px, pz = x - ca*k*0.5, z - sa*k*0.5
+          if js_hypot(px, pz) < 15.4 and snav.dist(px, pz) < 0.15 then return false end
+        end
+        return true
+      end
+      local tries = 0
+      while not clear(s.x, s.z) and tries < 160 do
+        tries = tries + 1
+        local rr = r - 0.3*(tries % 16)
+        local k = tries//16
+        local th2 = th + ((k + 1)//2)*0.1*(k % 2 == 0 and 1 or -1)
+        s.x = cos(th2)*rr; s.z = sin(th2)*rr
+      end
+      start_dir = route_dir(s.x, s.z)
+    end
+    if start_dir then s.dir = start_dir + g.spread(0.12)
+    else s.dir = atan2(-s.z, -s.x) + g.spread(0.3) end
     s.phase = g.float(0, 6.28); s.speed = g.float(1.0, 1.35)
     if w and w.speed then s.speed = w.speed end
     s.wave = g.float(0.95, 1.2)
     s.amp = g.float(0.55, 0.75)
     s.pooled = false
+    s.prog_t, s.prog_v, s.prog_m, s.stuck, s.ghost = 0, nil, 0, 0, false
     s.trail = {}
     for i = 0, 399 do s.trail[i + 1] = { s.x - cos(s.dir)*i*0.01, s.z - sin(s.dir)*i*0.01 } end
     -- (each point keeps [3] = its distance to the next: the walks along the trail read it)
@@ -254,6 +386,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   end
 
   local P, UU = {}, {}
+  local PUSH, PUSH_V = { x = 0, z = 0 }, { x = 0, z = 0 }
   local Tv, Nn, Bn, UP = Vector3.new(), Vector3.new(), Vector3.new(0, 1, 0), Vector3.new(0, 1, 0)
   Bn:set(0, 0, 0)
   local RK, GL, SH, RR = {}, {}, { 0, 0, 0 }, {}
@@ -529,7 +662,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
           if fx.lift then lift = lift + fx.lift(i) end
           if fx.shift then fx.shift(i, SH) end
         end
-        P[i + 1]:set(x + SH[1], cave.ground_y(x, z) + R0*RAD[i + 1]*sc*FLAT[i + 1] + lift + SH[2] - sink_depth(s), z + SH[3])
+        P[i + 1]:set(x + SH[1], ground(x, z) + R0*RAD[i + 1]*sc*FLAT[i + 1] + lift + SH[2] - sink_depth(s), z + SH[3])
         if fx and fx.place then fx.place(i, P[i + 1]) end
         s.spine[i + 1]:copy(P[i + 1]); s.radii[i + 1] = F32(r)
       end
@@ -608,17 +741,49 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
         else
           local sp = s.speed*(1 - 0.85*smoothstep(0, 0.8, s.leak))
           s.dist = s.dist + sp*dt
-          local want = atan2(egg.z - s.z, egg.x - s.x) + sin(s.dist/s.wave*pi*2 + s.phase)*s.amp
+          local base, amp = nil, s.amp
+          if route_at and js_hypot(egg.x - s.x, egg.z - s.z) > 1.4 then
+            -- (round 50 fix: the way round the rocks; less weaving close to one)
+            local e = 0.2
+            local gx = route_at(s.x + e, s.z) - route_at(s.x - e, s.z)
+            local gz = route_at(s.x, s.z + e) - route_at(s.x, s.z - e)
+            if gx*gx + gz*gz > 1e-12 then base = atan2(-gz, -gx) end
+            amp = s.amp*clamp((snav.dist(s.x, s.z) - 0.3)/0.9, 0, 1)
+          end
+          if not base then base = atan2(egg.z - s.z, egg.x - s.x) end
+          local want = base + sin(s.dist/s.wave*pi*2 + s.phase)*amp
           local d = want - s.dir
           d = atan2(sin(d), cos(d))
           s.dir = s.dir + clamp(d, -5*dt, 5*dt)
           s.x = s.x + cos(s.dir)*sp*dt; s.z = s.z + sin(s.dir)*sp*dt
+          if route_at then
+            -- (round 50 fix: a snake that makes no headway along its route for 3 s is caught on something:
+            -- out in the dark it goes back to the pool, near the egg it may pass)
+            s.prog_t = s.prog_t + dt; s.prog_m = s.prog_m + sp*dt
+            if s.prog_t >= 1 then
+              local rv = route_at(s.x, s.z)
+              if s.prog_v and s.prog_m > 0.3 and s.prog_v - rv < 0.25*s.prog_m then s.stuck = s.stuck + 1 else s.stuck = 0 end
+              s.prog_v = rv; s.prog_t = 0; s.prog_m = 0
+              if s.stuck >= 3 then
+                if js_hypot(s.x - egg.x, s.z - egg.z) > 8 then s.stuck_out = true else s.ghost = true end
+              end
+            end
+          end
+          if snav and not s.ghost and snav.dist(s.x, s.z) < BODY then
+            PUSH.x, PUSH.z = s.x, s.z; PUSH_V.x, PUSH_V.z = cos(s.dir), sin(s.dir)
+            snav.resolve(PUSH, PUSH_V, BODY)
+            s.x, s.z = PUSH.x, PUSH.z
+          end
           local last = s.trail[1]
           if js_hypot(s.x - last[1], s.z - last[2]) > 0.01 then
             table.insert(s.trail, 1, { s.x, s.z, js_hypot(last[1] - s.x, last[2] - s.z) })
           end
           if #s.trail > 600 then for q = #s.trail, 601, -1 do s.trail[q] = nil end end
-          if js_hypot(s.x - egg.x, s.z - egg.z) < 1.1 then
+          if s.stuck_out then
+            s.stuck_out = nil; api.unstuck = (api.unstuck or 0) + 1
+            api.stuck_log[#api.stuck_log + 1] = string.format('%.1f,%.1f', s.x, s.z)
+            respawn(s); skip = true
+          elseif js_hypot(s.x - egg.x, s.z - egg.z) < 1.1 then
             api.reached = api.reached + 1
             api.reach_log[#api.reach_log + 1] = { t = t, claim = s.claim, ['until'] = s.claim_until, leak = s.leak, speed = s.speed }
             start_coil(s)
@@ -664,7 +829,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
 
   api = { update = update, S = S, ignite = ignite, LEN = LEN, take = take, live = live, free = free, set_ember = set_ember, respawn = respawn,
     RINGS = RINGS, SIDES = SIDES, mat = mat, egg = egg, reach_log = {}, arc = S_AT, ring_at = I_AT, reached = 0, dissolved = 0,
-    on_dissolve = nil, coil = coil, coiled = coiled, WIN = WIN, on_coil = nil, on_grip = nil, on_won = nil,
+    on_dissolve = nil, coil = coil, coiled = coiled, stuck_log = {}, WIN = WIN, on_coil = nil, on_grip = nil, on_won = nil,
     coverage = 0, won = false, won_t = -1, coil_mode = 0 }
   function api.set_coil_mode(i) coil_mode = ((i % 2) + 2) % 2; api.coil_mode = coil_mode end
   -- round 50: the waves (testing: send one now; the director's state)

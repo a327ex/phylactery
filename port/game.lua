@@ -75,7 +75,9 @@ function GM.create(R, hud_layer)
   local L = mover.p
   local fire = FIRE.create(R, cave)
   local VARIED = not os.getenv('LICH_ROOM')
-  local snakes = SN.create(R, cave, function() return L end, fire, nil, nil, { varied = VARIED })
+  -- (round 50 fix: the snakes' own grid of the rocks: no frame, no egg, only rock too tall to crawl over)
+  local snake_nav = VARIED and NAV.build({ geo = cave.rock_geo, ground_y = cave.ground_y, block_h = 0.2 }).finish() or nil
+  local snakes = SN.create(R, cave, function() return L end, fire, nil, nil, { varied = VARIED, nav = snake_nav })
   G.mover = mover; G.snakes = snakes; G.fire = fire
 
   local fx = FXM.create(R, cave)
