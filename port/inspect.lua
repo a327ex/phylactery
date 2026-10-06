@@ -149,9 +149,10 @@ function IN.create(ctx)
   local function button_at(x, y)
     for name, b in pairs(S.buttons) do if x >= b[1] and x < b[1] + b[3] and y >= b[2] and y < b[2] + b[4] then return name end end
   end
+  -- round 48: the one button, THROW (yes); no = put the view away and keep it
   function insp.answer(yes)
     if not (S.active and S.remove) or S.closing >= 0 then return end
-    S.result = yes and 'remove' or 'keep'
+    S.result = yes and 'throw' or 'keep'
     insp.close()
   end
   function insp.accept()
@@ -161,7 +162,7 @@ function IN.create(ctx)
   end
   function insp.pointer_down(x, y)
     if not S.active then return end
-    if S.remove then local b = button_at(x, y); if b then insp.answer(b == 'yes'); return end end
+    if S.remove then local b = button_at(x, y); if b then insp.answer(b == 'throw'); return end end
     if S.accept then local b = button_at(x, y); if b then insp.accept(); return end end
     S.drag = { x, y }; S.idle = 0
   end
@@ -235,19 +236,13 @@ function IN.create(ctx)
       UI.button(floor(cx - bw/2), y, bw, bh, label, S.hot == 'accept', true)
       y = y - 12 - h1
     elseif S.remove then
-      HUD.text('DRAG: TURN   WHEEL: CLOSER   Y: YES   N OR ESC: NO', cx, y, UI.DARK, 1, 'center', nil, ink)
-      -- the question, and its two answers (clicked, or Y / N)
+      -- round 48 (owner: "A single button below: throw"): it goes the way he faces as this view goes
+      HUD.text('DRAG: TURN   WHEEL: CLOSER   ENTER: THROW   ESC: KEEP IT', cx, y, UI.DARK, 1, 'center', nil, ink)
       local bh = h1 + 8
-      local bw = math.max(58, HUD.text_width('YES', 1) + 24, HUD.text_width('NO', 1) + 24)
-      local gap = 14
+      local bw = math.max(80, HUD.text_width('THROW', 1) + 32)
       y = y - 10 - bh
-      local bx = { yes = floor(cx - gap/2 - bw), no = floor(cx + gap/2) }
-      for _, name in ipairs({ 'yes', 'no' }) do
-        S.buttons[name] = { bx[name], y, bw, bh }
-        UI.button(bx[name], y, bw, bh, name == 'yes' and 'YES' or 'NO', S.hot == name)
-      end
-      y = y - 8 - h1
-      HUD.text('ARE YOU SURE YOU WANT TO REMOVE THIS ITEM?', cx, y, UI.CREAM, 1, 'center', nil, ink)
+      S.buttons.throw = { floor(cx - bw/2), y, bw, bh }
+      UI.button(floor(cx - bw/2), y, bw, bh, 'THROW', S.hot == 'throw', true)
       y = y - 12 - h1
     else
       HUD.text("DRAG: TURN   WHEEL: CLOSER   A D: NEXT   M: THE HAND'S METAL   I: PUT AWAY", cx, y, UI.DARK, 1, 'center', nil, ink)

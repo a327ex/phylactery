@@ -35,6 +35,11 @@ do
   end
 end
 IT.X = function() return A().manifest.items end
+-- round 48 (owner, 2026-10-05): their titles
+do
+  local TITLES = { 'BURNED MASK', 'THE HAND', 'LODESTONE', 'PSYONIAN ORBS', 'PRISMATIC GEM', 'ATTACK LENS' }
+  for i, t in ipairs(TITLES) do IT.ITEMS[i].name = t end
+end
 
 -- the hand's geometry wears one of its two materials (item_hand.js set_hand_material: the
 -- geometry is shared, so the cave's hand and the inspect view's change together)
@@ -274,9 +279,84 @@ function IT.create(ctx)
     w.g.visible = true
     return true
   end
+  -- round 48: THROW: from his nearer hand, the way he faces, as far as the floor stays clear (up to
+  -- 6.5 m; never onto the egg), on a high arc; it lands and rolls as a dropped one does. A thrown one
+  -- is his again when he walks back to it (near()), once he has been away from it.
+  local function throw(i, yaw)
+    local w = W[i + 1]
+    if not w then return false end
+    local r = lying_r(w)
+    local L = get_L()
+    local fx_, fz_ = sin(yaw), cos(yaw)
+    local d, tx, tz = 6.5, L.x, L.z
+    while d > 1.2 do
+      tx, tz = L.x + fx_*d, L.z + fz_*d
+      if not nav.is_blocked(tx, tz) and js_hypot(tx - egg.x, tz - egg.z) > egg.r + r + 0.35 then break end
+      d = d - 0.25
+    end
+    local to = Vector2.new(tx, tz)
+    local h = from_hand(to)
+    local from = h.p:clone():add(Vector3.new(to.x - h.p.x, 0, to.y - h.p.z):normalize():multiply_scalar(0.12))
+    lich.kick(h.k, 1.1)
+    if glance then glance(Vector3.new(to.x, floor_y(to.x, to.y), to.y)) end
+    for _ = 1, 7 do
+      warp.puff({ x = from.x + rng.spread(0.06), y = from.y + rng.spread(0.06), z = from.z + rng.spread(0.06), vx = fx_*rng.float(0.4, 1.2), vy = rng.spread(0.3), vz = fz_*rng.float(0.4, 1.2),
+        drag = 2.5, life = rng.float(0.3, 0.5), s0 = 0.1, s1 = 0.35, amp = 3.2, spin = rng.spread(4) })
+    end
+    local Tt = 0.7 + 0.07*d
+    if w.it.balls then
+      drop_balls(w, to, from)
+      -- (the balls on the same arc: a longer flight)
+      for j, b in ipairs(w.bodies) do
+        local a, spread = (j - 1)*2.4, 0.12*kf(w)
+        local bx, bz = to.x + cos(a)*spread, to.y + sin(a)*spread
+        local rb = w.orbs[j].user_data.r*kf(w)
+        b.v:copy(toss(b.x, bx, floor_y(bx, bz) + rb, bz, Tt + (j - 1)*0.04))
+      end
+      w.g.position:set(0, 0, 0); w.g.quaternion:identity(); w.g.scale:set_scalar(1)
+    else
+      w.body = make_body(w)
+      w.land = to:clone()
+      w.body.x:copy(from)
+      w.body.v:copy(toss(from, to.x, floor_y(to.x, to.y) + r*0.7, to.y, Tt))
+      local ex = rng.spread(1.2)
+      local ey = rng.float(0, 6.28)
+      local ez = rng.spread(1.2)
+      w.body.q:set_from_euler(Euler.new(ex, ey, ez))
+      w.body.w:set(rng.spread(5), rng.spread(4), rng.spread(5))
+    end
+    w.state = 'forming'; w.t = 0
+    w.g.visible = true
+    w.thrown = true; w.armed = false; w.lie_n = 0
+    return true
+  end
+  -- the thrown one he has come back to (lying, him within ~1 m), if any; it can be taken back once it
+  -- has been 1.8 m from him at some moment since the throw, or has lain still 2.5 s (so a throw against
+  -- a wall at his feet does not come straight back)
+  local function near(L)
+    for _, w in ipairs(W) do
+      if w.thrown and w.state ~= 'away' then
+        local px, pz
+        if w.bodies then
+          px, pz = 0, 0
+          for _, b in ipairs(w.bodies) do px = px + b.x.x; pz = pz + b.x.z end
+          px, pz = px/#w.bodies, pz/#w.bodies
+        else px, pz = w.g.position.x, w.g.position.z end
+        local dd = js_hypot(L.x - px, L.z - pz)
+        if dd > 1.8 then w.armed = true end
+        if w.state == 'lying' then
+          w.lie_n = (w.lie_n or 0) + 1
+          if w.lie_n > 150 then w.armed = true end
+          if w.armed and dd < 1.05 + lying_r(w)*0.5 then w.thrown = false; w.armed = false; w.lie_n = 0; return w.i end
+        end
+      end
+    end
+    return nil
+  end
   local function take(i)
     local w = W[i + 1]
     if not w or w.state == 'away' then return end
+    w.thrown = false
     w.state = 'leaving'; w.t = 0
     if w.body then w.body.asleep = true end
     if w.bodies then for _, b in ipairs(w.bodies) do b.asleep = true end end
@@ -390,7 +470,7 @@ function IT.create(ctx)
     end
     return out
   end
-  return { W = W, opts = opts, drop = drop, take = take, update = update, set_hand_mat = set_hand_mat, set_size = set_size, state = state }
+  return { W = W, opts = opts, drop = drop, throw = throw, near = near, take = take, update = update, set_hand_mat = set_hand_mat, set_size = set_size, state = state }
 end
 
 return IT
