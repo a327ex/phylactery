@@ -65,6 +65,8 @@ function MV.create(nav, lich, start, yaw0)
     local wy = 6.2832*(face.on and MOVE.turn_f_point or MOVE.turn_f)
     local tam = face.on and MOVE.turn_amax_point or MOVE.turn_amax
     local tvm = face.on and MOVE.turn_vmax_point or MOVE.turn_vmax
+    -- (round 50: face.boost, a snappier turn while he fires in turn or sweeps; nil = as before)
+    if face.on and face.boost then wy = wy*face.boost; tam = tam*face.boost*face.boost; tvm = tvm*face.boost end
     yaw_a = clamp(wy*wy*wrap(want_yaw - yaw) - 2*MOVE.turn_z*wy*yaw_v, -tam, tam)
     yaw_v = clamp(yaw_v + yaw_a*dt, -tvm, tvm)
     yaw = wrap(yaw + yaw_v*dt)

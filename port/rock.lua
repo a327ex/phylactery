@@ -4,6 +4,8 @@
   floating arc onto a snake; a struck snake becomes a loose heavy rope of its own rings (crush_fx),
   knocked along, twitching, then sinking. The eight rocks' shapes are the three.js build's
   (ConvexGeometry from the same draws); the draws are still made here so the powers' rng keeps step.
+  Round 50: three or more in one cast (the bouts, powers.lua) are torn up all round him, circle him
+  in warped air, then are loosed together, each at its snake.
 ]]
 local TM = require('port.three.math')
 local T = require('port.three.core')
@@ -18,6 +20,7 @@ local RO = {}
 local HOLD, STAGGER, SPEED, ACCEL, GRAV, HIT_R = 0.25, 0.12, 17, 55, 9.8, 0.14
 local CONTROL_MAX = 1.4
 local REST, SINK = 3.0, 1.2
+local ORBIT_R, ORBIT_W, ORBIT_HOLD, ORBIT_FROM = 1.15, 2.4, 1.0, 1.5
 
 function RO.create(ctx)
   local R, snakes, fx, cave, rng, gore, warp, lich, get_L = ctx.R, ctx.snakes, ctx.fx, ctx.cave, ctx.rng, ctx.gore, ctx.warp, ctx.lich, ctx.get_L
@@ -175,7 +178,7 @@ function RO.create(ctx)
     return best_s
   end
 
-  local function raise(target, k, arm, quick)
+  local function raise(target, k, arm, quick, n, a0)
     quick = quick or false
     local q
     for _, p in ipairs(POOL) do if not p.on then q = p; break end end
@@ -195,6 +198,15 @@ function RO.create(ctx)
     q.ph = { p1, p2, p3, p4 }; q.ctrl = true
     q.torn = false; q.hits = 0; q.from = from; q.hold = hold; q.target = target; q.arm = arm; q.hit = {}; q.v = Vector3.new(); q.w = Vector3.new()
     q.rest = 0; q.bounced = 0; q.wake = 0; q.dir = dir
+    q.orbit = nil
+    if n then
+      -- round 50: its place in the ring round him; torn from the floor under that place
+      local a = a0 + k*6.2832/n
+      q.orbit = { a = a, spin = 0 }
+      from:set(L.x + sin(a)*ORBIT_FROM, 0, L.z + math.cos(a)*ORBIT_FROM)
+      from.y = cave.ground_y(from.x, from.z) - q.r*0.8
+      q.t = -k*0.03; q.hold_t = ORBIT_HOLD + k*0.04
+    end
     q.m.position:copy(from); q.m.visible = true
     local ex = rng.float(0, 6); local ey = rng.float(0, 6); local ez = rng.float(0, 6)
     q.m.quaternion:set_from_euler(Euler.new(ex, ey, ez))
@@ -239,6 +251,17 @@ function RO.create(ctx)
       local q = live[i]
       local m = q.m
       q.t = q.t + dt
+      if q.orbit and (q.phase == 'rip' or q.phase == 'hold') then
+        local o = q.orbit
+        if q.t >= 0 then o.spin = o.spin + dt*ORBIT_W end
+        local L = get_L()
+        local a = o.a + o.spin
+        q.hold:set(L.x + sin(a)*ORBIT_R, L.y + 0.55 + 0.06*sin(t*2.3 + o.a*3), L.z + math.cos(a)*ORBIT_R)
+        if q.target then
+          V:sub_vectors(q.target.spine[mid + 1], q.hold); V.y = 0
+          if V:length_sq() > 1e-6 then q.dir:copy(V:normalize()) end
+        end
+      end
       if q.t >= 0 then
         if not q.quick and q.target and (q.phase == 'rip' or q.phase == 'hold' or q.phase == 'fly') and hyp(q.target.x - snakes.egg.x, q.target.z - snakes.egg.z) < 2.9 then
           q.quick = true; q.hold_t = min(q.hold_t, 0.05); q.speed = SPEED*1.45; q.accel = ACCEL*2.2
@@ -265,7 +288,7 @@ function RO.create(ctx)
         end
         if q.phase == 'rip' then
           if not q.torn then q.torn = true; tear(q); q.v:set(q.dir.x*0.6, q.quick and 5 or 3.4, q.dir.z*0.6); q.ramp = 0.3 end
-          hold_on(q.hold, q.quick and 2.4 or 1.5, 0.5, q.quick and 90 or 40, 2.5)
+          hold_on(q.hold, q.quick and 2.4 or (q.orbit and 2.2 or 1.5), 0.5, q.quick and 90 or (q.orbit and 60 or 40), 2.5)
           spin(2, 3)
           if rng.next() < 0.5 then aura(m.position, 0.9) end
           local near = m.position:distance_to(q.hold) < 0.2 and q.v:length() < 1.2
@@ -275,7 +298,7 @@ function RO.create(ctx)
           local back = smoothstep(q.hold_t - 0.14, q.hold_t, q.pt)
           TG:copy(q.hold):add_scaled_vector(q.dir, -0.18*back)
           TG.y = TG.y + (0.05*back + sin(t*2.2 + q.ph[1])*0.03)
-          hold_on(TG, 1.3, 0.42, 25, 2.0)
+          hold_on(TG, q.orbit and 2.4 or 1.3, 0.42, q.orbit and 60 or 25, 2.0)
           spin(0.8, 2)
           if rng.next() < 0.7 then aura(m.position, 1) end
           if q.pt >= q.hold_t then
@@ -375,9 +398,15 @@ function RO.create(ctx)
   local P = { name = 'ROCK', gesture = false, cooldown = 5.0, engage = 5.6, stats = stats, update = update }
   function P.capacity(p) return ceil(p/1.5) end
   function P.aim_ring() return mid end
-  function P.cast(targets, from, ring, arm, quick)
+  function P.cast(targets, from, ring, arm, quick, group)
     if arm == nil then arm = 1 end
-    for k, s in ipairs(targets) do raise(s, k - 1, arm, quick or false) end
+    local n, a0 = nil, nil
+    if group and #targets >= 3 then
+      local L = get_L()
+      local p = targets[1].spine[mid + 1]
+      n = #targets; a0 = math.atan(p.x - L.x, p.z - L.z)
+    end
+    for k, s in ipairs(targets) do raise(s, k - 1, arm, quick or false, n, a0) end
   end
   function P.busy_count() local n = 0; for _, q in ipairs(live) do if q.phase ~= 'rest' then n = n + 1 end end; return n end
   function P.free_rocks() local n = 0; for _, p in ipairs(POOL) do if not p.on then n = n + 1 end end; return n end
