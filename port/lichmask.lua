@@ -136,7 +136,13 @@ end
 -- and down late (a softer spring), with a slow drift of its own.
 local Vector3, Quaternion, Matrix4 = require('port.three.math').Vector3, require('port.three.math').Quaternion, require('port.three.math').Matrix4
 LM.HOLD = { y = 0.03 - EY*0.95, z = 0.183 }
-LM.SPRING = { xz = 140, y = 34, turn = 9 }        -- (stiffness, 1/s^2; turning as a rate)
+LM.SPRING = { xz = 400, y = 34, turn = 16 }       -- (stiffness, 1/s^2; turning as a rate)
+-- round 50 fix (owner, 2026-10-06: "The mask is going behind the liches face"): measured in his
+-- fastest turns, the lag carried it 17 cm back into the skull and 15 cm aside, its facing 0.85 rad
+-- behind. Sideways and in turn it now follows closer, and the lag is bounded in the head's own frame:
+-- never more than `back` nearer the face, `side` to a side, `up`/`down` off its height (the vertical
+-- lag he asked for kept), its facing never more than `turn` rad behind.
+LM.BOUND = { back = 0.022, side = 0.025, up = 0.03, down = 0.045, turn = 0.25 }
 function LM.create(lich, GU, R)
   local A = ITM.assets()
   local X = A.manifest.items
@@ -151,6 +157,7 @@ function LM.create(lich, GU, R)
   local head = lich.nodes.head
   local tp, tq, ts = Vector3.new(), Quaternion.new(), Vector3.new()
   local hold = Vector3.new()
+  local INV, LP = Matrix4.new(), Vector3.new()
   local M = { mesh = m, look = 0, p = nil, v = Vector3.new(), t = 0 }
   local function target()
     head:update_world_matrix(true, false)
@@ -176,8 +183,23 @@ function LM.create(lich, GU, R)
       P[c] = P[c] + V[c]*dt
     end
     axis('x', K.xz); axis('y', K.y); axis('z', K.xz)
+    -- the bounds, in the head's frame (head.matrix_world is current: target() updated it)
+    local B, H = LM.BOUND, LM.HOLD
+    INV:copy(head.matrix_world):invert()
+    LP:copy(P):apply_matrix4(INV)
+    local out = false
+    if LP.z < H.z - B.back then LP.z = H.z - B.back; out = true end
+    if LP.x > B.side then LP.x = B.side; out = true elseif LP.x < -B.side then LP.x = -B.side; out = true end
+    if LP.y > H.y + B.up then LP.y = H.y + B.up; out = true elseif LP.y < H.y - B.down then LP.y = H.y - B.down; out = true end
+    if out then
+      LP:apply_matrix4(head.matrix_world)
+      V:add_scaled_vector(LP:clone():sub(P), 1/dt*0.5)          -- (carried along with the bound)
+      P:copy(LP)
+    end
     m.position:set(P.x, P.y + math.sin(M.t*1.3)*0.004, P.z)
     m.quaternion:slerp(q, 1 - math.exp(-K.turn*dt))
+    local a = m.quaternion:angle_to(q)
+    if a > B.turn then m.quaternion:slerp(q, 1 - B.turn/a) end
   end
   function M.set_look(i)
     M.look = ((i % #LM.LOOKS) + #LM.LOOKS) % #LM.LOOKS
