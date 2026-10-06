@@ -220,6 +220,69 @@ def glyph(i):
     rgba[under, :3] = INK; rgba[under, 3] = 170
     return Image.fromarray(rgba.astype(np.uint8), 'RGBA')
 
+def lit(i, rgb, alpha, hot_state=False):
+    """round 48 (owner: the icons "need to be more visible in some important way, currently they're not
+    making it clear which item is which"): EMBER's light on the object's own colours. The cut-out at icon
+    size (smooth, so the inner detail survives: the mask's soot half and slits, the hand's raised
+    fingers, the gem's colours, the orbs' several balls), its levels stretched and its colour lifted so
+    each reads at 24 px; glass given a body (the lens a pale disc with a bright rim, the orbs pale
+    spheres with a glint); then EMBER's warm rim on the edges toward the light and a dark outline, so
+    it stands off the lamp's glow. Hot: brighter, the rim whiter."""
+    box = crop_box(alpha, 6)
+    im = to_img(rgb * alpha[..., None], alpha).crop(box).resize((S - 2, S - 2), Image.LANCZOS)
+    a = np.asarray(im)[..., 3] / 255.0
+    c = np.where(a[..., None] > 0.02, np.asarray(im)[..., :3] / np.maximum(a[..., None], 1e-3), 0)
+    c = np.pad(c, ((1, 1), (1, 1), (0, 0))); a = np.pad(a, 1)
+    glass = i in (3, 5)
+    mask = a > (0.14 if glass else 0.4)
+    yy, xx = np.mgrid[0:S, 0:S]
+    if i == 5:
+        cy = cx = (S - 1) / 2
+        disc = (((xx - cx) / (S * 0.43)) ** 2 + ((yy - cy) / (S * 0.43)) ** 2)
+        mask |= disc < 1
+        ring = (disc > 0.62) & (disc < 1)
+    # the viewer's key light is warm (1, 0.9, 0.72): take it out, so white reads white and bone bone
+    c = c / np.array([1.0, 0.9, 0.72])
+    lum = (c * np.array([0.3, 0.59, 0.11])).sum(2)
+    lm = lum[mask] if mask.any() else lum.ravel()
+    lo, hi = np.percentile(lm, 3), np.percentile(lm, 96)
+    t = np.clip((lum - lo) / max(hi - lo, 1), 0, 1) ** 0.8
+    # levels: keep the hue, set the brightness from the stretched luminance
+    chroma = c / np.maximum(lum[..., None], 1)
+    q = np.clip(chroma * (24 + t * 226)[..., None], 0, 255)
+    # colour: the rock and the gem lifted; white and bone kept near neutral
+    g = q.mean(2, keepdims=True)
+    q = np.clip(g + (q - g) * {0: 0.6, 1: 0.7, 2: 1.7, 3: 1.0, 4: 1.15, 5: 1.0}[i], 0, 255)
+    if i == 1:
+        # the hand is thin: bone, and a step brighter, so it is not lost against the glow
+        q = np.where(mask[..., None], np.clip(q * 0.35 + np.array([214, 200, 172]) * (0.35 + 0.5 * t[..., None]), 0, 255), q)
+    if i == 2:
+        # the lodestone: iron-dark with its rust
+        q = np.where(mask[..., None], np.clip(q * np.array([1.0, 0.78, 0.6]) * 0.85, 0, 255), q)
+    if glass:
+        # glass: a pale body tinted by what shows through, darker toward its far edge
+        base = np.array([150, 160, 150]) if i == 3 else np.array([165, 158, 140])
+        q = np.where(mask[..., None], q * 0.45 + base * 0.55, q)
+        if i == 5:
+            q[ring & mask] = np.clip(q[ring & mask] * 1.25 + 25, 0, 255)
+    # EMBER's warm cast and light from the upper left (the shaft), a darker edge opposite
+    q = q * np.array([1.04, 0.99, 0.92])
+    hi_e = (edge_dir(mask, -1, 0) | edge_dir(mask, 0, -1)) & mask
+    lo_e = (edge_dir(mask, 1, 0) | edge_dir(mask, 0, 1)) & mask & ~hi_e
+    rim = np.array([255, 236, 196]) if hot_state else np.array([246, 214, 160])
+    q[hi_e] = q[hi_e] * 0.35 + rim * 0.65
+    q[lo_e] = q[lo_e] * 0.62
+    if glass:
+        # a glint high on each
+        gl = mask & (xx + yy < S * 0.75) & (t > 0.8)
+        q[gl] = np.clip(q[gl] * 0.4 + 255 * 0.6, 0, 255)
+    if hot_state: q = np.clip(q * 1.18 + 10, 0, 255)
+    out = outline_of(mask)
+    rgba = np.zeros((S, S, 4))
+    rgba[mask, :3] = np.clip(q[mask], 0, 255); rgba[mask, 3] = 255
+    rgba[out, :3] = INK; rgba[out, 3] = 255
+    return Image.fromarray(rgba.astype(np.uint8), 'RGBA')
+
 def render_style(i, rgb, alpha):
     """the current icons (the model as rendered), at the new size: for the comparison"""
     box = crop_box(alpha, 6)
@@ -238,6 +301,8 @@ def main():
             im.save(os.path.join(OUT, '%s_%d.png' % (name, i)))
             if name == 'ember': ember(i, rgb, alpha, True).save(os.path.join(OUT, 'ember_hot_%d.png' % i))
             sheet.alpha_composite(im.resize((S * 4, S * 4), Image.NEAREST), (5 + i * (S * 4 + 6), 5 + k * S * 4))
+        lit(i, rgb, alpha).save(os.path.join(OUT, 'lit_%d.png' % i))
+        lit(i, rgb, alpha, True).save(os.path.join(OUT, 'lit_hot_%d.png' % i))
     sheet.save(os.path.join(ROOT, 'scratch', 'icons', 'styles_sheet.png'))
     print('wrote', OUT)
 
