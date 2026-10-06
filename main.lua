@@ -40,6 +40,8 @@ function draw()
   G.R.present(G.screen_layer)
   layer_render(G.screen_layer)
   layer_draw(G.screen_layer)
+  layer_render(G.ui_layer)          -- the icons at full resolution, over everything (round 49)
+  layer_draw(G.ui_layer)
 end
 
 require('boot')   -- LAST line: one-time work, after every definition exists

@@ -20,10 +20,10 @@ UI.BUNDLES = {
   { name = 'CURRENT', icons = 1, frame = 1 },
   { name = 'RELIC', icons = 2, frame = 3 },
   { name = 'MANUSCRIPT', icons = 3, frame = 4 },
-  { name = 'EMBER', icons = 6, frame = 5 },     -- (round 48: LIT icons; F2 for the silhouettes)
+  { name = 'EMBER', icons = 4, frame = 5 },     -- (round 49, owner: EMBER's colours were good; F2 for LIT)
   { name = 'GLYPH', icons = 5, frame = 2 },
 }
-UI.S = { bundle = 4, icons = 6, frame = 5 }   -- EMBER (his pick, round 42); the font is FACETED (round 43, hud.lua)
+UI.S = { bundle = 4, icons = 4, frame = 5 }   -- EMBER (his pick, round 42); the font is FACETED (round 43, hud.lua)
 -- round 48 (owner: the icons "need to be more visible ... currently they're not making it clear which
 -- item is which"): EMBER's frame and light, the icons LIT (each object in its own colours, tools/icons.py
 -- lit()); F2 still cycles back to EMBER's silhouettes
@@ -135,7 +135,8 @@ function UI.icon(i, x, y, w, h, render_img, hot)
   if st == 'render' then
     if render_img then HUD.image(render_img, ix, iy, UI.ICON, UI.ICON) end
   else
-    HUD.texture(icon_tex((hot and (st == 'ember' or st == 'lit')) and (st .. '_hot') or st, i), ix, iy, UI.ICON, UI.ICON)
+    -- (round 49: at the window's resolution, twice the game's pixels: the files are 2*UI.ICON square)
+    HUD.texture_hi(icon_tex((hot and (st == 'ember' or st == 'lit')) and (st .. '_hot') or st, i), ix, iy, UI.ICON, UI.ICON)
   end
 end
 

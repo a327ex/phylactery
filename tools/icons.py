@@ -20,7 +20,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 RAW = os.path.join(ROOT, 'scratch', 'icons')
 OUT = os.path.join(ROOT, 'assets', 'ui', 'icons')
 P = 192
-S = int(sys.argv[1]) if len(sys.argv) > 1 else 24
+S = int(sys.argv[1]) if len(sys.argv) > 1 else 48       # (round 49: twice the game's 24 px: drawn at the window's resolution)
 NAMES = ['mask', 'hand', 'lodestone', 'orbs', 'gem', 'lens']
 
 INK = np.array([20, 15, 11])
@@ -138,37 +138,70 @@ def engraved(i, rgb, alpha):
     return Image.fromarray(rgba.astype(np.uint8), 'RGBA')
 
 def ember(i, rgb, alpha, hot_state=False):
+    """a dark silhouette with a warm rim where the shaft's light would catch it (round 42); round 49
+    (owner: the colours were good, "the problem was they don't have enough detail"): drawn at twice the
+    game's pixels (the window's), the rim kept to its width at 24, and the object's own edges inside the
+    silhouette as faint warm lines (the mask's slits, break and soot edge; the fingers; the gem's
+    facets; the lens's ring; each ball and its markings), its brightest details glowing"""
+    k = max(1, S // 24)
     box = crop_box(alpha, 6)
-    c, a = down(rgb, alpha, box, S - 2)
-    c = np.pad(c, ((1, 1), (1, 1), (0, 0))); a = np.pad(a, 1)
+    c, a = down(rgb, alpha, box, S - 2 * k)
+    c = np.pad(c, ((k, k), (k, k), (0, 0))); a = np.pad(a, k)
     mask = a > (0.15 if i in (3, 5) else 0.45)
+    yy, xx = np.mgrid[0:S, 0:S]
     if i == 5:
-        yy, xx = np.mgrid[0:S, 0:S]; cy = cx = (S - 1) / 2
+        cy = cx = (S - 1) / 2
         mask |= (((xx - cx) / (S * 0.42)) ** 2 + ((yy - cy) / (S * 0.42)) ** 2) < 1
     rgba = np.zeros((S, S, 4))
     rgba[mask, :3] = np.array([30, 21, 15]); rgba[mask, 3] = 255
-    # the rim: edges facing up and left, a step in from them warmer
-    r1 = (edge_dir(mask, -1, 0) | edge_dir(mask, 0, -1) | edge_dir(mask, -1, -1)) & mask
-    r2 = (edge_dir(mask & ~r1, -1, 0) | edge_dir(mask & ~r1, 0, -1)) & mask & ~r1
-    rgba[r1, :3] = np.array([246, 214, 160])
-    rgba[r2, :3] = np.array([150, 92, 52])
-    # the object's brightest details glow faintly through (slits, highlights)
+    # the object's own edges inside it (where its lit picture changes sharply)
     lum = (c * np.array([0.3, 0.59, 0.11])).sum(2)
-    hot = mask & ~r1 & ~r2 & (lum > np.percentile(lum[mask], 93))
-    rgba[hot, :3] = np.array([120, 70, 40])
+    lm = lum[mask] if mask.any() else lum.ravel()
+    lo, hi = np.percentile(lm, 5), np.percentile(lm, 95)
+    t = np.clip((lum - lo) / max(hi - lo, 1), 0, 1)
+    # (smoothed first: the surface's own grain is not an edge)
+    tb = t.copy()
+    for _ in range(k):
+        tp = np.pad(tb, 1, mode='edge')
+        tb = sum(tp[1 + dy:1 + dy + S, 1 + dx:1 + dx + S] for dy in (-1, 0, 1) for dx in (-1, 0, 1)) / 9
+    gx = np.abs(np.diff(tb, axis=1, append=tb[:, -1:])); gy = np.abs(np.diff(tb, axis=0, append=tb[-1:]))
+    grad = np.maximum(gx, gy)
+    inner = mask.copy()
+    for _ in range(k): inner = inner & ~edge_dir(inner, 0, 0) & ~(edge_dir(inner, -1, 0) | edge_dir(inner, 1, 0) | edge_dir(inner, 0, -1) | edge_dir(inner, 0, 1))
+    line = inner & (grad > 0.13)
+    soft = inner & (grad > 0.08) & ~line
+    # (lone specks dropped: a line has neighbours)
+    def lone(m):
+        mp = np.pad(m, 1)
+        nb = sum(mp[1 + dy:1 + dy + S, 1 + dx:1 + dx + S] for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx)
+        return m & (nb < 2)
+    line &= ~lone(line); soft &= ~lone(soft | line)
+    # the light on its body, faintly (a dark object in the cave's light)
+    body = np.array([30, 21, 15]) + (np.array([62, 40, 26]) - np.array([30, 21, 15])) * (t[..., None] ** 1.6) * 0.75
+    rgba[mask, :3] = body[mask]
+    rgba[soft, :3] = np.array([78, 50, 30])
+    rgba[line, :3] = np.array([128, 80, 46])
+    # the rim: edges facing up and left, a step in from them warmer (k pixels each)
+    r1 = np.zeros_like(mask)
+    m = mask.copy()
+    for _ in range(k):
+        e = (edge_dir(m, -1, 0) | edge_dir(m, 0, -1) | edge_dir(m, -1, -1)) & m
+        r1 |= e; m = m & ~e
+    r2 = np.zeros_like(mask)
+    for _ in range(k):
+        e = (edge_dir(m, -1, 0) | edge_dir(m, 0, -1)) & m
+        r2 |= e; m = m & ~e
+    rim1 = np.array([255, 240, 205]) if hot_state else np.array([246, 214, 160])
+    rim2 = np.array([226, 152, 88]) if hot_state else np.array([150, 92, 52])
+    rgba[r1, :3] = rim1
+    rgba[r2, :3] = rim2
+    # the brightest details glow through (slits, highlights)
+    hot = mask & ~r1 & ~r2 & (lum > np.percentile(lm, 94))
+    rgba[hot, :3] = np.array([236, 150, 80]) if hot_state else np.array([150, 88, 48])
     if hot_state:
-        # round 45 (owner: hovering highlights the object in its own style, no underline, no name):
-        # the light comes up on it: the rim whiter and a step deeper, the body warmed from the lit
-        # side, its bright details glowing like embers
-        r3 = (edge_dir(mask & ~r1 & ~r2, -1, 0) | edge_dir(mask & ~r1 & ~r2, 0, -1)) & mask & ~r1 & ~r2
-        rgba[r1, :3] = np.array([255, 240, 205])
-        rgba[r2, :3] = np.array([226, 152, 88])
-        rgba[r3, :3] = np.array([122, 72, 40])
-        body = mask & ~r1 & ~r2 & ~r3
-        yy, xx = np.mgrid[0:S, 0:S]
+        rest = mask & ~r1 & ~r2 & ~hot
         warm = np.clip(1.0 - (xx + yy) / (1.6 * S), 0, 1)[..., None]
-        rgba[body, :3] = (np.array([30, 21, 15]) * (1 - warm) + np.array([74, 44, 26]) * warm)[body]
-        rgba[hot, :3] = np.array([236, 150, 80])
+        rgba[rest, :3] = np.clip(rgba[..., :3] * 1.25 + np.array([40, 22, 10]) * warm, 0, 255)[rest]
     return Image.fromarray(rgba.astype(np.uint8), 'RGBA')
 
 def glyph(i):

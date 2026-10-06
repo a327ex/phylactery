@@ -213,6 +213,8 @@ function IN.create(ctx)
     R.params.world_override = { scene = scene, camera = camera }
     return true
   end
+  -- round 49 (owner: "I want ONLY [item name] in normal font size, then 'throw'. Nothing else."):
+  -- the name, and under it THROW when the view was opened to give it up
   function insp.draw_hud()
     if not S.active then return end
     local UI = require('port.ui_style')
@@ -221,38 +223,21 @@ function IN.create(ctx)
     if a <= 0 then return end
     HUD.alpha(a)
     local ink = 'rgba(8,6,5,0.9)'
-    -- (round 42: laid out from the fonts' own heights, from the bottom up)
-    local h1, h2 = HUD.text_height(1), HUD.text_height(2)
+    local h1 = HUD.text_height(1)
     local cx = R.W/2
-    local y = R.H - 6 - h1
-    if S.accept then
-      -- round 45: found on the way; it is his once accepted
-      HUD.text('DRAG: TURN   WHEEL: CLOSER   ENTER: ACCEPT', cx, y, UI.DARK, 1, 'center', nil, ink)
-      local label = 'ACCEPT ARTIFACT'
+    local y = R.H - 16
+    if S.remove or S.accept then
+      local label = S.remove and 'THROW' or 'ACCEPT ARTIFACT'
       local bh = h1 + 8
-      local bw = math.max(96, HUD.text_width(label, 1) + 28)
-      y = y - 10 - bh
-      S.buttons.accept = { floor(cx - bw/2), y, bw, bh }
-      UI.button(floor(cx - bw/2), y, bw, bh, label, S.hot == 'accept', true)
-      y = y - 12 - h1
-    elseif S.remove then
-      -- round 48 (owner: "A single button below: throw"): it goes the way he faces as this view goes
-      HUD.text('DRAG: TURN   WHEEL: CLOSER   ENTER: THROW   ESC: KEEP IT', cx, y, UI.DARK, 1, 'center', nil, ink)
-      local bh = h1 + 8
-      local bw = math.max(80, HUD.text_width('THROW', 1) + 32)
-      y = y - 10 - bh
-      S.buttons.throw = { floor(cx - bw/2), y, bw, bh }
-      UI.button(floor(cx - bw/2), y, bw, bh, 'THROW', S.hot == 'throw', true)
-      y = y - 12 - h1
-    else
-      HUD.text("DRAG: TURN   WHEEL: CLOSER   A D: NEXT   M: THE HAND'S METAL   I: PUT AWAY", cx, y, UI.DARK, 1, 'center', nil, ink)
-      y = y - 10 - h1
+      local bw = math.max(80, HUD.text_width(label, 1) + 32)
+      y = y - bh
+      local key = S.remove and 'throw' or 'accept'
+      S.buttons[key] = { floor(cx - bw/2), y, bw, bh }
+      UI.button(floor(cx - bw/2), y, bw, bh, label, S.hot == key, true)
+      y = y - 8
     end
-    HUD.text('[ YOUR TEXT ]', cx, y, UI.DARK, 1, 'center', nil, ink)
-    y = y - 4 - h1
-    HUD.text('THE ' .. it.power .. ' POWER', cx, y, UI.DIM, 1, 'center', nil, ink)
-    y = y - 5 - h2
-    HUD.text(it.name, cx, y, UI.CREAM, 2, 'center', nil, ink)
+    y = y - h1
+    HUD.text(it.name, cx, y, UI.CREAM, 1, 'center', nil, ink)
     HUD.alpha(1)
   end
   -- an icon of object i (px square): the view's own render of it, small, against black, read back
