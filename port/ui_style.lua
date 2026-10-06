@@ -166,4 +166,16 @@ function UI.button(x, y, w, h, label, hot, primary)
   end
 end
 
+-- round 51: a one-glyph button drawn larger (the viewer's X), cream, the lamp's glow under the pointer
+function UI.glyph_button(x, y, w, h, label, hot, scale)
+  local th = HUD.text_height(scale)
+  local ty = y + floor((h - th)/2 + 0.5)
+  if hot then
+    local tw = HUD.text_width(label, scale)
+    local gw, gh = tw + 30, th + 18
+    HUD.texture(word_glow(gw, gh), floor(x + w/2 - gw/2), floor(ty + th/2 - gh/2), gw, gh)
+  end
+  HUD.text(label, x + w/2, ty, CREAM, scale, 'center', nil, 'rgba(8,6,5,0.85)')
+end
+
 return UI

@@ -8,7 +8,7 @@
 ]]
 local TM = require('port.three.math')
 local U = require('port.util')
-local Vector2, Vector3 = TM.Vector2, TM.Vector3
+local Vector2, Vector3, Quaternion, Euler = TM.Vector2, TM.Vector3, TM.Quaternion, TM.Euler
 local smoothstep = U.smoothstep
 local abs, sin, cos, floor, ceil, min, max = math.abs, math.sin, math.cos, math.floor, math.ceil, math.min, math.max
 
@@ -19,11 +19,13 @@ local CURL_LEAD = 0.08
 local AFTER = 0.3
 local GATHER, KNOT_HOLD, KNOT_UP, WRING = 0.95, 0.35, 0.15, 1.5
 local KNOT_PULL, KNOT_NEAR, KNOT_EGG = 0.45, 1.5, 1.1
+local BALL_R, HEAD_OFF, BALL_LAT = 0.3, 0.45, 1.15
 
 function LI.create(ctx)
   local snakes, rng, gore, lich, get_L, cave = ctx.snakes, ctx.rng, ctx.gore, ctx.lich, ctx.get_L, ctx.cave
   local N = snakes.RINGS
   local mid, half = floor(N*0.45 + 0.5), N*0.55
+  local LEN_HALF = snakes.LEN*0.5
   local held, groups = {}, {}
   local AIM, TOWARD = Vector3.new(), Vector3.new()
   local hand_free = false
@@ -51,22 +53,30 @@ function LI.create(ctx)
         out[1] = out[1] + side.x*(w + tr); out[2] = out[2] + tr*0.6; out[3] = out[3] + side.y*(w + tr)
       end,
       radk = function(i) local sw = smoothstep(grp.at - SWELL, grp.at, grp.t); return 1 + sw*0.45*(1 - abs((i - mid)/half)) end,
-      -- the knot: the middle drawn all the way to it, the rest less, wrung about it (more toward the ends)
+      -- round 51 (owner, 2026-10-06: "When lifted snakes get together they should curl into a ball sort
+      -- of, instead of staying elongated"): each body winds round its own tilted band on a ball (like
+      -- yarn), from its middle outward: the middle reaches the ball first, the rest is reeled in after
+      -- it; the head stands a little off the ball; the ball turns, tightens and writhes until the burst
       place = grp.knot and function(i, p)
         local K = grp.knot
-        local g = smoothstep(RISE*0.5, RISE + GATHER, f.t)
-        if g <= 0 then return end
-        local d = min(1, abs(i - mid)/half)
-        local w = 1 - 0.3*(d^1.4)
-        local o = K.off[k]
-        p.x = p.x + (K.c.x + o[1] - M0.x)*g*w
-        p.y = p.y + (K.c.y - (M0.y + f.H))*g*w
-        p.z = p.z + (K.c.z + o[2] - M0.z)*g*w
-        local ang = (g*WRING + K.turn*max(0, grp.t - (RISE + GATHER)))*K.dir*d
-        local rx, rz = p.x - K.c.x, p.z - K.c.z
-        local sq = 1 - 0.3*g*d
-        local ca, sa = cos(ang), sin(ang)
-        p.x = K.c.x + (rx*ca - rz*sa)*sq; p.z = K.c.z + (rx*sa + rz*ca)*sq
+        local g0 = smoothstep(RISE*0.4, RISE + GATHER, f.t)
+        if g0 <= 0 then return end
+        local u = snakes.arc(i) - LEN_HALF
+        local d = min(1, abs(u)/LEN_HALF)
+        local gi = smoothstep(0, 1, g0*1.7 - d*0.7)
+        if gi <= 0 then return end
+        local B = K.band[k]
+        local hold = max(0, grp.t - (RISE + GATHER))
+        local R = BALL_R*(1 - 0.12*smoothstep(0, KNOT_HOLD + SWELL, hold))*(0.82 + 0.18*d) + 0.028*(k - 1)
+        local head = snakes.arc(i) < HEAD_OFF and 0.13*(1 - snakes.arc(i)/HEAD_OFF) or 0
+        R = R + head + 0.012*sin(f.t*8 + i*0.45 + k)
+        local phi = B.phi0 + B.dir*u/BALL_R + K.spin*max(0, f.t - RISE*0.4)
+        local lat = max(-BALL_LAT, min(BALL_LAT, u/LEN_HALF*BALL_LAT))     -- (pole to pole: it covers the ball)
+        local cl, sl, cp, sp = cos(lat), sin(lat), cos(phi), sin(phi)
+        local x = K.c.x + R*(cl*(cp*B.U.x + sp*B.V.x) + sl*B.A.x)
+        local y = K.c.y + R*(cl*(cp*B.U.y + sp*B.V.y) + sl*B.A.y)
+        local z = K.c.z + R*(cl*(cp*B.U.z + sp*B.V.z) + sl*B.A.z)
+        p.x = p.x + (x - p.x)*gi; p.y = p.y + (y - p.y)*gi; p.z = p.z + (z - p.z)*gi
       end or nil,
       tick = function(dt)
         f.t = f.t + dt
@@ -111,9 +121,21 @@ function LI.create(ctx)
       c.x = E.x + ex/de*KNOT_EGG; c.z = E.z + ez/de*KNOT_EGG
     end
     c.y = cave.ground_y(c.x, c.z) + 1.75 + KNOT_UP
-    local off, a0 = {}, rng.float(0, 6.28)
-    for k = 1, #all do local a = a0 + (k - 1)*6.2832/#all; off[k] = { math.cos(a)*0.07, math.sin(a)*0.07 } end
-    return { c = c, off = off, dir = rng.sign(), turn = rng.float(0.8, 1.3) }
+    -- each body's band: a tilted great circle of its own (spread over the ball), its winding way, where it starts
+    local band = {}
+    -- (the axes spread evenly: a tetrahedron's corners, turned at random; past four, any)
+    local TET = { { 1, 1, 1 }, { 1, -1, -1 }, { -1, 1, -1 }, { -1, -1, 1 } }
+    local turn = Quaternion.new():set_from_euler(Euler.new(rng.float(0, 6.28), rng.float(0, 6.28), rng.float(0, 6.28)))
+    for k = 1, #all do
+      local A
+      if k <= 4 then A = Vector3.new(TET[k][1], TET[k][2], TET[k][3]):normalize():apply_quaternion(turn)
+      else A = Vector3.new(rng.spread(1), rng.spread(1), rng.spread(1)); if A:length_sq() < 1e-4 then A:set(0, 1, 0) end end
+      A:normalize()
+      local U = Vector3.new():cross_vectors(A, math.abs(A.y) < 0.9 and Vector3.new(0, 1, 0) or Vector3.new(1, 0, 0)):normalize()
+      local V = Vector3.new():cross_vectors(A, U):normalize()
+      band[k] = { A = A, U = U, V = V, dir = rng.sign(), phi0 = rng.float(0, 6.28) }
+    end
+    return { c = c, band = band, spin = rng.sign()*rng.float(0.5, 0.9) }
   end
   local function includes(list, x) for _, v in ipairs(list) do if v == x then return true end end; return false end
 

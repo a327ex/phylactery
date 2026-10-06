@@ -171,7 +171,13 @@ function IT.create(ctx)
           for _, o in ipairs(W) do
             if o ~= w and (o.state == 'lying' or o.state == 'falling' or o.state == 'forming') then
               local ox, oz
-              if o.bodies then ox, oz = o.land.x, o.land.y else ox, oz = o.g.position.x, o.g.position.z end
+              if o.bodies and o.land then ox, oz = o.land.x, o.land.y
+              elseif o.bodies then
+                -- (round 51: orbs let go from where they hovered have no landing spot: where they are now)
+                ox, oz = 0, 0
+                for _, b in ipairs(o.bodies) do ox = ox + b.x.x; oz = oz + b.x.z end
+                ox, oz = ox/#o.bodies, oz/#o.bodies
+              else ox, oz = o.g.position.x, o.g.position.z end
               if js_hypot(x - ox, z - oz) < r + lying_r(o) + 0.08 then bad = bad + 50 end
             end
           end
@@ -211,6 +217,141 @@ function IT.create(ctx)
     end
     w.body = w.bodies[1]
   end
+  -- round 51 (owner, 2026-10-06: "The orbs should be visible around the player, hovering around him in
+  -- unpredictable patterns, thrown away by just having some force applied to them in the direction"):
+  -- (ctx.varied) while the leakage is his its orbs hover round him, each wandering on its own: an
+  -- angle that drifts, slows, stops and turns back, a breathing radius and height, now and then a
+  -- swerve; a soft spring, so they trail him when he moves; off him, the egg, the floor and each
+  -- other. THROW pushes each the way he faces (a little spread) and they fly, fall and roll as
+  -- bodies; taken back, they rise to him again.
+  local varied = ctx.varied or false
+  local orng = U.make_rng(733)
+  local HOV_R, HOV_Y = 0.62, 0.1
+  local TG, A3, DV, QS = Vector3.new(), Vector3.new(), Vector3.new(), Quaternion.new()
+  local function ball_body(w, j, r)
+    local b = BO.create({ sphere = r, mass = w.it.mass, inertia = Vector3.new(1, 1, 1):multiply_scalar(0.4*w.it.mass*r*r), restitution = 0.22, friction = w.it.fric,
+      rolling = 2.5, rr = 0.26, floor = floor_y, egg = egg })
+    b.on_hit = function(v) if v > 1.2 then dust(b.x, v*0.5) end end
+    return b
+  end
+  local function hold_orbs(w)
+    local L = get_L()
+    w.hov = w.hov or {}
+    local n = #w.orbs
+    for j, m in ipairs(w.orbs) do
+      local h = w.hov[j] or {}
+      local b = w.bodies and w.bodies[j]
+      if b then h.p = b.x:clone(); h.v = Vector3.new(orng.spread(0.4), orng.float(1.4, 2.2), orng.spread(0.4))
+      else
+        local a = (j - 1)*6.2832/n + orng.spread(0.4)
+        h.p = Vector3.new(L.x + sin(a)*HOV_R, L.y + HOV_Y + orng.spread(0.2), L.z + cos(a)*HOV_R); h.v = Vector3.new()
+      end
+      h.th = atan2(h.p.x - L.x, h.p.z - L.z)
+      h.ph = {}
+      for q = 1, 6 do h.ph[q] = orng.float(0, 6.28) end
+      h.f = { orng.float(0.11, 0.23), orng.float(0.17, 0.37), orng.float(0.13, 0.29) }
+      h.w0 = orng.sign()*orng.float(0.55, 1.0)
+      h.dart = orng.float(1.0, 4.0)
+      h.q = h.q or Quaternion.new()
+      h.ax = Vector3.new(orng.spread(1), orng.spread(1), orng.spread(1)):normalize()
+      h.spin = orng.float(0.5, 1.4)
+      w.hov[j] = h
+    end
+    w.bodies = nil; w.body = nil
+    w.state = 'held'; w.t = 0; w.g.visible = true
+    w.g.position:set(0, 0, 0); w.g.quaternion:identity(); w.g.scale:set_scalar(1)
+    w.thrown = false; w.armed = false; w.lie_n = 0
+  end
+  local function update_held(w, dt, t)
+    local L = get_L()
+    local k = kf(w)
+    w.scale = min(1, (w.scale or 0) + dt/0.4)
+    local O, Hh = w.orbs, w.hov
+    for j, m in ipairs(O) do
+      local h = Hh[j]
+      local rb = m.user_data.r*k
+      local tp = t*6.2832
+      local n1 = sin(tp*h.f[1] + h.ph[1]) + 0.6*sin(tp*h.f[2]*1.7 + h.ph[2])
+      local n2 = sin(tp*h.f[2] + h.ph[3]) + 0.5*sin(tp*h.f[3]*2.3 + h.ph[4])
+      local n3 = sin(tp*h.f[3] + h.ph[5]) + 0.5*sin(tp*h.f[1]*2.9 + h.ph[6])
+      h.th = h.th + dt*h.w0*(0.3 + 0.95*n1)                -- (it slows, stops, turns back)
+      local r = HOV_R + 0.14*n2
+      TG:set(L.x + sin(h.th)*r, L.y + HOV_Y + 0.2*n3, L.z + cos(h.th)*r)
+      h.dart = h.dart - dt
+      if h.dart <= 0 then
+        h.dart = orng.float(1.8, 5.0)
+        local a = orng.float(0, 6.28)
+        h.v:add(DV:set(cos(a)*1.5, orng.spread(0.7), sin(a)*1.5))
+        h.th = h.th + orng.spread(1.2)
+      end
+      local wn = 6.2832*0.85
+      A3:sub_vectors(TG, h.p):multiply_scalar(wn*wn):add_scaled_vector(h.v, -2*0.7*wn)
+      for q = 1, #O do
+        if q ~= j then
+          local o = Hh[q]
+          local dx, dy, dz = h.p.x - o.p.x, h.p.y - o.p.y, h.p.z - o.p.z
+          local d = sqrt(dx*dx + dy*dy + dz*dz)
+          local mn = (rb + O[q].user_data.r*k)*1.9
+          if d < mn and d > 1e-4 then local f = (mn - d)/mn*40; A3.x = A3.x + dx/d*f; A3.y = A3.y + dy/d*f; A3.z = A3.z + dz/d*f end
+        end
+      end
+      h.v:add_scaled_vector(A3, dt)
+      h.p:add_scaled_vector(h.v, dt)
+      -- never inside him (a column round him), the egg or the floor
+      local dx, dz = h.p.x - L.x, h.p.z - L.z
+      local dh = js_hypot(dx, dz)
+      local inner = 0.34 + rb
+      if dh < inner and h.p.y < L.y + 0.75 and h.p.y > L.y - 1.35 then
+        if dh < 1e-4 then dx, dz, dh = 1, 0, 1 end
+        h.p.x = L.x + dx/dh*inner; h.p.z = L.z + dz/dh*inner
+        local vr = (h.v.x*dx + h.v.z*dz)/dh
+        if vr < 0 then h.v.x = h.v.x - dx/dh*vr; h.v.z = h.v.z - dz/dh*vr end
+      end
+      local ey = egg.top - 0.4
+      local ex, eyy, ez = h.p.x - egg.x, h.p.y - ey, h.p.z - egg.z
+      local de = sqrt(ex*ex + eyy*eyy + ez*ez)
+      local er = egg.r + rb + 0.04
+      if de < er and de > 1e-4 then
+        h.p.x = egg.x + ex/de*er; h.p.y = ey + eyy/de*er; h.p.z = egg.z + ez/de*er
+        local vn = (h.v.x*ex + h.v.y*eyy + h.v.z*ez)/de
+        if vn < 0 then h.v.x = h.v.x - ex/de*vn; h.v.y = h.v.y - eyy/de*vn; h.v.z = h.v.z - ez/de*vn end
+      end
+      local fy = floor_y(h.p.x, h.p.z) + rb + 0.05
+      if h.p.y < fy then h.p.y = fy; if h.v.y < 0 then h.v.y = 0 end end
+      QS:set_from_axis_angle(h.ax, h.spin*dt); h.q:premultiply(QS)
+      m.position:copy(h.p); m.quaternion:copy(h.q)
+      m.scale:set_scalar(max(1e-4, rb*w.scale))
+      m.material.user_data.U.uLit.value = in_sun(h.p)
+    end
+  end
+  -- from where they hover, as bodies: each pushed the way he faces (THROW), or tossed down beside him (a drop)
+  local function release_orbs(w, push_yaw, to)
+    local k = kf(w)
+    w.bodies = {}
+    for j, m in ipairs(w.orbs) do
+      local h = w.hov[j]
+      local r = m.user_data.r*k
+      local b = ball_body(w, j, r)
+      b.x:copy(h.p)
+      if push_yaw then
+        local a = push_yaw + orng.spread(0.3)
+        local sp = orng.float(3.4, 5.4)
+        b.v:set(sin(a)*sp + h.v.x*0.3, orng.float(0.9, 2.0), cos(a)*sp + h.v.z*0.3)
+        b.w:set(orng.spread(8), orng.spread(8), orng.spread(8))
+        for _ = 1, 3 do
+          warp.puff({ x = h.p.x, y = h.p.y, z = h.p.z, vx = sin(a)*orng.float(0.5, 1.4), vy = orng.spread(0.3), vz = cos(a)*orng.float(0.5, 1.4),
+            drag = 2.5, life = orng.float(0.3, 0.5), s0 = 0.08, s1 = 0.3, amp = 3.2, spin = orng.spread(4) })
+        end
+      else
+        local a, spread = (j - 1)*2.4, 0.06*k
+        local tx, tz = to.x + cos(a)*spread, to.y + sin(a)*spread
+        b.v:copy(toss(b.x, tx, floor_y(tx, tz) + r, tz, 0.55 + (j - 1)*0.04))
+      end
+      w.bodies[j] = b
+    end
+    w.body = w.bodies[1]
+    w.state = 'falling'; w.t = 0; w.scale = 1
+  end
   local function collide_balls(w)
     local Bs, O = w.bodies, w.orbs
     local k = kf(w)
@@ -245,6 +386,7 @@ function IT.create(ctx)
       local vz = rng.spread(0.3)
       warp.puff({ x = x, y = y, z = z, vx = vx, vy = vy, vz = vz, drag = 2.5, life = rng.float(0.3, 0.45), s0 = 0.1, s1 = 0.3, amp = 3.2, spin = rng.spread(4) })
     end
+    if w.it.balls and w.state == 'held' then release_orbs(w, nil, to); return true end
     if w.it.balls then
       drop_balls(w, to, from)
       w.state = 'forming'; w.t = 0; w.g.visible = true
@@ -285,6 +427,14 @@ function IT.create(ctx)
   local function throw(i, yaw)
     local w = W[i + 1]
     if not w then return false end
+    if w.it.balls and w.state == 'held' then
+      local L = get_L()
+      local h = from_hand(Vector2.new(L.x + sin(yaw), L.z + cos(yaw)))
+      lich.kick(h.k, 0.9)
+      release_orbs(w, yaw)
+      w.thrown = true; w.armed = false; w.lie_n = 0
+      return true
+    end
     local r = lying_r(w)
     local L = get_L()
     local fx_, fz_ = sin(yaw), cos(yaw)
@@ -356,6 +506,13 @@ function IT.create(ctx)
   local function take(i)
     local w = W[i + 1]
     if not w or w.state == 'away' then return end
+    if varied and w.it.balls then
+      for _, b in ipairs(w.bodies or {}) do
+        warp.puff({ x = b.x.x, y = b.x.y + 0.05, z = b.x.z, vy = 0.6, drag = 1.5, life = 0.5, s0 = 0.12, s1 = 0.35, amp = 3, spin = orng.spread(3) })
+      end
+      hold_orbs(w)
+      return
+    end
     w.thrown = false
     w.state = 'leaving'; w.t = 0
     if w.body then w.body.asleep = true end
@@ -367,9 +524,14 @@ function IT.create(ctx)
     end
   end
 
-  local function update_balls(w, dt)
+  local function update_balls(w, dt, t)
+    if w.state == 'held' then update_held(w, dt, t); return end
     local O = w.orbs
     local k = kf(w)
+    if varied and w.state == 'falling' then
+      -- (thrown ones stay out of the rocks and in the room camera's frame: nav's walls)
+      for j, b in ipairs(w.bodies) do nav.resolve(b.x, b.v, O[j].user_data.r*k) end
+    end
     if w.state == 'forming' then
       w.scale = smoothstep(0, 0.3, w.t)
       for _, b in ipairs(w.bodies) do b.step(dt) end
@@ -398,7 +560,7 @@ function IT.create(ctx)
     for _, w in ipairs(W) do
       if w.state ~= 'away' then
         w.t = w.t + dt
-        if w.it.balls then update_balls(w, dt)
+        if w.it.balls then update_balls(w, dt, t)
         else
           local skip = false
           if w.state == 'forming' then
@@ -470,6 +632,7 @@ function IT.create(ctx)
     end
     return out
   end
+  if varied then for _, w in ipairs(W) do if w.it.balls then hold_orbs(w) end end end
   return { W = W, opts = opts, drop = drop, throw = throw, near = near, take = take, update = update, set_hand_mat = set_hand_mat, set_size = set_size, state = state }
 end
 
