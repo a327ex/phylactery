@@ -94,7 +94,7 @@ function GM.create(R, hud_layer)
   local items, inspect
   if ITEMS_M then
     items = ITEMS_M.create({ R = R, cave = cave, fx = fx, warp = warp, nav = nav, lich = lich, mover = mover, get_L = function() return L end,
-      glance = function(p) powers.glance(p) end })
+      glance = function(p) powers.glance(p) end, varied = VARIED })
     local INSPECT_M = require('port.inspect')
     inspect = INSPECT_M.create({ R = R, items = items, ITEMS = ITEMS_M.ITEMS })
   end

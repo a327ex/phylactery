@@ -36,6 +36,8 @@ BE.opal = opal
 function BE.create(ctx)
   local R, snakes, fx, rng, lich, warp, gore, get_L = ctx.R, ctx.snakes, ctx.fx, ctx.rng, ctx.lich, ctx.warp, ctx.gore, ctx.get_L
   local N = snakes.RINGS
+  -- round 51: glass petals rising from the beamed body (port/petals.lua; the game's flow only)
+  local petals = ctx.varied and require('port.petals').create(R, ctx.cave) or nil
   local light = T.PointLight.new(0xffffff, 0, 5, 2)
   local hand = T.PointLight.new(0xffffff, 0, 1.8, 2)
   R.world_scene:add(light); R.world_scene:add(hand)
@@ -90,6 +92,7 @@ function BE.create(ctx)
       warp.puff({ x = p.x, y = p.y + 0.05, z = p.z, vx = vx, vy = vy, vz = vz, drag = 2.5, rise = 0.2, life = life, s0 = 0.2, s1 = s1, amp = amp, spin = spin })
     end
     gore.spatter(pts)
+    if petals then petals.burst(s.spine, N, 14) end
   end
   local function pierce_fx(s, hit)
     local f
@@ -104,6 +107,7 @@ function BE.create(ctx)
       tick = function(dt)
         f.t = f.t + dt
         f.sag = smoothstep(0, SHATTER_AT, f.t)*0.6
+        if petals and not f.hide then petals.trickle(s.spine, N, hit, smoothstep(0, FILL, f.t), dt) end
         if f.t >= SHATTER_AT and not f.hide then shatter(s); f.hide = true end
         if f.t >= SHATTER_AT + 0.05 then return 'done' end
       end,
@@ -163,6 +167,7 @@ function BE.create(ctx)
 
   local function update(t, dt)
     clock = t
+    if petals then petals.update(t, dt, R.world_camera) end
     if not ch then light.intensity = 0; hand.intensity = 0; return end
     ch.t = ch.t + dt
     local live, kmax = 0, 0

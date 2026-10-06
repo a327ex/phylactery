@@ -110,6 +110,7 @@ function IN.create(ctx)
     g.position:sub(Vector3.new(c[1], c[2], c[3]))
     local wrap = T.Group.new(); wrap:add(g)
     S.model = wrap; S.radius = max(size[1], size[2], size[3])*0.55
+    S.box = { size[1], size[2], size[3] }; S.title_y = nil
     holder:add(wrap)
     local v = it.view or { 0.55, 0.4, 0.0 }
     S.q:set_from_euler(Euler.new(v[1], v[2], v[3], 'YXZ'))
@@ -162,13 +163,15 @@ function IN.create(ctx)
   end
   function insp.pointer_down(x, y)
     if not S.active then return end
+    -- round 51: X closes the view (giving up nothing)
+    if button_at(x, y) == 'close' then if S.remove then insp.answer(false) else insp.close() end; return end
     if S.remove then local b = button_at(x, y); if b then insp.answer(b == 'throw'); return end end
     if S.accept then local b = button_at(x, y); if b then insp.accept(); return end end
     S.drag = { x, y }; S.idle = 0
   end
   function insp.pointer_up() S.drag = nil end
   function insp.pointer_move(x, y)
-    if S.active and (S.remove or S.accept) then S.hot = button_at(x, y) end
+    if S.active then S.hot = button_at(x, y) end
     if not S.active or not S.drag then return end
     local dx, dy = x - S.drag[1], y - S.drag[2]
     S.drag = { x, y }
@@ -213,8 +216,27 @@ function IN.create(ctx)
     R.params.world_override = { scene = scene, camera = camera }
     return true
   end
+  -- where the object's lowest point shows on screen now (its box's corners, projected), in HUD pixels
+  local CORNER = Vector3.new()
+  local function object_bottom()
+    if not (S.model and S.box) then return nil end
+    S.model:update_world_matrix(true, false)
+    camera:update_matrix_world()
+    local hx, hy, hz = S.box[1]/2, S.box[2]/2, S.box[3]/2
+    local best = -1e9
+    for sx = -1, 1, 2 do for sy = -1, 1, 2 do for sz = -1, 1, 2 do
+      CORNER:set(sx*hx, sy*hy, sz*hz):apply_matrix4(S.model.matrix_world):project(camera)
+      local y = (0.5 - CORNER.y*0.5)*R.H
+      if y > best then best = y end
+    end end end
+    return best
+  end
   -- round 49 (owner: "I want ONLY [item name] in normal font size, then 'throw'. Nothing else."):
-  -- the name, and under it THROW when the view was opened to give it up
+  -- the name, and under it THROW when the view was opened to give it up.
+  -- round 51 (owner, 2026-10-06: "Title of object closer to the object itself, throw stays in the same
+  -- place, X button visible so it can be clicked to close the model viewer"): the name sits just
+  -- under the object as it shows (eased, so it doesn't jump as the object turns), never into THROW;
+  -- THROW where it was; X at the top right
   function insp.draw_hud()
     if not S.active then return end
     local UI = require('port.ui_style')
@@ -236,8 +258,18 @@ function IN.create(ctx)
       UI.button(floor(cx - bw/2), y, bw, bh, label, S.hot == key, true)
       y = y - 8
     end
-    y = y - h1
-    HUD.text(it.name, cx, y, UI.CREAM, 1, 'center', nil, ink)
+    local lowest = y - h1
+    local want = object_bottom()
+    want = want and want + 6 or lowest
+    want = math.min(lowest, math.max(8, want))
+    local now = S.t
+    if S.title_y == nil then S.title_y = want
+    else S.title_y = S.title_y + (want - S.title_y)*(1 - exp(-8*max(0, now - (S.title_t or now)))) end
+    S.title_t = now
+    HUD.text(it.name, cx, floor(S.title_y + 0.5), UI.CREAM, 1, 'center', nil, ink)
+    local xs = HUD.text_height(2) + 14
+    S.buttons.close = { R.W - 6 - xs, 6, xs, xs }
+    UI.glyph_button(R.W - 6 - xs, 6, xs, xs, 'X', S.hot == 'close', 2)
     HUD.alpha(1)
   end
   -- an icon of object i (px square): the view's own render of it, small, against black, read back
