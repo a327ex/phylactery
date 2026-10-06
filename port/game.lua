@@ -433,7 +433,7 @@ function GM.create(R, hud_layer)
   end
   local function draw_hud()
     HUD.begin()
-    if inspect_active() then if G.hud then inspect.draw_hud() end; return end
+    if inspect_active() then inspect.draw_hud(); return end      -- (round 49: not the testing text's)
     if not END.won then draw_inventory() end
     if goal then
       gp:copy(goal):project(R.world_camera)

@@ -44,6 +44,10 @@ end
 
 G.screen_layer = layer_new('screen')
 G.hud_layer = layer_new('hud')
+-- round 49 (owner: the icons "don't have enough detail, like they're pixelated"): the inventory's icons
+-- drawn at the window's resolution, over the upscaled game (hud.lua HUD.texture_hi; round 44's layer)
+G.ui_layer = layer_create('ui_hi', 'rough', 640*2, 360*2)
+require('port.hud').hi_layer = G.ui_layer
 G.R = POST.create({ programs = G.programs })
 G.R.set_hud(G.hud_layer)
 G.R.statics = LD.group('statics')

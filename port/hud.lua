@@ -182,9 +182,19 @@ end
 function HUD.texture(tex, x, y, w, h)
   ops[#ops + 1] = { t = 'tex', e = { tex = tex, w = w, h = h }, x = x, y = y, a = galpha }
 end
+-- round 49: a texture drawn into the full-resolution layer (HUD.hi_layer, HUD.HI x the game's pixels):
+-- x, y, w, h in game pixels; the texture is w*HUD.HI wide
+HUD.HI = 2
+HUD.hi_layer = nil
+function HUD.texture_hi(tex, x, y, w, h)
+  ops[#ops + 1] = { t = 'texhi', e = { tex = tex, w = w, h = h }, x = x, y = y, a = galpha }
+end
 function HUD.flush(layer)
+  local hi, K = HUD.hi_layer, HUD.HI
   for _, o in ipairs(ops) do
-    if o.t == 'img' then
+    if o.t == 'texhi' then
+      if hi then layer_draw_texture(hi, o.e.tex, (o.x + o.e.w/2)*K, (o.y + o.e.h/2)*K, color(255, 255, 255, floor(o.a*255 + 0.5))()) end
+    elseif o.t == 'img' then
       layer_push(layer, o.x + o.w/2, o.y + o.h/2, 0, 1, -1)
       layer_draw_texture(layer, o.img, 0, 0, color(255, 255, 255, floor(o.a*255 + 0.5))())
       layer_pop(layer)
