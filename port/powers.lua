@@ -94,6 +94,10 @@ function PW.create(ctx)
   local groups = { BEAM = 0, FIRE = 0, LIFT = 0, ROCK = 0, LENS = 0 }   -- group casts so far
   local aborts = {}                                                      -- (why a gesture lost its aim)
   local APPROACH, ALL_R, ALL_TAKE, PLAN_QUIET, PLAN_CD = 7.5, ENGAGE + 1.6, ENGAGE + 2.8, 1.2, 1.5
+  -- (round 55: a gesture with a target this near the egg goes off at once; one still free this near is taken
+  -- by the last resort; a snake reaches the egg at 1.1 m, up to ~1.35 m/s)
+  local FIRE_NOW, LAST = 1.6, 1.35
+  local last_resorts = 0
   local VOLLEY_MIN, VOLLEY_MAX, SWEEP_W, SWEEP_V, SWEEP_SEG, SWEEP_LEAD = 0.17, 0.4, 2.6, 6.0, 0.12, 0.5
   -- (a group coming in makes one attack for all of it likelier; a lone snake, a mix or a rotation)
   local MODE_W, MODE_W_GROUP = { 0.18, 0.3, 0.25, 0.27 }, { 0.6, 0.15, 0.1, 0.15 }
@@ -459,7 +463,12 @@ function PW.create(ctx)
         local arrived = G.pw >= 1 and G.on_t >= ON_T and lich.arm_speed(G.arm) < (G.quick and QUICK_ARRIVE or ARRIVE) and (test_old or abs(rel_yaw(G.point)) < FIRE_IN)
         G.still = arrived and G.still + dt or 0
         local beat = min(G.ab.beat or BEAT, G.quick and QUICK_BEAT or 9)
-        if G.still >= beat or G.t >= (G.quick and QUICK_MAX or AIM_MAX) then
+        -- (round 55, owner: a snake reached the egg with all six held: an urgent gesture still took up to
+        -- QUICK_MAX to raise the arm and fire, longer than a snake within ~1.5 m needs. One of its targets
+        -- that close: it goes off now, the arm where it is)
+        local now = false
+        if varied then for _, q in ipairs(G.targets) do if snakes.free(q) and d_egg(q) < FIRE_NOW then now = true; break end end end
+        if now or G.still >= beat or G.t >= (G.quick and QUICK_MAX or AIM_MAX) then
           local targets = {}
           for _, q in ipairs(G.targets) do if snakes.free(q) then targets[#targets + 1] = q end end
           lich.fingertip(G.arm, TIP)
@@ -715,6 +724,24 @@ function PW.create(ctx)
         end
       end
     end
+    -- round 55, the last resort (owner, 2026-10-07: a snake reached the egg with all six held; traced: a snake a
+    -- rock or a lens had claimed was left to it until 1.5 / 2.0 m out, and they don't always arrive in time, then
+    -- the urgent gesture was too slow): anything still free this near is taken now by whatever takes at once,
+    -- whatever the hand is doing: the fire leaps to it, or a lift takes it, or a beam shot
+    if varied then
+      for _, s in ipairs(snakes.S) do
+        if snakes.free(s) and d_egg(s) < LAST then
+          local a = (on[FIRE] and FIRE) or (on[lift] and lift) or (on[beam] and beam) or nil
+          if a then
+            if a == FIRE then snakes.ignite(s)
+            elseif a == lift then lich.fingertip(G.arm or 1, TIP); lift.cast({ s }, TIP, jround(N*0.5), G.arm or 1)
+            else beam.shot(s, jround(N*0.3), G.arm or 1) end
+            count(a, 1); used_at[a] = clock
+            last_resorts = last_resorts + 1
+          end
+        end
+      end
+    end
     local urg = nil
     if not (#gestured > 0 or on[lens] or on[rock]) then urg = urgent_set end
     leak.update(t, dt, on[leak], urg)
@@ -759,6 +786,7 @@ function PW.create(ctx)
   function P.aborts() return aborts end
   function P.groups() groups.LIFT = lift.knots(); return groups end
   function P.gesture_phase() return G.phase, G.ab and G.ab.name, #G.targets end
+  function P.last_resorts() return last_resorts end
   function P.gesture_debug() return { t = G.t, quick = G.quick, still = G.still, pw = G.pw, on_t = G.on_t, primary = G.primary, targets = G.targets } end
   function P.get_facing() return facing end
   function P.set_facing(i) local n = #PW.FACINGS; facing = ((i % n) + n) % n end
