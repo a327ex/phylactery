@@ -809,7 +809,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
 
   local function update(t, dt)
     uSnakeT.value = t
-    if varied and not api.won then direct(dt) end
+    if varied and not api.won and not api.hold then direct(dt) end      -- (round 56: hold = no new waves, the ending's sequence)
     local n = #S
     local k = 1
     while k <= #S do
@@ -933,6 +933,29 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   -- round 50: the waves (testing: send one now; the director's state)
   api.varied = varied
   function api.send(kind) DIR.force = kind; return kind end
+  -- round 56 (the ending's start, owner: "Start the game for me with snakes near the egg"): n of the pool
+  -- sent from clear spots r0..r1 m out round the egg (not the camera's side), `spread` s apart, heading in
+  function api.gather(n, r0, r1, spread)
+    if not snav then return 0 end
+    local pool = pooled()
+    local sent = 0
+    local th0 = wrng.float(0, pi*2)
+    for k = 1, min(n, #pool) do
+      local th = th0 + (k - 1)*pi*2/n
+      for _ = 1, 24 do if valid_th(th) then break end; th = th + 0.26 end
+      local r = r0
+      while r <= r1 do
+        local x, z = egg.x + cos(th)*r, egg.z + sin(th)*r
+        if spawn_clear(x, z) then
+          sent = sent + 1
+          spawn(pool[sent], (sent - 1)*spread + wrng.float(0, spread*0.5), { th = th, x = x, z = z, dir = route_dir(x, z) })
+          break
+        end
+        r = r + 0.25
+      end
+    end
+    return sent
+  end
   function api.spawn_points() return spawn_points(valid_th) end
   function api.waves() return { next = DIR.next, n = DIR.n, last = DIR.last, lull = DIR.lull, log = DIR.log, pooled = #pooled() } end
   return api
