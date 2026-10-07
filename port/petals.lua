@@ -149,10 +149,12 @@ function PE.create(R, cave)
         local base = 0.16 + 0.12*lit
         local fade = smoothstep(0, 0.12, u)*(1 - smoothstep(0.65, 1, u))
         local c = opal(f.hue + NRM.x*0.35 + NRM.y*0.25 + t*0.05)
-        for q = 1, 3 do c[q] = 0.5*c[q] + 0.5 end           -- (glass: tinted, not dyed)
-        local k = (base + glint)*fade
-        local w = 0.35*glint*fade            -- (a flare runs toward white)
-        ic[i*3 + 1], ic[i*3 + 2], ic[i*3 + 3] = c[1]*k + w, c[2]*k + w, c[3]*k + w
+        for q = 1, 3 do c[q] = 0.62*c[q] + 0.38 end         -- (glass: tinted, not dyed)
+        -- (round 53, owner: "There are white squares appearing on the screen for a few frames": a petal's
+        -- flare ran toward white and clipped, a hard white block of a few pixels; the flare now stays in
+        -- its own tint and is held under the clip)
+        local k = min(1.1, base + 0.85*glint)*fade
+        ic[i*3 + 1], ic[i*3 + 2], ic[i*3 + 3] = c[1]*k, c[2]*k, c[3]*k
         local sc = f.size*(1 - 0.35*smoothstep(0.7, 1, u))
         M4:compose(PV:set(f.x, f.y, f.z), f.q, SV:set(sc, sc, sc))
         mesh:set_matrix_at(i, f.life > 0 and M4 or ZERO)

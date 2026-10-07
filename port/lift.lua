@@ -57,6 +57,11 @@ function LI.create(ctx)
       -- of, instead of staying elongated"): each body winds round its own tilted band on a ball (like
       -- yarn), from its middle outward: the middle reaches the ball first, the rest is reeled in after
       -- it; the head stands a little off the ball; the ball turns, tightens and writhes until the burst
+      -- round 53 (owner, 2026-10-07: "more irregular instead of a perfect circle, and the movement of entities
+      -- there should also follow a better tween method, the ball itself should also float irregularly and move
+      -- a bit irregularly too to the sides"): the ball has lumps and squashes and stretches as it goes; its
+      -- centre bobs and drifts on uneven waves; and each ring follows its place on a spring of its own (the
+      -- middle firm, the ends looser), so the bodies whip in, overshoot a little and settle
       place = grp.knot and function(i, p)
         local K = grp.knot
         local g0 = smoothstep(RISE*0.4, RISE + GATHER, f.t)
@@ -64,19 +69,41 @@ function LI.create(ctx)
         local u = snakes.arc(i) - LEN_HALF
         local d = min(1, abs(u)/LEN_HALF)
         local gi = smoothstep(0, 1, g0*1.7 - d*0.7)
-        if gi <= 0 then return end
         local B = K.band[k]
-        local hold = max(0, grp.t - (RISE + GATHER))
+        local T = grp.t
+        local hold = max(0, T - (RISE + GATHER))
         local R = BALL_R*(1 - 0.12*smoothstep(0, KNOT_HOLD + SWELL, hold))*(0.82 + 0.18*d) + 0.028*(k - 1)
         local head = snakes.arc(i) < HEAD_OFF and 0.13*(1 - snakes.arc(i)/HEAD_OFF) or 0
-        R = R + head + 0.012*sin(f.t*8 + i*0.45 + k)
         local phi = B.phi0 + B.dir*u/BALL_R + K.spin*max(0, f.t - RISE*0.4)
         local lat = max(-BALL_LAT, min(BALL_LAT, u/LEN_HALF*BALL_LAT))     -- (pole to pole: it covers the ball)
         local cl, sl, cp, sp = cos(lat), sin(lat), cos(phi), sin(phi)
-        local x = K.c.x + R*(cl*(cp*B.U.x + sp*B.V.x) + sl*B.A.x)
-        local y = K.c.y + R*(cl*(cp*B.U.y + sp*B.V.y) + sl*B.A.y)
-        local z = K.c.z + R*(cl*(cp*B.U.z + sp*B.V.z) + sl*B.A.z)
-        p.x = p.x + (x - p.x)*gi; p.y = p.y + (y - p.y)*gi; p.z = p.z + (z - p.z)*gi
+        local ux = cl*(cp*B.U.x + sp*B.V.x) + sl*B.A.x
+        local uy = cl*(cp*B.U.y + sp*B.V.y) + sl*B.A.y
+        local uz = cl*(cp*B.U.z + sp*B.V.z) + sl*B.A.z
+        -- the lumps (no sphere), then the writhing and the heads standing off it
+        local lump = 1
+        for _, L in ipairs(K.lumps) do local dd = ux*L[1] + uy*L[2] + uz*L[3]; if dd > 0 then lump = lump + L[4]*dd*dd*dd end end
+        R = R*lump + head + 0.014*sin(f.t*8 + i*0.45 + k)
+        -- squashing and stretching, slowly; the centre floating on uneven waves
+        local P_ = K.ph
+        local ex, ey, ez = 1 + 0.15*sin(T*1.3 + P_[1]), 1 + 0.13*sin(T*1.7 + P_[2]), 1 + 0.15*sin(T*1.1 + P_[3])
+        local cx = K.c.x + 0.09*sin(T*0.9 + P_[4]) + 0.045*sin(T*2.3 + P_[5])
+        local cy = K.c.y + 0.07*sin(T*1.4 + P_[6]) + 0.03*sin(T*3.1 + P_[1])
+        local cz = K.c.z + 0.09*sin(T*0.8 + P_[2]) + 0.045*sin(T*2.1 + P_[3])
+        local tx = p.x + (cx + ux*R*ex - p.x)*gi
+        local ty = p.y + (cy + uy*R*ey - p.y)*gi
+        local tz = p.z + (cz + uz*R*ez - p.z)*gi
+        -- each ring on its own spring toward that (the ends looser: they whip, overshoot, settle)
+        f.rp = f.rp or {}; f.rv = f.rv or {}
+        local q, v = f.rp[i + 1], f.rv[i + 1]
+        if not q then q = { p.x, p.y, p.z }; v = { 0, 0, 0 }; f.rp[i + 1] = q; f.rv[i + 1] = v end
+        local w = 14 - 6*d
+        local z2 = 2*0.58*w
+        local h = 1/60
+        local ax = (tx - q[1])*w*w - v[1]*z2; local ay = (ty - q[2])*w*w - v[2]*z2; local az = (tz - q[3])*w*w - v[3]*z2
+        v[1] = v[1] + ax*h; v[2] = v[2] + ay*h; v[3] = v[3] + az*h
+        q[1] = q[1] + v[1]*h; q[2] = q[2] + v[2]*h; q[3] = q[3] + v[3]*h
+        p.x, p.y, p.z = q[1], q[2], q[3]
       end or nil,
       tick = function(dt)
         f.t = f.t + dt
@@ -135,7 +162,17 @@ function LI.create(ctx)
       local V = Vector3.new():cross_vectors(A, U):normalize()
       band[k] = { A = A, U = U, V = V, dir = rng.sign(), phi0 = rng.float(0, 6.28) }
     end
-    return { c = c, band = band, spin = rng.sign()*rng.float(0.5, 0.9) }
+    -- (round 53: its lumps, and the phases of its floating and its squash)
+    local lumps = {}
+    for q = 1, 5 do
+      local L = Vector3.new(rng.spread(1), rng.spread(1), rng.spread(1))
+      if L:length_sq() < 1e-4 then L:set(1, 0, 0) end
+      L:normalize()
+      lumps[q] = { L.x, L.y, L.z, rng.float(0.15, 0.4) }
+    end
+    local ph = {}
+    for q = 1, 6 do ph[q] = rng.float(0, 6.28) end
+    return { c = c, band = band, spin = rng.sign()*rng.float(0.5, 0.9), lumps = lumps, ph = ph }
   end
   local function includes(list, x) for _, v in ipairs(list) do if v == x then return true end end; return false end
 

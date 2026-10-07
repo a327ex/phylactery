@@ -235,6 +235,17 @@ function LE.create(ctx)
     return out
   end
 
+  -- (round 53: a snake another lens is on its way to: this lens's cut passes it by)
+  local function aimed_by_other(s, q)
+    for _, o in ipairs(active) do
+      if o ~= q and (o.ncut or 0) == 0 then
+        if o.s == s then return true end
+        if o.group then for _, g in ipairs(o.group) do if g == s then return true end end end
+      end
+    end
+    return false
+  end
+
   local function update(t, dt)
     for ii = #active, 1, -1 do
       local q = active[ii]
@@ -284,6 +295,13 @@ function LE.create(ctx)
             local dir = Vector3.new():sub_vectors(p, q.a); dir.y = 0; dir:normalize()
             q.b:copy(q.a):add_scaled_vector(dir, SWEEP)
           end
+        end
+        -- (round 53: a single lens's line keeps turning to pass through its snake while it crawls, until cut)
+        if snakes.reclaim and not q.path and q.fired and q.s and snakes.free(q.s) and (q.ncut or 0) == 0 and sweep_t < q.dur then
+          local tp = frame_at(q.s, q.ring)
+          local dx, dz = tp.x - q.a.x, tp.z - q.a.z
+          local dl = hyp(dx, dz)
+          if dl > 1e-3 then q.b:set(q.a.x + dx/dl*max(SWEEP, dl + 0.5), q.b.y, q.a.z + dz/dl*max(SWEEP, dl + 0.5)) end
         end
         -- (round 52: its snake taken by another lens's cut before this one reached it: this one stops)
         if snakes.reclaim and not q.path and q.s and not snakes.free(q.s) and (q.ncut or 0) == 0 and sweep_t < q.dur and sweep_t > 0 then q.b:copy(q.spot); q.a:copy(q.spot); q.dur = sweep_t end
@@ -390,7 +408,7 @@ function LE.create(ctx)
             fx.mote({ x = x, y = sp.y + 0.01, z = z, life = rng.float(1.4, 2.4), s0 = 0.06, s1 = 0.035, r = 1.4, g = 0.4, b = 0.07, a = 0.85, fin = 0.02 })
           end
           for _, s in ipairs(snakes.S) do
-            if snakes.free(s) and not (snakes.held_by_other and s ~= q.s and snakes.held_by_other(s, 'LENS')) then
+            if snakes.free(s) and not (snakes.held_by_other and s ~= q.s and (snakes.held_by_other(s, 'LENS') or aimed_by_other(s, q))) then
               local best, bi = 1e9, -1
               for j = 2, N - 3 do local d = hyp(s.spine[j + 1].x - sp.x, s.spine[j + 1].z - sp.z); if d < best then best = d; bi = j end end
               if best < CUT_R and snakes.arc(bi) <= CUT_MAX and snakes.arc(bi) >= CUT_MIN then
