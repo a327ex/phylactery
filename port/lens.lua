@@ -97,6 +97,7 @@ function LE.create(ctx)
   local active = {}
   local look = 0
   local cuts, fired = {}, {}
+  local stats = { done = 0, empty = 0 }              -- (lenses whose cut ended, and those that cut nothing)
 
   local function cut_fx(s, c)
     local tan = Vector3.new():sub_vectors(s.spine[max(0, c - 3) + 1], s.spine[min(N - 1, c + 3) + 1]); tan.y = 0; tan:normalize()
@@ -239,6 +240,12 @@ function LE.create(ctx)
       local q = active[ii]
       local i = ii - 1                              -- lens.js's index (the drift and flicker phases)
       q.t = q.t + dt
+      -- (round 52: a lens on its way keeps its snake(s) until its cut has passed)
+      if snakes.reclaim and q.t - FORM - CONVERGE <= q.dur then
+        if q.s and snakes.free(q.s) then snakes.reclaim(q.s, 'LENS') end
+        if q.path then for _, e in ipairs(q.path.nodes) do if snakes.free(e.s) then snakes.reclaim(e.s, 'LENS') end end
+        elseif q.group then for _, g in ipairs(q.group) do if snakes.free(g) then snakes.reclaim(g, 'LENS') end end end
+      end
       local L = q.L
       local m = L.m
       local UU = m.material.user_data.U
@@ -278,6 +285,8 @@ function LE.create(ctx)
             q.b:copy(q.a):add_scaled_vector(dir, SWEEP)
           end
         end
+        -- (round 52: its snake taken by another lens's cut before this one reached it: this one stops)
+        if snakes.reclaim and not q.path and q.s and not snakes.free(q.s) and (q.ncut or 0) == 0 and sweep_t < q.dur and sweep_t > 0 then q.b:copy(q.spot); q.a:copy(q.spot); q.dur = sweep_t end
         local f = min(1, sweep_t/q.dur)
         if q.path then path_at(q, f, q.spot) else q.spot:lerp_vectors(q.a, q.b, f) end
         q.spot.y = cave.ground_y(q.spot.x, q.spot.z) + 0.02
@@ -381,11 +390,12 @@ function LE.create(ctx)
             fx.mote({ x = x, y = sp.y + 0.01, z = z, life = rng.float(1.4, 2.4), s0 = 0.06, s1 = 0.035, r = 1.4, g = 0.4, b = 0.07, a = 0.85, fin = 0.02 })
           end
           for _, s in ipairs(snakes.S) do
-            if snakes.free(s) then
+            if snakes.free(s) and not (snakes.held_by_other and s ~= q.s and snakes.held_by_other(s, 'LENS')) then
               local best, bi = 1e9, -1
               for j = 2, N - 3 do local d = hyp(s.spine[j + 1].x - sp.x, s.spine[j + 1].z - sp.z); if d < best then best = d; bi = j end end
               if best < CUT_R and snakes.arc(bi) <= CUT_MAX and snakes.arc(bi) >= CUT_MIN then
                 s.claim = nil; snakes.take(s, cut_fx(s, max(3, bi))); cuts[#cuts + 1] = { arc = snakes.arc(bi), target = s == q.s }
+                q.ncut = (q.ncut or 0) + 1
               end
             end
           end
@@ -411,6 +421,18 @@ function LE.create(ctx)
       end
       if sweep_t > q.dur + OFF + FADE then
         L.on = false; m.visible = false; L.sh.visible = false; L.cone.visible = false; L.patch.visible = false
+        if q.fired then
+          stats.done = stats.done + 1
+          if (q.ncut or 0) == 0 then
+            stats.empty = stats.empty + 1
+            local tg = q.s
+            stats.why = stats.why or {}
+            local d = tg and hyp(tg.spine[q.ring + 1].x - q.b.x, tg.spine[q.ring + 1].z - q.b.z) or -1
+            stats.why[#stats.why + 1] = string.format('%s free %s by %s group %s quick %s ring-to-end %.2f', tostring(tg ~= nil), tostring(tg and snakes.free(tg)),
+              tostring(tg and tg.fx and tg.fx.by or (tg and tg.burn and 'burn') or '-'), tostring(q.group ~= nil), tostring(q.t0q), d)
+            if #stats.why > 30 then table.remove(stats.why, 1) end
+          end
+        end
         if q.core then fx.release(q.core) end
         if q.light then q.light.l.intensity = 0; q.light.lens = nil end
         table.remove(active, ii)
@@ -418,12 +440,23 @@ function LE.create(ctx)
     end
   end
 
-  local P = { name = 'LENS', gesture = false, cooldown = 6.5, update = update, cuts = cuts, fired = fired, active = active }
+  local P = { name = 'LENS', gesture = false, cooldown = 6.5, update = update, cuts = cuts, fired = fired, active = active, stats = stats }
   function P.capacity(p) return ceil(p/1.5) end
   function P.cast(targets, quick)
     local out = {}
     for k, s in ipairs(targets) do local p = spawn(s, k - 1, quick); if p then out[#out + 1] = p end end
     return out
+  end
+  -- round 52: a snake near the egg that a lens is already forming over: that lens fires now (as a quick
+  -- one would) instead of a second lens being sent; true if one was found (forming, or already firing)
+  function P.hurry(s)
+    for _, q in ipairs(active) do
+      if q.s == s or (q.group and (function() for _, g in ipairs(q.group) do if g == s then return true end end; return false end)()) then
+        if not q.fired then q.t = max(q.t, FORM + CONVERGE - 0.12) end
+        return true
+      end
+    end
+    return false
   end
   function P.cast_group(targets)
     local p = spawn(targets[1], 0, false, targets)

@@ -184,7 +184,7 @@ function LK.create(ctx)
   function P.update(t, dt, on, urgent)
     local L = get_L()
     for _, s in ipairs(snakes.S) do
-      if not (s.delay > 0 or s.dying >= 0 or s.burn or s.sink >= 0 or s.fx or s.coil) then
+      if not (s.delay > 0 or s.dying >= 0 or s.burn or s.sink >= 0 or s.fx or s.coil) and not (snakes.held_by_other and snakes.held_by_other(s)) then
         local d = 1e9
         for i = 0, N - 1, 6 do d = min(d, hyp(s.spine[i + 1].x - L.x, s.spine[i + 1].z - L.z)) end
         if on and d < reach then

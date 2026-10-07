@@ -92,6 +92,7 @@ function PW.create(ctx)
   local CHOOSE = { FIRE, lift, beam, rock, lens }
   local plan, force_plan, used_at, plans_log = nil, 0, {}, {}
   local groups = { BEAM = 0, FIRE = 0, LIFT = 0, ROCK = 0, LENS = 0 }   -- group casts so far
+  local aborts = {}                                                      -- (why a gesture lost its aim)
   local APPROACH, ALL_R, ALL_TAKE, PLAN_QUIET, PLAN_CD = 7.5, ENGAGE + 1.6, ENGAGE + 2.8, 1.2, 1.5
   local VOLLEY_MIN, VOLLEY_MAX, SWEEP_W, SWEEP_V, SWEEP_SEG, SWEEP_LEAD = 0.17, 0.4, 2.6, 6.0, 0.12, 0.5
   -- (a group coming in makes one attack for all of it likelier; a lone snake, a mix or a rotation)
@@ -158,6 +159,28 @@ function PW.create(ctx)
     plan.next = a
     return a
   end
+  -- round 52 (owner, 2026-10-06: "Sometimes some attacks will cut off other attacks and attacks will be
+  -- cancelled or the animation will play wrong in some way, make sure those kinds of things can't
+  -- happen"): what holds a snake now (a claim still running), for the other attacks to respect: a
+  -- snake a gesture (fire, lift, beam) has chosen is left alone by the rocks, the lens's cut, the
+  -- leakage and the lift's neighbours; one a rock is already flying at is left to it
+  local GESTURE = { FIRE = true, LIFT = true, BEAM = true }
+  local function taken_by(s) if s.claim and s.claim_until > clock then return s.claim end end
+  if varied then
+    snakes.taken_by = taken_by
+    snakes.guarded = function(s) local c = taken_by(s); return c ~= nil and GESTURE[c] == true end
+    -- an attack still on its way keeps its snake (a short claim, renewed each tick while it is)
+    snakes.reclaim = function(s, who)
+      local c = taken_by(s)
+      if c == nil then s.claim = who; s.claim_until = clock + 0.3
+      elseif string.sub(c, 1, 4) == who then s.claim_until = max(s.claim_until, clock + 0.3) end     -- (its name kept: 'LENS-QUICK' stays quick)
+    end
+    -- held by an attack other than `mine` ('ROCK', 'LENS'; nil: by any)
+    snakes.held_by_other = function(s, mine) local c = taken_by(s); return c ~= nil and (mine == nil or string.sub(c, 1, 4) ~= mine) end
+  end
+  local function rocks_own(s) local c = taken_by(s); return c ~= nil and string.sub(c, 1, 4) == 'ROCK' and d_egg(s) > 1.5 end
+  local function lens_own(s) local c = taken_by(s); return c ~= nil and string.sub(c, 1, 4) == 'LENS' and d_egg(s) > 2.0 end
+  local function lens_has(s) local c = taken_by(s); return c ~= nil and string.sub(c, 1, 4) == 'LENS' end
   local function plan_done(a)
     used_at[a] = clock
     if not plan then return end
@@ -295,7 +318,10 @@ function PW.create(ctx)
       elseif not (ab and ab.gesture) or nxt[ab] > 0 then return false end
       local sel = want_targets(ab, quick)
       if quick then
-        local first = stable_sort(urgent, d_egg)
+        local ur = {}
+        for _, q in ipairs(urgent) do if not rocks_own(q) and not lens_own(q) then ur[#ur + 1] = q end end
+        if #ur == 0 then return false end
+        local first = stable_sort(ur, d_egg)
         local cap = max(#first, sel and #sel or 0, ab.capacity(power))
         local out = {}
         for _, q in ipairs(first) do out[#out + 1] = q end
@@ -356,6 +382,13 @@ function PW.create(ctx)
       return true
     end
 
+    if varied and (G.phase == 'aim' or G.phase == 'volley' or G.phase == 'sweep') then
+      -- (round 52: a gesture under way keeps the snakes it has yet to strike)
+      for k = (G.phase == 'aim' and 1 or G.vi), #G.targets do
+        local q = G.targets[k]
+        if q and snakes.free(q) then snakes.reclaim(q, G.ab.name) end
+      end
+    end
     if varied then
       local near = false
       for _, q in ipairs(snakes.S) do if snakes.free(q) and d_egg(q) < APPROACH then near = true; break end end
@@ -377,8 +410,25 @@ function PW.create(ctx)
     elseif G.phase == 'aim' then
       G.t = G.t + dt
       local s = G.primary
+      if varied and on[G.ab] and not snakes.free(s) then
+        -- (round 52: its snake gone to something else: aim at the next of its own, or another near)
+        local nx
+        for _, q in ipairs(G.targets) do if snakes.free(q) then nx = q; break end end
+        if not nx then
+          local th = threats(reach_of(G.ab) + 0.6)
+          if #th == 0 then th = threats(APPROACH + 2.5) end      -- (one further out rather than the arm dropping)
+          nx = th[1]
+          if nx then claim(nx, G.ab.name, 2.0); G.targets = { nx } end
+        end
+        if nx then G.primary = nx; s = nx end
+      end
       if not on[G.ab] or not snakes.free(s) or (facing == 1 and not G.must_turn and behind(s.spine[G.ring + 1])) then
         if on[G.ab] and snakes.free(s) then drops = drops + 1 end
+        if varied then
+          aborts[#aborts + 1] = string.format('%s on %s free %s by %s claim %s', G.ab.name, tostring(on[G.ab]), tostring(snakes.free(s)),
+            tostring(s.fx and s.fx.by or (s.burn and 'burn') or (s.coil and 'coil') or (s.delay > 0 and 'gone') or '-'), tostring(s.claim))
+          if #aborts > 30 then table.remove(aborts, 1) end
+        end
         for _, q in ipairs(G.targets) do q.claim = nil end
         G.phase = 'lower'; G.t = 0
       else
@@ -521,7 +571,18 @@ function PW.create(ctx)
         if channel and G.ab.extend then
           local ul = {}
           for k, s in ipairs(urgent) do ul[k] = s end
-          if not G.ab.extend(ul, G.arm) and G.ab.cut then G.ab.cut() end
+          if varied then
+            -- (round 52: not one a rock is already flying at, or the lens already burning toward)
+            local keep = {}
+            for _, s in ipairs(ul) do if not rocks_own(s) and not lens_own(s) then keep[#keep + 1] = s end end
+            ul = keep
+          end
+          if not G.ab.extend(ul, G.arm) then
+            if varied and G.ab == beam then
+              -- (round 52: the beams already out finish from where they were fired; the hand is free)
+              beam.detach(); G.phase = 'idle'; G.t = 0; G.ab = nil
+            elseif G.ab.cut then G.ab.cut() end
+          end
         elseif not channel then G.phase = 'idle'; G.t = 0; G.ab = nil end
       end
       if G.phase == 'hold' and not channel and G.t >= HOLD_CHAIN and try_gesture() then
@@ -562,7 +623,8 @@ function PW.create(ctx)
       if lone or busy_hand then
         rush = {}
         for _, s in ipairs(urgent) do
-          if not (s.claim and s.claim_until > clock and string.find(s.claim, 'QUICK', 1, true)) and not (busy_hand and includes(G.targets, s)) then rush[#rush + 1] = s end
+          if not (s.claim and s.claim_until > clock and string.find(s.claim, 'QUICK', 1, true)) and not (busy_hand and includes(G.targets, s))
+            and not (varied and (rocks_own(s) or (lens_has(s) and lens.hurry(s) and d_egg(s) > 1.8) or (busy_hand and snakes.guarded(s)))) then rush[#rush + 1] = s end
         end
       end
       if rush and #rush > 0 then
@@ -605,7 +667,8 @@ function PW.create(ctx)
       if #gestured == 0 or busy_hand then
         rush = {}
         for _, s in ipairs(urgent) do
-          if not (s.claim and s.claim_until > clock and string.find(s.claim, 'QUICK', 1, true)) and not (busy_hand and includes(G.targets, s)) then rush[#rush + 1] = s end
+          if not (s.claim and s.claim_until > clock and string.find(s.claim, 'QUICK', 1, true)) and not (busy_hand and includes(G.targets, s))
+            and not (varied and (rocks_own(s) or lens_own(s) or (busy_hand and snakes.guarded(s)))) then rush[#rush + 1] = s end
         end
       end
       if rush and #rush > 0 and rock.free_rocks() > 0 then
@@ -684,6 +747,7 @@ function PW.create(ctx)
     return { mode = PW.PLANS[plan.mode], set = names, casts = plan.casts, max = plan.max, next = plan.next and plan.next.name }
   end
   function P.plans_log() return plans_log end
+  function P.aborts() return aborts end
   function P.groups() groups.LIFT = lift.knots(); return groups end
   function P.gesture_phase() return G.phase, G.ab and G.ab.name, #G.targets end
   function P.get_facing() return facing end

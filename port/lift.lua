@@ -144,11 +144,14 @@ function LI.create(ctx)
   function P.aim_ring() return mid end
   function P.cast(targets, from, ring, arm)
     if arm == nil then arm = 1 end
-    held = {}; hand_free = false
+    -- (round 52: a lift already holding snakes keeps them; the neighbours it takes are no one else's)
+    if not ctx.varied then held = {} end
+    hand_free = false
     local all = {}
     for k, s in ipairs(targets) do all[k] = s end
     for _, s in ipairs(snakes.S) do
-      if snakes.free(s) and not includes(all, s) then
+      local other = ctx.varied and snakes.taken_by and snakes.taken_by(s)
+      if snakes.free(s) and not includes(all, s) and not (other and other ~= 'LIFT') then
         local near = false
         for _, q in ipairs(targets) do if q.spine[mid + 1]:distance_to(s.spine[mid + 1]) < GROUP_R then near = true; break end end
         if near then all[#all + 1] = s end
