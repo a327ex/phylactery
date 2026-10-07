@@ -314,6 +314,13 @@ function GM.create(R, hud_layer)
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
     if END.won then return end
+    -- round 54 (owner: "Pressing F6 also only works if the menu is showing and not globally"): the font
+    -- audition's key works everywhere, the model viewer open or not
+    if hit('f6') then
+      local O, cur = HUD.FONT_ORDER, 1
+      for k, n in ipairs(O) do if n == HUD.font_name then cur = k end end
+      HUD.set_font(O[cur % #O + 1])
+    end
     if inspect_active() then
       if inspect.S.accept then
         if hit('return') or hit('enter') or hit('kpenter') or hit('space') then inspect.accept() end
@@ -365,12 +372,6 @@ function GM.create(R, hud_layer)
     if hit('f7') then local MK = require('port.orbmarks'); MK.set_style(MK.style + 1) end
     if hit('f8') then END_ZOOM.on = not END_ZOOM.on end
     if hit('f3') then powers.force_plan(powers.get_force() + 1) end
-    if hit('f6') then
-      -- round 53: the font audition
-      local O, cur = HUD.FONT_ORDER, 1
-      for k, n in ipairs(O) do if n == HUD.font_name then cur = k end end
-      HUD.set_font(O[cur % #O + 1])
-    end
     if hit('f9') then snakes.send('PACK') end
     if hit('f10') then snakes.send('SPREAD') end
   end
