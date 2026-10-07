@@ -285,9 +285,13 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     s.pooled = false
     s.prog_t, s.prog_v, s.prog_m, s.stuck, s.ghost = 0, nil, 0, 0, false
     s.trail = {}
-    for i = 0, 399 do s.trail[i + 1] = { s.x - cos(s.dir)*i*0.01, s.z - sin(s.dir)*i*0.01 } end
+    -- (round 54, the white squares: the old 400 points (3.99 m) are shorter than the body (LEN 4.4 m), so for its
+    -- first ~0.4 s the last tail rings stood stacked on the trail's end point; gpu_tube gave them zero normals, the
+    -- vertex shader's normalize() a NaN pixel, and the bloom's blur spread that into a 96 px white square)
+    local NT0 = varied and 460 or 400
+    for i = 0, NT0 - 1 do s.trail[i + 1] = { s.x - cos(s.dir)*i*0.01, s.z - sin(s.dir)*i*0.01 } end
     -- (each point keeps [3] = its distance to the next: the walks along the trail read it)
-    for i = 1, 399 do local a, b = s.trail[i], s.trail[i + 1]; a[3] = js_hypot(b[1] - a[1], b[2] - a[2]) end
+    for i = 1, NT0 - 1 do local a, b = s.trail[i], s.trail[i + 1]; a[3] = js_hypot(b[1] - a[1], b[2] - a[2]) end
     s.dying = -1; s.delay = delay; s.scale = 1; s.dist = 0
     s.burn = nil; s.sag = 0; s.sink = -1; s.burnt = false
     s.fx = nil; s.leak = 0; s.leak_at = nil; s.claim = nil; s.coil = nil
@@ -735,6 +739,12 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
           local l = a[3]
           if acc + l >= target then local ff = (target - acc)/(l == 0 and 1 or l); x = a[1] + (b[1] - a[1])*ff; z = a[2] + (b[2] - a[2])*ff; break end
           acc = acc + l; ti = ti + 1
+        end
+        -- (round 54: past the trail's end the body goes on straight back, never stacked on its last point)
+        if varied and ti >= NT - 1 and target > acc and NT > 1 then
+          local a, b = trail[NT - 1], trail[NT]
+          local l = a[3]
+          if l and l > 0 then local ff = (target - acc)/l; x = b[1] + (b[1] - a[1])*ff; z = b[2] + (b[2] - a[2])*ff end
         end
         local r = R0*RAD[i + 1]*sc*RK[i + 1]
         local lift = RAISE*smoothstep(RAISE_LEN, 0.05, target)*sc*(1 - smoothstep(0, 1, s.sag))
