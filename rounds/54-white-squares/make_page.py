@@ -50,7 +50,7 @@ H.append(img(E + '20261007-073057_01987.png', 'your run 07:30:57, frame 1987 (33
 H.append(img(E + '20261007-070529_00826.png', 'your run 07:05:29, frame 826: the left edge'))
 H.append('</div><p>I replayed your five runs since this morning headless and checked every frame. The squares are in four of them: 96 by 96 pixels, flat white, 2 to 11 frames each, all out in the dark where snakes start. The one at the top left is in three runs at the same spot, because the waves draw from the same seed every run.</p>')
 H.append('<div class="grid">')
-for f, cap in (('00289', 'frame 289'), ('00290', 'frame 290: the square'), ('00292', 'frame 292: a snake has started there')):
+for f, cap in (('00289', 'frame 289'), ('00290', 'frame 290: the square'), ('00292', 'frame 292: the small dark curve is the new snake')):
     H.append(img(E + '20261007-070604_' + f + '.png', 'run 07:06:04, ' + cap + ' (brightened x3)', crop=(100, 0, 280, 150), w=540, bright=3.0))
 H.append('</div></section>')
 
