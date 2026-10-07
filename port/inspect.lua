@@ -267,9 +267,10 @@ function IN.create(ctx)
     else S.title_y = S.title_y + (want - S.title_y)*(1 - exp(-8*max(0, now - (S.title_t or now)))) end
     S.title_t = now
     HUD.text(it.name, cx, floor(S.title_y + 0.5), UI.CREAM, 1, 'center', nil, ink)
-    local xs = HUD.text_height(2) + 14
+    -- (round 52, owner: "Make the X on the top right normal size instead of double")
+    local xs = HUD.text_height(1) + 14
     S.buttons.close = { R.W - 6 - xs, 6, xs, xs }
-    UI.glyph_button(R.W - 6 - xs, 6, xs, xs, 'X', S.hot == 'close', 2)
+    UI.glyph_button(R.W - 6 - xs, 6, xs, xs, 'X', S.hot == 'close', 1)
     HUD.alpha(1)
   end
   -- an icon of object i (px square): the view's own render of it, small, against black, read back

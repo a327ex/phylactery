@@ -89,14 +89,14 @@ function PE.create(R, cave)
   local function spawn(p, ox, oz, k)
     local f = PP[nxt + 1]; nxt = (nxt + 1) % N
     k = k or 1
-    f.life = rng.float(1.7, 2.9); f.max = f.life; f.t = 0
+    f.life = rng.float(1.1, 1.8); f.max = f.life; f.t = 0      -- (round 52: a tad shorter; were 1.7-2.9 s)
     f.x = p.x + ox*0.04; f.y = p.y + rng.float(0.0, 0.05); f.z = p.z + oz*0.04
-    local out = rng.float(0.25, 0.75)*k
-    f.vx = ox*out + rng.spread(0.25); f.vz = oz*out + rng.spread(0.25); f.vy = rng.float(0.7, 1.6)*k
+    local out = rng.float(0.06, 0.2)*k                          -- (round 52: more straight up; out 0.25-0.75, spread 0.25)
+    f.vx = ox*out + rng.spread(0.08); f.vz = oz*out + rng.spread(0.08); f.vy = rng.float(0.9, 1.7)*k
     f.size = rng.float(0.13, 0.2)
     f.q = Quaternion.new():set_from_axis_angle(AX:set(rng.spread(1), rng.spread(1), rng.spread(1)):normalize(), rng.float(0, 6.28))
     f.w = Vector3.new(rng.spread(1), rng.spread(1), rng.spread(1)):normalize():multiply_scalar(rng.float(2.5, 6.5))
-    f.hue = rng.next(); f.ph = rng.float(0, 6.28); f.fl = rng.float(1.4, 2.6); f.sway = rng.float(0.25, 0.55)
+    f.hue = rng.next(); f.ph = rng.float(0, 6.28); f.fl = rng.float(1.4, 2.6); f.sway = rng.float(0.07, 0.16)
   end
   -- a body's petals: along its spine, from the rings it still has (count by how much of it there is)
   local function burst(spine, rings, n)
@@ -131,7 +131,7 @@ function PE.create(R, cave)
         f.life = f.life - dt; f.t = f.t + dt
         local u = f.t/f.max
         -- rising like something light in warm air: lifted, held back by the air, swaying across
-        f.vy = f.vy + (0.35 - f.vy*0.9)*dt*1.6
+        f.vy = f.vy + (0.7 - f.vy*0.9)*dt*1.6
         local d = 1 - 1.4*dt
         f.vx = f.vx*d; f.vz = f.vz*d
         local sw = sin(f.t*f.fl*2*pi*0.5 + f.ph)*f.sway

@@ -38,6 +38,7 @@ function BE.create(ctx)
   local N = snakes.RINGS
   -- round 51: glass petals rising from the beamed body (port/petals.lua; the game's flow only)
   local petals = ctx.varied and require('port.petals').create(R, ctx.cave) or nil
+  local varied = ctx.varied or false
   local light = T.PointLight.new(0xffffff, 0, 5, 2)
   local hand = T.PointLight.new(0xffffff, 0, 1.8, 2)
   R.world_scene:add(light); R.world_scene:add(hand)
@@ -170,7 +171,7 @@ function BE.create(ctx)
     if petals then petals.update(t, dt, R.world_camera) end
     if not ch then light.intensity = 0; hand.intensity = 0; return end
     ch.t = ch.t + dt
-    local live, kmax = 0, 0
+    local live, kmax, katt = 0, 0, 0
     for _, b in ipairs(ch.beams) do
       if b.phase == 'wait' then b.pt = b.pt + dt; if b.pt >= 0 then b.phase = 'shoot'; b.head:copy(TIP); b.seg = new_seg(TIP) end end
       if b.phase == 'shoot' then
@@ -191,12 +192,12 @@ function BE.create(ctx)
         if b.pt >= FADE_B then b.phase = 'gone'; if b.seg then release(b.seg) end; b.seg = nil end
       end
       b.k = b.phase == 'fade' and 1 - smoothstep(0, FADE_B, b.pt) or (b.phase == 'gone' and 0 or 1)
-      if b.phase ~= 'gone' then live = live + 1; kmax = max(kmax, b.k) end
+      if b.phase ~= 'gone' then live = live + 1; kmax = max(kmax, b.k); if not b.from then katt = max(katt, b.k) end end
     end
     ch.k_on = smoothstep(0, 0.06, ch.t)
     ch.pop = max(0, ch.pop - dt*6)
     ch.kmax = kmax
-    lich.press(ch.arm, ch.k_on*kmax)
+    lich.press(ch.arm, ch.k_on*(varied and katt or kmax))
     local fl = 0.8 + 0.2*sin(t*47)
     for _, b in ipairs(ch.beams) do
       if (b.phase == 'shoot' or b.phase == 'burn') and b.seg then
@@ -280,9 +281,19 @@ function BE.create(ctx)
   function B.aim_ring() return jround(N*0.3) end
   function B.get_look() return look end
   function B.set_look(m) look = ((m % NLOOKS) + NLOOKS) % NLOOKS end
+  -- round 52: the beams already out stay where they were fired and finish (a new cast never cuts them)
+  function B.detach()
+    if not ch then return end
+    for _, b in ipairs(ch.beams) do if not b.from and b.phase ~= 'gone' then b.from = TIP:clone() end end
+  end
   function B.cast(targets, from, ring, arm)
     if arm == nil then arm = 1 end
-    if ch then
+    local old = nil
+    if ch and varied then
+      B.detach()
+      old = {}
+      for _, b in ipairs(ch.beams) do if b.phase ~= 'gone' then old[#old + 1] = b end end
+    elseif ch then
       for _, b in ipairs(ch.beams) do if b.seg then release(b.seg) end end
       free_unhit(); lich.press(ch.arm, 0)
     end
@@ -304,6 +315,7 @@ function BE.create(ctx)
     ch = { t = 0, arm = arm, a0 = a0, pop = 0, k_on = 0, bit = false, kmax = 1, beams = beams }
     for k, s in ipairs(fan) do beams[k] = beam_of(s, k == 1 and ring or hit_ring(), (k - 1)*STAGGER_B) end
     ch.beams[1].seg = new_seg(TIP)
+    if old then for _, b in ipairs(old) do beams[#beams + 1] = b end end
     lich.kick(arm, min(1.4, 1 + 0.12*(#fan - 1)))
     lich.finger_dir(arm, FD)
     for _ = 1, 8 do

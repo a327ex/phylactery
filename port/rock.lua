@@ -121,10 +121,11 @@ function RO.create(ctx)
     }
     return f
   end
+  local claimed                                    -- (below; hits() asks it too)
   local function hits(q, cb)
     local p = q.m.position
     for _, s in ipairs(snakes.S) do
-      if snakes.free(s) and not includes(q.hit, s) then
+      if snakes.free(s) and not includes(q.hit, s) and not (snakes.held_by_other and s ~= q.target and (snakes.held_by_other(s, 'ROCK') or claimed(s, q))) then
         local best, bi = 1e9, -1
         for j = 2, N - 3 do local d = s.spine[j + 1]:distance_to(p); if d < best then best = d; bi = j end end
         if best < q.r + HIT_R then cb(s, bi) end
@@ -139,14 +140,14 @@ function RO.create(ctx)
     local l = V:length(); if l == 0 then l = 1 end
     return out:copy(a):add_scaled_vector(V, (s.speed or 1.1)*dt/l)
   end
-  local function claimed(s, q)
+  claimed = function(s, q)
     for _, o in ipairs(live) do if o ~= q and o.target == s and o.phase ~= 'rest' then return true end end
     return false
   end
   local function another(q)
     local best, bd = nil, 1e9
     for _, s in ipairs(snakes.S) do
-      if snakes.free(s) and not claimed(s, q) then
+      if snakes.free(s) and not claimed(s, q) and not (snakes.held_by_other and snakes.held_by_other(s, 'ROCK')) then
         local d = hyp(s.x - snakes.egg.x, s.z - snakes.egg.z)
         if d < bd and d < 7 then bd = d; best = s end
       end
@@ -196,6 +197,7 @@ function RO.create(ctx)
     q.accel = quick and ACCEL*2.2 or ACCEL; q.ramp = 0
     local p1 = rng.float(0, 6.28); local p2 = rng.float(0, 6.28); local p3 = rng.float(0, 6.28); local p4 = rng.float(0, 6.28)
     q.ph = { p1, p2, p3, p4 }; q.ctrl = true
+    q.wait = 0; q.set_down = false
     q.torn = false; q.hits = 0; q.from = from; q.hold = hold; q.target = target; q.arm = arm; q.hit = {}; q.v = Vector3.new(); q.w = Vector3.new()
     q.rest = 0; q.bounced = 0; q.wake = 0; q.dir = dir
     q.orbit = nil
@@ -251,6 +253,10 @@ function RO.create(ctx)
       local q = live[i]
       local m = q.m
       q.t = q.t + dt
+      -- (round 52: a rock on its way keeps its snake: no one else takes it before it lands)
+      if snakes.reclaim and q.target and snakes.free(q.target) and (q.phase == 'rip' or q.phase == 'hold' or (q.phase == 'fly' and q.ctrl)) then
+        snakes.reclaim(q.target, 'ROCK')
+      end
       if q.orbit and (q.phase == 'rip' or q.phase == 'hold') then
         local o = q.orbit
         if q.t >= 0 then o.spin = o.spin + dt*ORBIT_W end
@@ -304,10 +310,17 @@ function RO.create(ctx)
           if q.pt >= q.hold_t then
             if not q.target or not snakes.free(q.target) or claimed(q.target, q) then q.target = another(q) end
             q.target = q.target and best_line(m.position, q.target, q) or nil
-            q.phase = 'fly'; q.ft = 0; q.ramp = 0.35; q.s_cmd = q.v:length(); q.l0 = m.position:clone()
-            q.h0 = q.target and max(1, hyp(q.target.spine[mid + 1].x - m.position.x, q.target.spine[mid + 1].z - m.position.z)) or 4
-            stats.thrown = stats.thrown + 1
-            for _ = 1, 4 do aura(m.position, 1.3) end
+            -- (round 52: nothing left to throw it at: held a little longer, then set down, never thrown at nothing)
+            local waiting = false
+            if snakes.reclaim and not q.target then
+              q.wait = (q.wait or 0) + 1
+              if q.wait < 40 then q.pt = q.hold_t - 0.05; waiting = true else q.v:set(0, -0.5, 0); q.ctrl = false; q.set_down = true end
+            end
+            if not waiting then
+              q.phase = 'fly'; q.ft = 0; q.ramp = 0.35; q.s_cmd = q.v:length(); q.l0 = m.position:clone()
+              q.h0 = q.target and max(1, hyp(q.target.spine[mid + 1].x - m.position.x, q.target.spine[mid + 1].z - m.position.z)) or 4
+              if not q.set_down then stats.thrown = stats.thrown + 1; for _ = 1, 4 do aura(m.position, 1.3) end end
+            end
           end
         elseif q.phase == 'fly' then
           q.ft = q.ft + dt
@@ -379,7 +392,13 @@ function RO.create(ctx)
           end
           if q.bounced ~= 0 and hyp(q.v.x, q.v.z) < 0.6 and abs(q.v.y) < 0.3 then
             q.phase = 'rest'; q.rest = 0
-            if q.hits == 0 then stats.missed = stats.missed + 1 end
+            if q.hits == 0 and not q.set_down then
+              stats.missed = stats.missed + 1
+              stats.why = stats.why or {}
+              local tg = q.target
+              stats.why[#stats.why + 1] = string.format('target %s free %s fx %s claim %s quick %s ctrl %s', tostring(tg ~= nil), tostring(tg and snakes.free(tg)),
+                tostring(tg and tg.fx ~= nil), tostring(tg and tg.claim), tostring(q.quick), tostring(q.ctrl))
+            end
           end
         end
         if q.phase == 'rip' or q.phase == 'hold' then

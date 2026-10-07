@@ -227,6 +227,20 @@ function IT.create(ctx)
   local varied = ctx.varied or false
   local orng = U.make_rng(733)
   local HOV_R, HOV_Y = 0.62, 0.1
+  -- round 52 (owner, 2026-10-06: "the orbs could rotate around the lich more, like electrons around atoms,
+  -- except with a bit more varied patterns"): each circles his chest on an orbit of its own, a tilted
+  -- ellipse (its plane 30-70 degrees off level), once every 1.6-2.6 s, the plane turning slowly about the
+  -- upright; now and then one changes: a new tilt, the other way round, faster or slower, wider or
+  -- tighter (eased, never a jump). A firm spring keeps the circling crisp; they still keep off him,
+  -- the egg, the floor and each other.
+  local ORB_C = 0.28
+  local YAX = Vector3.new(0, 1, 0)
+  local QO = Quaternion.new()
+  local function ORB_PLANE()
+    local tilt, az = orng.float(0.52, 1.22), orng.float(0, 6.28)     -- (30-70 degrees: the orbits cross)
+    return Vector3.new(sin(tilt)*cos(az), cos(tilt), sin(tilt)*sin(az))
+  end
+  local NP = Vector3.new()
   local TG, A3, DV, QS = Vector3.new(), Vector3.new(), Vector3.new(), Quaternion.new()
   local function ball_body(w, j, r)
     local b = BO.create({ sphere = r, mass = w.it.mass, inertia = Vector3.new(1, 1, 1):multiply_scalar(0.4*w.it.mass*r*r), restitution = 0.22, friction = w.it.fric,
@@ -246,12 +260,14 @@ function IT.create(ctx)
         local a = (j - 1)*6.2832/n + orng.spread(0.4)
         h.p = Vector3.new(L.x + sin(a)*HOV_R, L.y + HOV_Y + orng.spread(0.2), L.z + cos(a)*HOV_R); h.v = Vector3.new()
       end
-      h.th = atan2(h.p.x - L.x, h.p.z - L.z)
-      h.ph = {}
-      for q = 1, 6 do h.ph[q] = orng.float(0, 6.28) end
-      h.f = { orng.float(0.11, 0.23), orng.float(0.17, 0.37), orng.float(0.13, 0.29) }
-      h.w0 = orng.sign()*orng.float(0.55, 1.0)
-      h.dart = orng.float(1.0, 4.0)
+      -- (round 52: an orbit of its own: its plane's normal, its turn, its size, how round it is)
+      h.n = ORB_PLANE(); h.n_to = h.n:clone()
+      h.phi = orng.float(0, 6.28)
+      h.om = orng.sign()*orng.float(2.4, 4.0); h.om_to = h.om
+      h.r = orng.float(0.5, 0.72); h.r_to = h.r
+      h.b = orng.float(0.65, 1.0)
+      h.prec, h.pw = orng.float(0, 6.28), orng.spread(0.5)
+      h.ev = orng.float(2.0, 6.0)
       h.q = h.q or Quaternion.new()
       h.ax = Vector3.new(orng.spread(1), orng.spread(1), orng.spread(1)):normalize()
       h.spin = orng.float(0.5, 1.4)
@@ -270,29 +286,35 @@ function IT.create(ctx)
     for j, m in ipairs(O) do
       local h = Hh[j]
       local rb = m.user_data.r*k
-      local tp = t*6.2832
-      local n1 = sin(tp*h.f[1] + h.ph[1]) + 0.6*sin(tp*h.f[2]*1.7 + h.ph[2])
-      local n2 = sin(tp*h.f[2] + h.ph[3]) + 0.5*sin(tp*h.f[3]*2.3 + h.ph[4])
-      local n3 = sin(tp*h.f[3] + h.ph[5]) + 0.5*sin(tp*h.f[1]*2.9 + h.ph[6])
-      h.th = h.th + dt*h.w0*(0.3 + 0.95*n1)                -- (it slows, stops, turns back)
-      local r = HOV_R + 0.14*n2
-      TG:set(L.x + sin(h.th)*r, L.y + HOV_Y + 0.2*n3, L.z + cos(h.th)*r)
-      h.dart = h.dart - dt
-      if h.dart <= 0 then
-        h.dart = orng.float(1.8, 5.0)
-        local a = orng.float(0, 6.28)
-        h.v:add(DV:set(cos(a)*1.5, orng.spread(0.7), sin(a)*1.5))
-        h.th = h.th + orng.spread(1.2)
+      -- its orbit now (each change eased in)
+      h.ev = h.ev - dt
+      if h.ev <= 0 then
+        h.ev = orng.float(3.0, 8.0)
+        local e = orng.next()
+        if e < 0.4 then h.n_to = ORB_PLANE()
+        elseif e < 0.62 then h.om_to = -h.om_to
+        elseif e < 0.82 then h.om_to = (h.om_to < 0 and -1 or 1)*orng.float(2.2, 4.2)
+        else h.r_to = orng.float(0.48, 0.78); h.b = orng.float(0.6, 1.0) end
       end
-      local wn = 6.2832*0.85
-      A3:sub_vectors(TG, h.p):multiply_scalar(wn*wn):add_scaled_vector(h.v, -2*0.7*wn)
+      h.om = h.om + (h.om_to - h.om)*min(1, dt*1.4)
+      h.r = h.r + (h.r_to - h.r)*min(1, dt*0.9)
+      h.n:lerp(h.n_to, min(1, dt*0.8)):normalize()
+      h.prec = h.prec + h.pw*dt
+      h.phi = h.phi + h.om*dt
+      local cp, sp = cos(h.prec), sin(h.prec)
+      NP:set(h.n.x*cp - h.n.z*sp, h.n.y, h.n.x*sp + h.n.z*cp):normalize()
+      QO:set_from_unit_vectors(YAX, NP)
+      TG:set(cos(h.phi)*h.r, 0, sin(h.phi)*h.r*h.b):apply_quaternion(QO)
+      TG.x = TG.x + L.x; TG.y = TG.y + L.y + ORB_C; TG.z = TG.z + L.z
+      local wn = 6.2832*2.4
+      A3:sub_vectors(TG, h.p):multiply_scalar(wn*wn):add_scaled_vector(h.v, -2*0.8*wn)
       for q = 1, #O do
         if q ~= j then
           local o = Hh[q]
           local dx, dy, dz = h.p.x - o.p.x, h.p.y - o.p.y, h.p.z - o.p.z
           local d = sqrt(dx*dx + dy*dy + dz*dz)
           local mn = (rb + O[q].user_data.r*k)*1.9
-          if d < mn and d > 1e-4 then local f = (mn - d)/mn*40; A3.x = A3.x + dx/d*f; A3.y = A3.y + dy/d*f; A3.z = A3.z + dz/d*f end
+          if d < mn and d > 1e-4 then local f = (mn - d)/mn*320; A3.x = A3.x + dx/d*f; A3.y = A3.y + dy/d*f; A3.z = A3.z + dz/d*f end
         end
       end
       h.v:add_scaled_vector(A3, dt)

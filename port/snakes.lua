@@ -165,6 +165,44 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     floor_at = function(x, z) return cave.ground_y(x, z) + sample(bump, x, z) end
   end
   local function ground(x, z) return floor_at and floor_at(x, z) or cave.ground_y(x, z) end
+  local function route_dir(x, z)
+    local e = 0.2
+    local gx = route_at(x + e, z) - route_at(x - e, z)
+    local gz = route_at(x, z + e) - route_at(x, z - e)
+    if gx*gx + gz*gz < 1e-12 then return atan2(-z, -x) end
+    return atan2(-gz, -gx)
+  end
+  -- a clear spot with a way to the egg, facing along it, the straight tail it starts with clear behind it
+  local function spawn_clear(x, z)
+    if snav.dist(x, z) < SPAWN_CLEAR or route_at(x, z) > REACHABLE then return false end
+    local a = route_dir(x, z)
+    local ca, sa = cos(a), sin(a)
+    for k = 1, 8 do
+      local px, pz = x - ca*k*0.5, z - sa*k*0.5
+      if js_hypot(px, pz) < 15.4 and snav.dist(px, pz) < 0.15 then return false end
+    end
+    return true
+  end
+  -- round 52 (owner, 2026-10-06: "Make sure the snakes spawn from different positions, sometimes they all
+  -- seem to spawn from similar places"): searching out from a blocked spot funnelled many waves into the
+  -- same few gaps between the boulders. Now every degree round the room gets its own point (the outermost
+  -- clear one along that line, 15.6 m in to 10.2 m), and a wave picks among those.
+  local SPAWNS = nil
+  local function spawn_points(valid_th)
+    if SPAWNS then return SPAWNS end
+    SPAWNS = {}
+    for a = 0, 359 do
+      local th = a*pi/180
+      if valid_th(th) then
+        for k = 0, 18 do
+          local r = 15.6 - k*0.3
+          local x, z = cos(th)*r, sin(th)*r
+          if spawn_clear(x, z) then SPAWNS[#SPAWNS + 1] = { th = th, x = x, z = z, dir = route_dir(x, z) }; break end
+        end
+      end
+    end
+    return SPAWNS
+  end
   local A = R.statics
   local mat = MAT.MeshStandardMaterial.new({ name = 'snakes.body', map = A.texture('snake_scales'), roughness = 0.3, metalness = 0.0 })
   local uEmber, uSnakeT = { value = Color.new(3.2, 0.75, 0.1) }, { value = 0 }
@@ -232,35 +270,11 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     local r = g.float(14.0, 15.8)
     s.x = cos(th)*r; s.z = sin(th)*r
     local start_dir = nil
-    if w and snav then
-      -- (round 50 fix: in a clear spot with a way to the egg, facing along it, the straight tail it
-      -- starts with clear behind it too; moving in and round until so)
-      local function route_dir(x, z)
-        local e = 0.2
-        local gx = route_at(x + e, z) - route_at(x - e, z)
-        local gz = route_at(x, z + e) - route_at(x, z - e)
-        if gx*gx + gz*gz < 1e-12 then return atan2(-z, -x) end
-        return atan2(-gz, -gx)
-      end
-      local function clear(x, z)
-        if snav.dist(x, z) < SPAWN_CLEAR or route_at(x, z) > REACHABLE then return false end
-        local a = route_dir(x, z)
-        local ca, sa = cos(a), sin(a)
-        for k = 1, 8 do
-          local px, pz = x - ca*k*0.5, z - sa*k*0.5
-          if js_hypot(px, pz) < 15.4 and snav.dist(px, pz) < 0.15 then return false end
-        end
-        return true
-      end
-      local tries = 0
-      while not clear(s.x, s.z) and tries < 160 do
-        tries = tries + 1
-        local rr = r - 0.3*(tries % 16)
-        local k = tries//16
-        local th2 = th + ((k + 1)//2)*0.1*(k % 2 == 0 and 1 or -1)
-        s.x = cos(th2)*rr; s.z = sin(th2)*rr
-      end
-      start_dir = route_dir(s.x, s.z)
+    if w and w.x then
+      -- (round 52: one of the spawn points worked out at load: clear, with a way to the egg, its tail clear)
+      s.x, s.z = w.x, w.z
+      start_dir = w.dir
+      if api and api.spawn_log then api.spawn_log[#api.spawn_log + 1] = { th, s.x, s.z } end
     end
     if start_dir then s.dir = start_dir + g.spread(0.12)
     else s.dir = atan2(-s.z, -s.x) + g.spread(0.3) end
@@ -295,6 +309,65 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   local DIR = { next = 0.4, n = 0, log = {}, force = nil, last = nil, lull = false, clock = 0 }
   local function pooled() local out = {}; for _, s in ipairs(S) do if s.pooled then out[#out + 1] = s end end; return out end
   -- the arrivals of one wave: a list of { delay, angle, speed }, and the gap before the next wave
+  local recent = {}                               -- (the last few waves' sides)
+  local function ang(a, b) return abs(atan2(sin(a - b), cos(a - b))) end
+  -- a side at random among all the points, not within 40 degrees of the last two waves' (evenly: a side
+  -- left alone by the boulders is not favoured for being far from the others)
+  local function far_side()
+    local P = spawn_points(valid_th)
+    local ok = {}
+    for _, e in ipairs(P) do
+      local fine = true
+      for _, r in ipairs(recent) do if ang(e.th, r) < 0.7 then fine = false; break end end
+      if fine then ok[#ok + 1] = e end
+    end
+    if #ok == 0 then ok = P end
+    return ok[wrng.int(1, #ok)]
+  end
+  local function point_near(th, spread, used)
+    local P = spawn_points(valid_th)
+    local list = {}
+    for _, e in ipairs(P) do if ang(e.th, th) <= spread and not used[e] then list[#list + 1] = e end end
+    if #list == 0 then
+      local best, bd = nil, 9
+      for _, e in ipairs(P) do if not used[e] and ang(e.th, th) < bd then bd = ang(e.th, th); best = e end end
+      return best
+    end
+    return list[wrng.int(1, #list)]
+  end
+  local function plan_wave_pts(kind, avail)
+    local out, gap = {}, 0
+    local base = wrng.float(1.0, 1.3)
+    local used = {}
+    local function take(e) used[e] = true; return e end
+    local c = far_side()
+    if kind == 'ONE' then
+      out[1] = { 0, take(c), wrng.float(1.0, 1.35) }
+      gap = wrng.float(1.4, 3.2)
+    elseif kind == 'PAIR' then
+      out[1] = { 0, take(c), base + wrng.spread(0.06) }
+      out[2] = { wrng.float(0.3, 1.1), take(point_near(c.th, 0.4, used)), base + wrng.spread(0.06) }
+      gap = wrng.float(2.4, 4.4)
+    elseif kind == 'PACK' then
+      local n = min(avail, wrng.int(3, 5))
+      out[1] = { wrng.float(0, 0.7), take(c), base + wrng.spread(0.04) }
+      for k = 2, n do out[k] = { wrng.float(0, 0.7), take(point_near(c.th, 0.3, used)), base + wrng.spread(0.04) } end
+      gap = wrng.float(4.0, 7.0)
+    elseif kind == 'SPREAD' then
+      local n = min(avail, wrng.int(3, 4))
+      out[1] = { wrng.float(0, 0.5), take(c), base + wrng.spread(0.05) }
+      for k = 2, n do out[k] = { wrng.float(0, 0.5), take(point_near(c.th + (k - 1)*pi*2/n, 0.3, used)), base + wrng.spread(0.05) } end
+      gap = wrng.float(4.0, 6.5)
+    else
+      local n = min(avail, wrng.int(4, 6))
+      local step = wrng.float(0.7, 1.2)
+      for k = 1, n do out[k] = { (k - 1)*step, k == 1 and take(c) or point_near(c.th, 0.06, {}), base } end
+      gap = (n - 1)*step + wrng.float(2.0, 4.0)
+    end
+    recent[#recent + 1] = c.th
+    if #recent > 2 then table.remove(recent, 1) end
+    return out, gap
+  end
   local function plan_wave(kind, avail)
     local out, gap = {}, 0
     local base = wrng.float(1.0, 1.3)
@@ -356,6 +429,15 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     -- a wave bigger than the pool waits until it can come whole (a pack of one is no pack)
     local need = (kind == 'ONE' and 1) or (kind == 'PAIR' and 2) or (kind == 'STREAM' and 4) or 3
     if #pool < need then return nil end
+    if snav then
+      local plan, gap = plan_wave_pts(kind, #pool)
+      for k, a in ipairs(plan) do spawn(pool[k], a[1], { th = a[2].th, x = a[2].x, z = a[2].z, dir = a[2].dir, speed = a[3] }) end
+      DIR.n = DIR.n + 1; DIR.last = kind
+      DIR.log[#DIR.log + 1] = { kind = kind, n = #plan, t = DIR.clock, th = plan[1][2].th }
+      if #DIR.log > 40 then table.remove(DIR.log, 1) end
+      DIR.lull = wrng.next() < 0.22
+      return gap + (DIR.lull and wrng.float(3.0, 6.0) or 0)
+    end
     local plan, gap = plan_wave(kind, #pool)
     for k, a in ipairs(plan) do spawn(pool[k], a[1], { th = a[2], speed = a[3] }) end
     DIR.n = DIR.n + 1; DIR.last = kind
@@ -829,12 +911,13 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
 
   api = { update = update, S = S, ignite = ignite, LEN = LEN, take = take, live = live, free = free, set_ember = set_ember, respawn = respawn,
     RINGS = RINGS, SIDES = SIDES, mat = mat, egg = egg, reach_log = {}, arc = S_AT, ring_at = I_AT, reached = 0, dissolved = 0,
-    on_dissolve = nil, coil = coil, coiled = coiled, stuck_log = {}, WIN = WIN, on_coil = nil, on_grip = nil, on_won = nil,
+    on_dissolve = nil, coil = coil, coiled = coiled, stuck_log = {}, spawn_log = {}, WIN = WIN, on_coil = nil, on_grip = nil, on_won = nil,
     coverage = 0, won = false, won_t = -1, coil_mode = 0 }
   function api.set_coil_mode(i) coil_mode = ((i % 2) + 2) % 2; api.coil_mode = coil_mode end
   -- round 50: the waves (testing: send one now; the director's state)
   api.varied = varied
   function api.send(kind) DIR.force = kind; return kind end
+  function api.spawn_points() return spawn_points(valid_th) end
   function api.waves() return { next = DIR.next, n = DIR.n, last = DIR.last, lull = DIR.lull, log = DIR.log, pooled = #pooled() } end
   return api
 end
