@@ -172,14 +172,10 @@ def main():
     fine = bitmap_font({ ch: scale2x(rr) for ch, rr in glyphs.items() }, rows*2, 6)
     fine['hi'] = True; fine['label'] = 'FACETED FINE'
     for g in fine['glyphs'].values(): g['w'] = g['w'] + 1                      # (its own 2 px gap)
-    th = bitmap_font({ ch: thin(scale2x(rr)) for ch, rr in glyphs.items() }, rows*2, 6)
-    th['hi'] = True; th['label'] = 'FACETED THIN'
-    for g in th['glyphs'].values(): g['w'] = g['w'] + 1
-    jac = ttf_font(os.path.join(F, 'Jacquard24-Regular.ttf'), 24); jac['hi'] = True; jac['label'] = 'JACQUARD'
-    dot = ttf_font(os.path.join(F, 'DotGothic16-Regular.ttf'), 16); dot['hi'] = True; dot['label'] = 'DOTGOTHIC'
-    pix = ttf_font(os.path.join(F, 'PixelifySans[wght].ttf'), 20); pix['hi'] = True; pix['label'] = 'PIXELIFY'
-    fell = ttf_font(os.path.join(F, 'IMFeENsc28P.ttf'), 19, pixel=False); fell['hi'] = True; fell['label'] = 'FELL (SMOOTH)'
-    fonts = [('facet', facet), ('facet_fine', fine), ('facet_thin', th), ('jacquard', jac), ('dotgothic', dot), ('pixelify', pix), ('fell', fell)]
+    # (owner, 2026-10-07, on round 53: "second font is the correct one": FACETED FINE is the game's font; the other
+    # candidates (FACETED THIN, Jacquard 24, DotGothic16, Pixelify Sans, IM Fell SC) are gone again, ttf_font and
+    # thin() kept for another audition)
+    fonts = [('facet', facet), ('facet_fine', fine)]
     write(fonts)
     for n, f in fonts: print('%-11s h %2d  %3d glyphs' % (n, f['h'], len(f['glyphs'])))
 

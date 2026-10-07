@@ -314,13 +314,6 @@ function GM.create(R, hud_layer)
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
     if END.won then return end
-    -- round 54 (owner: "Pressing F6 also only works if the menu is showing and not globally"): the font
-    -- audition's key works everywhere, the model viewer open or not
-    if hit('f6') then
-      local O, cur = HUD.FONT_ORDER, 1
-      for k, n in ipairs(O) do if n == HUD.font_name then cur = k end end
-      HUD.set_font(O[cur % #O + 1])
-    end
     if inspect_active() then
       if inspect.S.accept then
         if hit('return') or hit('enter') or hit('kpenter') or hit('space') then inspect.accept() end
@@ -467,7 +460,7 @@ function GM.create(R, hud_layer)
     HUD.text(label .. ' ' .. c.name, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text(c.note, 8, 19, '#a8987c', 1, 'left', nil, INK)
     HUD.text('F5 HIS MASK: ' .. require('port.lichmask').LOOKS[lmask.look + 1].name .. '   F7 ORB MARKINGS: ' .. require('port.orbmarks').STYLES[require('port.orbmarks').style + 1]
-      .. '   F8 END ZOOM: ' .. (END_ZOOM.on and 'ON' or 'OFF') .. '   F6 FONT: ' .. HUD.font_label(), 8, 30, '#a8987c', 1, 'left', nil, INK)
+      .. '   F8 END ZOOM: ' .. (END_ZOOM.on and 'ON' or 'OFF'), 8, 30, '#a8987c', 1, 'left', nil, INK)
     if powers.varied then
       local pl = powers.plan()
       local now = pl and (pl.mode .. (pl.mode == 'ROTATION' and '' or ' (' .. table.concat(pl.set, '+') .. ')')) or '-'
@@ -664,7 +657,7 @@ function GM.create(R, hud_layer)
     return { force = PW.FORCES[powers.get_force() + 1], now = powers.plan(), log = powers.plans_log(), gesture = { powers.gesture_phase() }, groups = powers.groups() }
   end
   function GAME.wave(kind) if kind then snakes.send(kind) end; return snakes.waves() end
-  -- round 53: the font audition (a name from HUD.FONT_ORDER; nil just reads)
+  -- round 53: the font (a name in port/hud_fonts.lua; nil just reads)
   function GAME.font(name) if name then HUD.set_font(name) end; return HUD.font_name end
   -- round 48: THROW object i (as the viewer's button does, without the viewer)
   function GAME.throw(i) throw_power(i); return items and items.state()[i + 1] end

@@ -14,13 +14,13 @@ local floor, max = math.floor, math.max
 
 -- round 53 (owner, 2026-10-07: "We need to audition more fonts ... perhaps a clash of pixel sizes"): the
 -- fonts of tools/hud_fonts.py; `hi` ones are drawn at the window's resolution (one screen pixel per glyph
--- pixel, the icons' size since round 49) into HUD.hi_layer. HUD.set_font picks the game's; the testing
--- text (HUD.plain) stays FACETED.
+-- pixel, the icons' size since round 49) into HUD.hi_layer. The game's is FACETED FINE (his pick); the
+-- testing text (HUD.plain) stays FACETED.
 local FONTS = require('port.hud_fonts')
 for _, f in pairs(FONTS) do f.glyphs[' '] = { w = f.space, px = {} } end
 HUD.FONTS = FONTS
-HUD.FONT_ORDER = { 'facet', 'facet_fine', 'facet_thin', 'jacquard', 'dotgothic', 'pixelify', 'fell' }
-HUD.font_name = 'facet'
+-- (owner, 2026-10-07, on round 53: "second font is the correct one": FACETED FINE, the game's font)
+HUD.font_name = 'facet_fine'
 local FONT = FONTS.facet
 HUD.FONT = FONT
 HUD.plain = false
