@@ -710,6 +710,29 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     s.x = P[1].x; s.z = P[1].z
   end
 
+  -- round 54, the white squares: gpu_tube can't frame a ring whose neighbours lie exactly along its up (a struck
+  -- rope hanging straight down; a tail stacked on one point) or on each other: its normals came out zero, the vertex
+  -- shader's normalize() gave a NaN pixel and the bloom's blur a 96 px white square. Such a ring gets a level up (a
+  -- coincident neighbour a 0.1 mm nudge). Drawing only: the spine is copied before this.
+  local function frame_guard(s)
+    local hx, hz = cos(s.dir), sin(s.dir)
+    for i = 1, RINGS do
+      local a, b = P[i > 1 and i - 1 or 1], P[i < RINGS and i + 1 or RINGS]
+      local tx, ty, tz = a.x - b.x, a.y - b.y, a.z - b.z
+      local tl = tx*tx + ty*ty + tz*tz
+      if tl < 1e-14 then
+        b.x = b.x - hx*1e-4; b.z = b.z - hz*1e-4
+        tx, tz = tx + hx*1e-4, tz + hz*1e-4; tl = tx*tx + ty*ty + tz*tz
+      end
+      local u = UU[i]
+      local cx, cy, cz = ty*u.z - tz*u.y, tz*u.x - tx*u.z, tx*u.y - ty*u.x
+      if cx*cx + cy*cy + cz*cz < 1e-6*tl then
+        local d = tx*hx + tz*hz
+        if d*d > 0.5*tl then u:set(-hz, 0, hx) else u:set(hx, 0, hz) end
+      end
+    end
+  end
+
   -- the spine: points along the trail by arc length, the front raised into a neck curve
   local function build(s)
     local acc, ti = 0, 0
@@ -777,6 +800,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     end
     local pos, nor = s.m.geometry.attributes.position.array, s.m.geometry.attributes.normal.array
     for i = 1, RINGS do RR[i] = R0*RAD[i]*sc*RK[i] end
+    frame_guard(s)
     gpu_tube(pos, nor, P, UU, RR, FLAT, TUBE)
     local tip = RINGS*SIDES*3
     local en = tip + 3
@@ -786,6 +810,8 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     nor[tip + 1] = Tv.x; nor[tip + 2] = Tv.y; nor[tip + 3] = Tv.z
     pos[en + 1] = P[RINGS].x; pos[en + 2] = P[RINGS].y; pos[en + 3] = P[RINGS].z
     nor[en + 1] = -Tv.x; nor[en + 2] = 0; nor[en + 3] = -Tv.z
+    -- (round 54: with the head straight up or down that level normal was zero, see frame_guard)
+    if Tv.x*Tv.x + Tv.z*Tv.z < 1e-12 then nor[en + 1] = -cos(s.dir); nor[en + 3] = -sin(s.dir) end
     s.m.geometry.attributes.position.needs_update = true
     s.m.geometry.attributes.normal.needs_update = true
     -- the eyes: on the sides of the head, a little up
