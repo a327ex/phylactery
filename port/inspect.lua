@@ -115,7 +115,7 @@ function IN.create(ctx)
     g.position:sub(Vector3.new(c[1], c[2], c[3]))
     local wrap = T.Group.new(); wrap:add(g)
     S.model = wrap; S.radius = max(size[1], size[2], size[3])*0.55
-    S.box = { size[1], size[2], size[3] }; S.title_y = nil
+    S.box = { size[1], size[2], size[3] }
     holder:add(wrap)
     local v = it.view or { 0.55, 0.4, 0.0 }
     S.q:set_from_euler(Euler.new(v[1], v[2], v[3], 'YXZ'))
@@ -221,26 +221,22 @@ function IN.create(ctx)
     R.params.world_override = { scene = scene, camera = camera }
     return true
   end
-  -- where the object's lowest point shows on screen now (its box's corners, projected), in HUD pixels
+  -- where the bottom of the object's bounding sphere shows on screen, in HUD pixels, with the object where
+  -- it settles once the view has opened (round 55, owner: "The object name text moves vertically depending
+  -- on how the object is turned, that shouldn't happen": the sphere is the same whichever way it turns, so
+  -- only zooming moves the name; round 51 followed the lowest corner of its turning box)
   local CORNER = Vector3.new()
   local function object_bottom()
-    if not (S.model and S.box) then return nil end
-    S.model:update_world_matrix(true, false)
+    if not (S.model and S.radius) then return nil end
     camera:update_matrix_world()
-    local hx, hy, hz = S.box[1]/2, S.box[2]/2, S.box[3]/2
-    local best = -1e9
-    for sx = -1, 1, 2 do for sy = -1, 1, 2 do for sz = -1, 1, 2 do
-      CORNER:set(sx*hx, sy*hy, sz*hz):apply_matrix4(S.model.matrix_world):project(camera)
-      local y = (0.5 - CORNER.y*0.5)*R.H
-      if y > best then best = y end
-    end end end
-    return best
+    CORNER:set(0, S.radius*0.06 - S.radius, 0):project(camera)
+    return (0.5 - CORNER.y*0.5)*R.H
   end
   -- round 49 (owner: "I want ONLY [item name] in normal font size, then 'throw'. Nothing else."):
   -- the name, and under it THROW when the view was opened to give it up.
   -- round 51 (owner, 2026-10-06: "Title of object closer to the object itself, throw stays in the same
   -- place, X button visible so it can be clicked to close the model viewer"): the name sits just
-  -- under the object as it shows (eased, so it doesn't jump as the object turns), never into THROW;
+  -- under the object (round 55: under its bounding sphere, still while it turns), never into THROW;
   -- THROW where it was; X at the top right
   function insp.draw_hud()
     if not S.active then return end
@@ -267,11 +263,7 @@ function IN.create(ctx)
     local want = object_bottom()
     want = want and want + 6 or lowest
     want = math.min(lowest, math.max(8, want))
-    local now = S.t
-    if S.title_y == nil then S.title_y = want
-    else S.title_y = S.title_y + (want - S.title_y)*(1 - exp(-8*max(0, now - (S.title_t or now)))) end
-    S.title_t = now
-    HUD.text(it.name, cx, floor(S.title_y + 0.5), UI.CREAM, 1, 'center', nil, ink)
+    HUD.text(it.name, cx, floor(want + 0.5), UI.CREAM, 1, 'center', nil, ink)
     -- (round 52, owner: "Make the X on the top right normal size instead of double")
     local xs = HUD.text_height(1) + 14
     S.buttons.close = { R.W - 6 - xs, 6, xs, xs }

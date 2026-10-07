@@ -11,6 +11,8 @@
     ETCHED   frosted into the glass: pale, catching the light
     INKED    cut and filled dark
     GLOWING  faintly lit from within, the leakage's sea-glass colour
+  Round 55 (owner, 2026-10-07: "The orbs on the model viewer need to have way more subtle markers on
+  them"): the lines 0.022 of the radius wide (were 0.055), each finish about a third as strong.
 ]]
 local MK = {}
 MK.STYLES = { 'ETCHED', 'INKED', 'GLOWING', 'NONE' }
@@ -27,7 +29,7 @@ float mk_wave(vec3 P, vec3 n, vec3 ref, float amp, float k){
 float mk(vec3 P){
   if (uMarkStyle > 2.5) return 0.0;
   int k = int(uMark + 0.5);
-  float w = 0.055;
+  float w = 0.022;
   if (k == 0) return max(mk_band(dot(P, normalize(vec3(0.3, 1.0, 0.2))), w), mk_band(dot(P, normalize(vec3(1.0, -0.25, 0.6))), w));
   if (k == 1) {
     float ph = atan(P.z, P.x), th = asin(clamp(P.y, -1.0, 1.0));
@@ -60,17 +62,17 @@ function MK.patch(fs)
     {
       float mb = mk(normalize(p));
       if (mb > 0.0) {
-        if (uMarkStyle < 0.5) { acc += thr*mb*0.4*mk_frost(normalize(p))[ch]; thr *= 1.0 - 0.7*mb; }
-        else if (uMarkStyle < 1.5) { thr *= 1.0 - 0.85*mb; }
-        else { acc += thr*mb*0.5*MK_GLOW[ch]; }
+        if (uMarkStyle < 0.5) { acc += thr*mb*0.12*mk_frost(normalize(p))[ch]; thr *= 1.0 - 0.2*mb; }
+        else if (uMarkStyle < 1.5) { thr *= 1.0 - 0.3*mb; }
+        else { acc += thr*mb*0.17*MK_GLOW[ch]; }
       }
     }]])
   sub([[  col += (1.0 - F)*inside;]], [[  col += (1.0 - F)*inside;
   {
     float m = mk(P);
-    if (uMarkStyle < 0.5) col = mix(col, mk_frost(P), m*0.85);
-    else if (uMarkStyle < 1.5) col *= 1.0 - 0.88*m;
-    else col += MK_GLOW*m*0.7;
+    if (uMarkStyle < 0.5) col = mix(col, mk_frost(P), m*0.3);
+    else if (uMarkStyle < 1.5) col *= 1.0 - 0.32*m;
+    else col += MK_GLOW*m*0.24;
   }]])
   return fs
 end
