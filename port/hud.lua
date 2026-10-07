@@ -12,20 +12,32 @@
 local HUD = {}
 local floor, max = math.floor, math.max
 
-local FONT = require('port.hud_fonts').facet
-FONT.glyphs[' '] = { w = FONT.space, px = {} }
+-- round 53 (owner, 2026-10-07: "We need to audition more fonts ... perhaps a clash of pixel sizes"): the
+-- fonts of tools/hud_fonts.py; `hi` ones are drawn at the window's resolution (one screen pixel per glyph
+-- pixel, the icons' size since round 49) into HUD.hi_layer. HUD.set_font picks the game's; the testing
+-- text (HUD.plain) stays FACETED.
+local FONTS = require('port.hud_fonts')
+for _, f in pairs(FONTS) do f.glyphs[' '] = { w = f.space, px = {} } end
+HUD.FONTS = FONTS
+HUD.FONT_ORDER = { 'facet', 'facet_fine', 'facet_thin', 'jacquard', 'dotgothic', 'pixelify', 'fell' }
+HUD.font_name = 'facet'
+local FONT = FONTS.facet
 HUD.FONT = FONT
 HUD.plain = false
--- a text's height in pixels at this scale
-function HUD.text_height(scale) return FONT.h*(scale or 1) end
--- (each advance holds the letter and the 1 px after it; the last one's is not part of the width)
-function HUD.text_width(str, scale)
-  scale = scale or 1
-  local G = FONT.glyphs
+local function font() return HUD.plain and FONTS.facet or FONTS[HUD.font_name] or FONTS.facet end
+function HUD.set_font(name) if FONTS[name] then HUD.font_name = name end; return HUD.font_name end
+function HUD.font_label() local f = FONTS[HUD.font_name]; return f and f.label or HUD.font_name end
+local function k_hi(f) return f.hi and (HUD.HI or 2) or 1 end
+-- (in the font's own pixels) each advance holds the letter and the gap after it; the last gap is not width
+local function glyph_width(f, str, scale)
+  local G = f.glyphs
   local w = 0
   for ch in tostring(str):upper():gmatch('.') do w = w + (G[ch] or G['?']).w*scale end
   return max(0, w - scale)
 end
+-- a text's height and width in game pixels at this scale
+function HUD.text_height(scale) local f = font(); return math.ceil(f.h*(scale or 1)/k_hi(f)) end
+function HUD.text_width(str, scale) local f = font(); return glyph_width(f, str, scale or 1)/k_hi(f) end
 
 -- CSS colours: '#rrggbb' or 'rgba(r,g,b,a)' -> r, g, b, a (0..1)
 local css_cache = {}
@@ -50,13 +62,13 @@ local function raster(str, color, scale, shadow, outline, drop)
   -- the treatment: a name rim-lit, the rest an ember fall (none for HUD.plain)
   local fill = not HUD.plain
   local fx = fill and scale >= 2 and 'rim' or nil
-  local key = (fill and 'e' or 'p') .. '\0' .. str .. '\0' .. color .. '\0' .. scale .. '\0' .. (shadow or '') .. '\0' .. (outline or '') .. '\0' .. (drop or '')
+  local fnt = font()
+  local key = (fill and 'e' or 'p') .. '\0' .. (HUD.plain and 'facet' or HUD.font_name) .. '\0' .. str .. '\0' .. color .. '\0' .. scale .. '\0' .. (shadow or '') .. '\0' .. (outline or '') .. '\0' .. (drop or '')
   local e = cache[key]
   if e then e.used = HUD.frame; return e end
-  local fnt = FONT
   local G = fnt.glyphs
   str = str:upper()
-  local tw = HUD.text_width(str, scale)
+  local tw = glyph_width(fnt, str, scale)
   local pad = 2 + scale
   local W, Hh = tw + 2*pad, fnt.h*scale + 2*pad
   local pix = {}          -- [y*W + x] = { r, g, b, a }
@@ -72,22 +84,26 @@ local function raster(str, color, scale, shadow, outline, drop)
     if oa <= 0 then return end
     d[1] = (c[1]*sa + d[1]*da*(1 - sa))/oa; d[2] = (c[2]*sa + d[2]*da*(1 - sa))/oa; d[3] = (c[3]*sa + d[3]*da*(1 - sa))/oa; d[4] = oa
   end
-  local function each(fn)
+  local function each(fn, solid)
     local px = 0
     for ch in str:gmatch('.') do
       local f = G[ch] or G['?']
-      local p = f.px
-      for i = 1, #p, 2 do fn(px + p[i]*scale, p[i + 1]*scale) end
+      local p, pa = f.px, f.pa
+      for i = 1, #p, 2 do
+        local a = pa and pa[(i + 1)//2] or 1
+        if not solid or a >= 0.5 then fn(px + p[i]*scale, p[i + 1]*scale, a) end
+      end
       px = px + f.w*scale
     end
   end
-  local function pass(ox, oy, c) each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do put(x + ox + i, y + oy + j, c) end end end) end
+  local function faded(c, a) if a >= 1 then return c end; return { c[1], c[2], c[3], c[4]*a } end
+  local function pass(ox, oy, c) each(function(x, y, a) local ca = faded(c, a); for j = 0, scale - 1 do for i = 0, scale - 1 do put(x + ox + i, y + oy + j, ca) end end end) end
   if shadow then pass(scale, scale, css(shadow)) end
   local function K2(x, y) return (y + 2048)*8192 + x + 2048 end
   if outline then
     local on, seen, ring = {}, {}, {}
     local function K(x, y) return (y + 2048)*8192 + x + 2048 end
-    each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do on[K(x + i, y + j)] = true end end end)
+    each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do on[K(x + i, y + j)] = true end end end, true)
     local N8 = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 }, { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } }
     each(function(x, y)
       for j = 0, scale - 1 do for i = 0, scale - 1 do for _, d in ipairs(N8) do
@@ -95,7 +111,7 @@ local function raster(str, color, scale, shadow, outline, drop)
         local k = K(qx, qy)
         if not on[k] and not seen[k] then seen[k] = true; ring[#ring + 1] = qx; ring[#ring + 1] = qy end
       end end end
-    end)
+    end, true)
     if drop then
       local dc = css(drop)
       for i = 1, #ring, 2 do
@@ -110,10 +126,10 @@ local function raster(str, color, scale, shadow, outline, drop)
   else
     local base = css(color)
     local on = {}
-    each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do on[K2(x + i, y + j)] = true end end end)
+    each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do on[K2(x + i, y + j)] = true end end end, true)
     local H = fnt.h*scale
     local light, mid, dark = { 0.965, 0.84, 0.63, 1 }, { 0.62, 0.36, 0.2, 1 }, { 0.16, 0.11, 0.075, 1 }
-    each(function(x, y) for j = 0, scale - 1 do for i = 0, scale - 1 do
+    each(function(x, y, a) for j = 0, scale - 1 do for i = 0, scale - 1 do
       local px, py = x + i, y + j
       local c
       if fx == 'rim' then
@@ -127,7 +143,7 @@ local function raster(str, color, scale, shadow, outline, drop)
         local bot = { base[1]*0.92, base[2]*0.66, base[3]*0.42, base[4] }
         c = { top[1] + (bot[1] - top[1])*t, top[2] + (bot[2] - top[2])*t, top[3] + (bot[3] - top[3])*t, base[4] }
       end
-      put(px, py, c)
+      put(px, py, faded(c, a))
     end end end)
   end
   -- RGBA rows, top first
@@ -142,7 +158,7 @@ local function raster(str, color, scale, shadow, outline, drop)
     rows[y + 1] = table.concat(row)
   end
   local tex = texture_create(W, Hh, table.concat(rows))
-  e = { tex = tex, w = W, h = Hh, pad = pad, used = HUD.frame, key = key }
+  e = { tex = tex, w = W, h = Hh, pad = pad, used = HUD.frame, key = key, hi = fnt.hi }
   cache[key] = e
   cache_n = cache_n + 1
   -- forget the least recently drawn when there are many
@@ -168,7 +184,12 @@ function HUD.text(str, x, y, color, scale, align, shadow, opts)
   local outline = type(opts) == 'string' and opts or (type(opts) == 'table' and opts.outline or nil)
   local drop = type(opts) == 'table' and opts.shadow or nil
   local e = raster(str, color, scale, shadow, outline, drop)
-  ops[#ops + 1] = { t = 'tex', e = e, x = cx - e.pad, y = y - e.pad, a = galpha }
+  if e.hi then
+    local K = HUD.HI
+    ops[#ops + 1] = { t = 'texhi', e = { tex = e.tex, w = e.w/K, h = e.h/K }, x = cx - e.pad/K, y = y - e.pad/K, a = galpha }
+  else
+    ops[#ops + 1] = { t = 'tex', e = e, x = cx - e.pad, y = y - e.pad, a = galpha }
+  end
 end
 function HUD.rect(x, y, w, h, color)
   local c = css(color)

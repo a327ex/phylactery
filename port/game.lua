@@ -365,6 +365,12 @@ function GM.create(R, hud_layer)
     if hit('f7') then local MK = require('port.orbmarks'); MK.set_style(MK.style + 1) end
     if hit('f8') then END_ZOOM.on = not END_ZOOM.on end
     if hit('f3') then powers.force_plan(powers.get_force() + 1) end
+    if hit('f6') then
+      -- round 53: the font audition
+      local O, cur = HUD.FONT_ORDER, 1
+      for k, n in ipairs(O) do if n == HUD.font_name then cur = k end end
+      HUD.set_font(O[cur % #O + 1])
+    end
     if hit('f9') then snakes.send('PACK') end
     if hit('f10') then snakes.send('SPREAD') end
   end
@@ -460,7 +466,7 @@ function GM.create(R, hud_layer)
     HUD.text(label .. ' ' .. c.name, 8, 8, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text(c.note, 8, 19, '#a8987c', 1, 'left', nil, INK)
     HUD.text('F5 HIS MASK: ' .. require('port.lichmask').LOOKS[lmask.look + 1].name .. '   F7 ORB MARKINGS: ' .. require('port.orbmarks').STYLES[require('port.orbmarks').style + 1]
-      .. '   F8 END ZOOM: ' .. (END_ZOOM.on and 'ON' or 'OFF'), 8, 30, '#a8987c', 1, 'left', nil, INK)
+      .. '   F8 END ZOOM: ' .. (END_ZOOM.on and 'ON' or 'OFF') .. '   F6 FONT: ' .. HUD.font_label(), 8, 30, '#a8987c', 1, 'left', nil, INK)
     if powers.varied then
       local pl = powers.plan()
       local now = pl and (pl.mode .. (pl.mode == 'ROTATION' and '' or ' (' .. table.concat(pl.set, '+') .. ')')) or '-'
@@ -657,6 +663,8 @@ function GM.create(R, hud_layer)
     return { force = PW.FORCES[powers.get_force() + 1], now = powers.plan(), log = powers.plans_log(), gesture = { powers.gesture_phase() }, groups = powers.groups() }
   end
   function GAME.wave(kind) if kind then snakes.send(kind) end; return snakes.waves() end
+  -- round 53: the font audition (a name from HUD.FONT_ORDER; nil just reads)
+  function GAME.font(name) if name then HUD.set_font(name) end; return HUD.font_name end
   -- round 48: THROW object i (as the viewer's button does, without the viewer)
   function GAME.throw(i) throw_power(i); return items and items.state()[i + 1] end
   GAME.G = G

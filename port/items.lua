@@ -35,6 +35,9 @@ do
   end
 end
 IT.X = function() return A().manifest.items end
+-- round 53 (owner, 2026-10-07: "The orbs should all be of similar size, closer to the smaller ones now"):
+-- the five orbs' radii in the model (were 0.05, 0.036, 0.042, 0.028, 0.032), for the world and the viewer
+IT.ORB_SIZES = { 0.031, 0.029, 0.032, 0.028, 0.030 }
 -- round 48 (owner, 2026-10-05): their titles
 do
   local TITLES = { 'BURNED MASK', 'THE HAND', 'LODESTONE', 'PSYONIAN ORBS', 'PRISMATIC GEM', 'ATTACK LENS' }
@@ -121,7 +124,12 @@ function IT.create(ctx)
     w.make = function() return make_world(i) end
     if it.balls then
       w.orbs = {}
-      for _, ix in ipairs(X.world[i].orbs) do local m = w.g.children[ix + 1]; m.user_data.r = m.user_data.r or m.scale.x; w.orbs[#w.orbs + 1] = m end
+      for k, ix in ipairs(X.world[i].orbs) do
+        local m = w.g.children[ix + 1]
+        m.user_data.r = m.user_data.r or m.scale.x
+        if ctx.varied and IT.ORB_SIZES[k] then m.user_data.r = IT.ORB_SIZES[k]; m.scale:set_scalar(m.user_data.r) end
+        w.orbs[#w.orbs + 1] = m
+      end
     end
     w.g.visible = false
     R.world_scene:add(w.g)
@@ -264,7 +272,7 @@ function IT.create(ctx)
       h.n = ORB_PLANE(); h.n_to = h.n:clone()
       h.phi = orng.float(0, 6.28)
       h.om = orng.sign()*orng.float(2.4, 4.0); h.om_to = h.om
-      h.r = orng.float(0.5, 0.72); h.r_to = h.r
+      h.r = orng.float(0.85, 1.15); h.r_to = h.r          -- (round 53: wider; were 0.5-0.72)
       h.b = orng.float(0.65, 1.0)
       h.prec, h.pw = orng.float(0, 6.28), orng.spread(0.5)
       h.ev = orng.float(2.0, 6.0)
@@ -294,7 +302,7 @@ function IT.create(ctx)
         if e < 0.4 then h.n_to = ORB_PLANE()
         elseif e < 0.62 then h.om_to = -h.om_to
         elseif e < 0.82 then h.om_to = (h.om_to < 0 and -1 or 1)*orng.float(2.2, 4.2)
-        else h.r_to = orng.float(0.48, 0.78); h.b = orng.float(0.6, 1.0) end
+        else h.r_to = orng.float(0.8, 1.2); h.b = orng.float(0.6, 1.0) end
       end
       h.om = h.om + (h.om_to - h.om)*min(1, dt*1.4)
       h.r = h.r + (h.r_to - h.r)*min(1, dt*0.9)

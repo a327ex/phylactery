@@ -79,7 +79,7 @@ function IN.create(ctx)
       for _ = 1, 3 do for i = 1, #orbs do for j = i + 1, #orbs do
         local a, b = orbs[i].position, orbs[j].position
         local d = a:distance_to(b)
-        local mn = (ORB_R[i] + ORB_R[j])*1.15
+        local mn = (orbs[i].user_data.r + orbs[j].user_data.r)*1.15
         if d < mn and d > 1e-6 then
           local k = (mn - d)/d*0.5
           local dx, dy, dz = (b.x - a.x)*k, (b.y - a.y)*k, (b.z - a.z)*k
@@ -103,7 +103,12 @@ function IN.create(ctx)
     if i == 4 then local m = g.children[1]; ITM.trace_hook(m, m.material, gem_sun, false) end
     if #d.orbs > 0 then
       local orbs = {}
-      for k, ix in ipairs(d.orbs) do local m = g.children[ix + 1]; m.user_data.r = m.user_data.r or m.scale.x; m.user_data.mark = k - 1; ITM.trace_hook(m, m.material, sun, true); orbs[#orbs + 1] = m end
+      for k, ix in ipairs(d.orbs) do
+        local m = g.children[ix + 1]
+        m.user_data.r = ITM.ORB_SIZES[k] or m.user_data.r or m.scale.x        -- (round 53: one size)
+        m.scale:set_scalar(m.user_data.r)
+        m.user_data.mark = k - 1; ITM.trace_hook(m, m.material, sun, true); orbs[#orbs + 1] = m
+      end
       S.hover = orbs_hover(orbs)
     end
     local c, size = d.box.c, d.box.s
