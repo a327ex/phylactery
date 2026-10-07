@@ -37,7 +37,8 @@ local function glyph_width(f, str, scale)
 end
 -- a text's height and width in game pixels at this scale
 function HUD.text_height(scale) local f = font(); return math.ceil(f.h*(scale or 1)/k_hi(f)) end
-function HUD.text_width(str, scale) local f = font(); return glyph_width(f, str, scale or 1)/k_hi(f) end
+-- (round 54: whole game pixels, rounded up: sizes made from it, the lamp glow's, must be whole)
+function HUD.text_width(str, scale) local f = font(); return math.ceil(glyph_width(f, str, scale or 1)/k_hi(f)) end
 
 -- CSS colours: '#rrggbb' or 'rgba(r,g,b,a)' -> r, g, b, a (0..1)
 local css_cache = {}

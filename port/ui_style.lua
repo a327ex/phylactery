@@ -56,6 +56,7 @@ local function glow_tex(w, hot)
 end
 -- a wide glow behind a word (the lamp frame's buttons, hot)
 local function word_glow(w, h)
+  w, h = math.ceil(w), math.ceil(h)                  -- (round 54: a texture is whole pixels)
   local key = 'w' .. w .. 'x' .. h
   if glows[key] then return glows[key] end
   local px = {}
