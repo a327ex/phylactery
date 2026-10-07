@@ -145,10 +145,25 @@ function GM.create(R, hud_layer)
   -- of round 47's push-in and the cut to black for now. Without LICH_ROOM only.
   local SEQ = { on = false, t = 0, k = 0, frozen = false, spot = nil, eye = nil, tgt = nil }
   G.SEQ = SEQ
-  -- the two-shot: his spot `side` m right of the egg; the camera `back` m behind the point `mid` of the way from
-  -- the egg to him, `up` m over the look point (look_y over the floor); its fov; his pace there; the camera's
-  -- fastest progress (of the whole move) per second
-  local SHOT = { side = 1.5, mid = 0.5, back = 3.8, up = 0.4, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
+  -- the two-shot: his spot on the sunlight's edge right of the egg (the shaft is the lid's hole, `edge` m round, leaning
+  -- with the sun: its edge measured at `edge_h` m up, about his chest); the camera `back` m behind the point `mid` of
+  -- the way from the egg to him, `up` m over the look point (look_y over the floor); its fov; his pace there; the
+  -- camera's fastest progress (of the whole move) per second.
+  -- round 56b (owner: "The final shot is way too close, movement needs to be around the light source instead of
+  -- through the middle, and the lich needs to also be around the light's edge instead of completely inside it"):
+  -- he goes round the light's edge to his spot, which is on it; the camera further back: six framings to judge in
+  -- the game (LEFT / RIGHT while it plays or once it has stopped), FRAMING the default
+  local SHOT = { edge = 1.9, edge_h = 1.4, mid = 0.5, back = 7.0, up = 0.9, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
+  local FRAMINGS = {
+    { name = '5 M BACK', back = 5.0, up = 0.5, look_y = 1.0, fov = 40 },
+    { name = '6 M BACK', back = 6.0, up = 0.7, look_y = 1.0, fov = 40 },
+    { name = '7 M BACK', back = 7.0, up = 0.9, look_y = 1.0, fov = 40 },
+    { name = '8 M BACK', back = 8.0, up = 1.1, look_y = 0.95, fov = 40 },
+    { name = '6.5 M BACK, HIGHER', back = 6.5, up = 1.6, look_y = 0.9, fov = 40 },
+    { name = '7.5 M BACK, LONGER LENS', back = 7.5, up = 0.6, look_y = 1.0, fov = 34 },
+  }
+  local FRAMING = 3
+  SEQ.framing = FRAMING; SEQ.label_n = 0
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
   -- egg"): every power already given up (their objects thrown out of the two-shot) and the pool sent in from 4-6.5 m
@@ -265,6 +280,20 @@ function GM.create(R, hud_layer)
     C:update_matrix_world()
   end
   local function set_cam(i) G.cam = clamp(floor(i), 0, #CAMS - 1); F:copy(L) end
+  -- round 56b: the two-shot for framing i (the camera only: from behind the point `mid` of the way from the egg to
+  -- his spot, along the room camera's heading)
+  local function set_framing(i)
+    local n = #FRAMINGS
+    SEQ.framing = ((i - 1) % n + n) % n + 1
+    local f = FRAMINGS[SEQ.framing]
+    SHOT.back, SHOT.up, SHOT.look_y, SHOT.fov = f.back, f.up, f.look_y, f.fov
+    if not SEQ.spot then return end
+    local x, z = SEQ.spot.x, SEQ.spot.z
+    local mx, mz = EGG.x + (x - EGG.x)*SHOT.mid, EGG.z + (z - EGG.z)*SHOT.mid
+    local gy = cave.ground_y(mx, mz)
+    SEQ.tgt = v(mx, gy + SHOT.look_y, mz)
+    SEQ.eye = v(mx - ROOM_H.x*SHOT.back, gy + SHOT.look_y + SHOT.up, mz - ROOM_H.y*SHOT.back)
+  end
 
   -- ------------------------------------------------------------------ input
   local ndc = Vector2.new()
@@ -304,13 +333,24 @@ function GM.create(R, hud_layer)
 
   local cf = Vector3.new()
   local function wanted_velocity()
-    -- round 56: his own way to the spot right of the egg, slowly, easing in
+    -- round 56: his own way to the spot right of the egg, slowly, easing in; 56b: round the light's edge (onto
+    -- its circle, along it the short way, then in to the spot), never across the pool
     if SEQ.on then
       local dx, dz = SEQ.spot.x - L.x, SEQ.spot.z - L.z
       local d = js_hypot(dx, dz)
       if d < 0.03 then return { x = 0, z = 0 } end
       local s = min(SHOT.pace, sqrt(2*MV.MOVE.dec*max(0, d - 0.02))*0.5)
-      return { x = dx/d*s, z = dz/d*s }
+      local rx, rz = L.x - SEQ.c.x, L.z - SEQ.c.z
+      local r = js_hypot(rx, rz)
+      local th = atan2(rz, rx)
+      local dth = atan2(sin(SEQ.th1 - th), cos(SEQ.th1 - th))
+      if r < 1e-3 or abs(dth)*SEQ.R < 0.3 then return { x = dx/d*s, z = dz/d*s } end
+      local sg = dth > 0 and 1 or -1
+      local tx, tz = -rz/r*sg, rx/r*sg                         -- along the circle, toward his spot
+      local k = clamp((SEQ.R - r)*2.5, -1.5, 1.5)               -- and back onto it
+      local wx, wz = tx + rx/r*k, tz + rz/r*k
+      local l = js_hypot(wx, wz)
+      return { x = wx/l*s, z = wz/l*s }
     end
     if END.won then return { x = 0, z = 0 } end
     local keys = script_keys
@@ -346,7 +386,12 @@ function GM.create(R, hud_layer)
   local function hit(k) return key_is_pressed(k) or key_is_repeated(k) end
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
-    if END.won or SEQ.on then return end
+    if SEQ.on then
+      -- round 56b: the framings, in the game
+      if hit('left') or hit('right') then set_framing(SEQ.framing + (hit('right') and 1 or -1)); SEQ.label_n = 150 end
+      return
+    end
+    if END.won then return end
     if inspect_active() then
       if inspect.S.accept then
         if hit('return') or hit('enter') or hit('kpenter') or hit('space') then inspect.accept() end
@@ -478,6 +523,13 @@ function GM.create(R, hud_layer)
     if inspect_active() then inspect.draw_hud(); return end      -- (round 49: not the testing text's)
     if not END.won and not SEQ.on then draw_inventory()
     elseif SEQ.on and SEQ.t < 1.2 then HUD.alpha(1 - smoothstep(0, 1.2, SEQ.t)); draw_inventory(); HUD.alpha(1) end   -- (round 56: it fades as he is taken)
+    if SEQ.on and SEQ.label_n > 0 then
+      -- (round 56b: which framing, for 2.5 s after a change; counted in drawn frames, the game may be stopped)
+      SEQ.label_n = SEQ.label_n - 1
+      HUD.alpha(min(1, SEQ.label_n/30))
+      HUD.text('FRAMING ' .. SEQ.framing .. '/' .. #FRAMINGS .. ': ' .. FRAMINGS[SEQ.framing].name .. '   (LEFT / RIGHT)', R.W/2, R.H - 18, '#f2e3c2', 1, 'center', nil, INK)
+      HUD.alpha(1)
+    end
     if goal then
       gp:copy(goal):project(R.world_camera)
       if gp.z < 1 then
@@ -567,16 +619,17 @@ function GM.create(R, hud_layer)
       SEQ.on = true; SEQ.t = 0
       held = {}; mouse.down = false; goal = nil
       snakes.hold = true          -- (no new waves while it plays: those already coming still come)
-      -- his spot: right of the egg as the room camera sees it, on floor he can stand on
-      local side = SHOT.side
-      local x, z = EGG.x + SIDE_DIR.x*side, EGG.z + SIDE_DIR.z*side
-      while side > 0.8 and nav.is_blocked(x, z) do side = side - 0.05; x, z = EGG.x + SIDE_DIR.x*side, EGG.z + SIDE_DIR.z*side end
+      -- his spot: on the light's edge (the shaft's centre at his chest's height), right of the egg as the room
+      -- camera sees it, on floor he can stand on
+      local S = cave.LAYOUT.sun_dir
+      SEQ.c = v(EGG.x + S.x/S.y*SHOT.edge_h, 0, EGG.z + S.z/S.y*SHOT.edge_h)
+      local side = SHOT.edge
+      local x, z = SEQ.c.x + SIDE_DIR.x*side, SEQ.c.z + SIDE_DIR.z*side
+      while side < SHOT.edge + 0.6 and nav.is_blocked(x, z) do side = side + 0.05; x, z = SEQ.c.x + SIDE_DIR.x*side, SEQ.c.z + SIDE_DIR.z*side end
       SEQ.spot = v(x, cave.ground_y(x, z), z)
-      -- the two-shot: from behind the point between them (the room camera's heading), a little over them
-      local mx, mz = EGG.x + (x - EGG.x)*SHOT.mid, EGG.z + (z - EGG.z)*SHOT.mid
-      local gy = cave.ground_y(mx, mz)
-      SEQ.tgt = v(mx, gy + SHOT.look_y, mz)
-      SEQ.eye = v(mx - ROOM_H.x*SHOT.back, gy + SHOT.look_y + SHOT.up, mz - ROOM_H.y*SHOT.back)
+      SEQ.R = side
+      SEQ.th1 = atan2(z - SEQ.c.z, x - SEQ.c.x)
+      set_framing(SEQ.framing)
     end
     SEQ.t = SEQ.t + dt
     -- the camera follows the covering (never back, never faster than SHOT.rate of the way a second)
