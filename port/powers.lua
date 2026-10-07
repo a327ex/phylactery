@@ -98,16 +98,25 @@ function PW.create(ctx)
   -- (a group coming in makes one attack for all of it likelier; a lone snake, a mix or a rotation)
   local MODE_W, MODE_W_GROUP = { 0.18, 0.3, 0.25, 0.27 }, { 0.6, 0.15, 0.1, 0.15 }
   local function choosable() local out = {}; for _, a in ipairs(CHOOSE) do if on[a] then out[#out + 1] = a end end; return out end
-  -- k of them, those unused longest a little likelier
+  -- how likely an attack is to be drawn: those unused longest a little likelier, and (round 55, owner,
+  -- 2026-10-07: "prismatic beam and lens are also being used less than the other attacks"; measured over
+  -- 5 min: lens 10 casts to the others' 16-17 standing, beam 12 to 13-19 moving) those cast fewer times
+  -- so far much likelier, up to x3.4, so every attack keeps up with the most used one
+  local function weight(a, top)
+    return (1 + min(3, (clock - (used_at[a] or -30))/8))*(1 + 0.6*min(4, top - uses[a]))
+  end
+  local function top_uses(pool) local m = 0; for _, a in ipairs(pool) do m = max(m, uses[a]) end; return m end
+  local function weighted(pool)
+    local top, tot, w = top_uses(pool), 0, {}
+    for i, a in ipairs(pool) do w[i] = weight(a, top); tot = tot + w[i] end
+    local r, pick = prng.next()*tot, #pool
+    for i = 1, #pool do r = r - w[i]; if r <= 0 then pick = i; break end end
+    return pick
+  end
+  -- k of them
   local function draw(pool, k)
     local set = {}
-    for _ = 1, min(k, #pool) do
-      local tot, w = 0, {}
-      for i, a in ipairs(pool) do w[i] = 1 + min(3, (clock - (used_at[a] or -30))/8); tot = tot + w[i] end
-      local r, pick = prng.next()*tot, #pool
-      for i = 1, #pool do r = r - w[i]; if r <= 0 then pick = i; break end end
-      set[#set + 1] = table.remove(pool, pick)
-    end
+    for _ = 1, min(k, #pool) do set[#set + 1] = table.remove(pool, weighted(pool)) end
     return set
   end
   local function new_plan()
@@ -148,7 +157,7 @@ function PW.create(ctx)
     if #set == 0 then plan = nil; return nil end
     local a
     if plan.mode == 1 then a = set[1]
-    elseif plan.mode == 4 or prng.next() < 0.3 then a = set[prng.int(1, #set)]
+    elseif plan.mode == 4 or prng.next() < 0.3 then a = set[weighted(set)]
     else
       local low = huge
       for _, x in ipairs(set) do low = min(low, plan.uses[x] or 0) end
