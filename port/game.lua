@@ -151,19 +151,22 @@ function GM.create(R, hud_layer)
   -- camera's fastest progress (of the whole move) per second.
   -- round 56b (owner: "The final shot is way too close, movement needs to be around the light source instead of
   -- through the middle, and the lich needs to also be around the light's edge instead of completely inside it"):
-  -- he goes round the light's edge to his spot, which is on it; the camera further back: six framings to judge in
-  -- the game (LEFT / RIGHT while it plays or once it has stopped), FRAMING the default
-  local SHOT = { edge = 1.9, edge_h = 1.4, mid = 0.5, back = 7.0, up = 0.9, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
-  local FRAMINGS = {
-    { name = '5 M BACK', back = 5.0, up = 0.5, look_y = 1.0, fov = 40 },
-    { name = '6 M BACK', back = 6.0, up = 0.7, look_y = 1.0, fov = 40 },
-    { name = '7 M BACK', back = 7.0, up = 0.9, look_y = 1.0, fov = 40 },
-    { name = '8 M BACK', back = 8.0, up = 1.1, look_y = 0.95, fov = 40 },
-    { name = '6.5 M BACK, HIGHER', back = 6.5, up = 1.6, look_y = 0.9, fov = 40 },
-    { name = '7.5 M BACK, LONGER LENS', back = 7.5, up = 0.6, look_y = 1.0, fov = 34 },
+  -- he goes round the light's edge to his spot, which is on it; the camera further back.
+  -- round 56c (owner: "Let's see 8m, 9m, 10m back and slightly different angles too, all other options can go"):
+  -- LEFT / RIGHT the distance back, UP / DOWN the angle (along the room camera's heading, turned round the pair to
+  -- either side, from higher, from lower), while the sequence plays or once it has stopped; the camera looks at the
+  -- point `mid` of the way from the egg to him, look_y over the floor, `pitch` degrees down onto it, `orbit` degrees
+  -- round it (+: the camera to its right)
+  local SHOT = { edge = 1.9, edge_h = 1.4, mid = 0.5, back = 9.0, orbit = 0, pitch = 8, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
+  local DISTANCES = { 8, 9, 10 }
+  local ANGLES = {
+    { name = 'STRAIGHT ON', orbit = 0, pitch = 8 },
+    { name = 'TURNED 12 DEG LEFT', orbit = -12, pitch = 8 },
+    { name = 'TURNED 12 DEG RIGHT', orbit = 12, pitch = 8 },
+    { name = 'HIGHER', orbit = 0, pitch = 15 },
+    { name = 'LOWER', orbit = 0, pitch = 3 },
   }
-  local FRAMING = 3
-  SEQ.framing = FRAMING; SEQ.label_n = 0
+  SEQ.dist_i, SEQ.angle_i, SEQ.label_n = 2, 1, 0
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
   -- egg"): every power already given up (their objects thrown out of the two-shot) and the pool sent in from 4-6.5 m
@@ -280,19 +283,22 @@ function GM.create(R, hud_layer)
     C:update_matrix_world()
   end
   local function set_cam(i) G.cam = clamp(floor(i), 0, #CAMS - 1); F:copy(L) end
-  -- round 56b: the two-shot for framing i (the camera only: from behind the point `mid` of the way from the egg to
-  -- his spot, along the room camera's heading)
-  local function set_framing(i)
-    local n = #FRAMINGS
-    SEQ.framing = ((i - 1) % n + n) % n + 1
-    local f = FRAMINGS[SEQ.framing]
-    SHOT.back, SHOT.up, SHOT.look_y, SHOT.fov = f.back, f.up, f.look_y, f.fov
+  -- round 56c: the two-shot for distance di and angle ai (the camera only)
+  local function set_framing(di, ai)
+    local nd, na = #DISTANCES, #ANGLES
+    SEQ.dist_i = ((di - 1) % nd + nd) % nd + 1
+    SEQ.angle_i = ((ai - 1) % na + na) % na + 1
+    local an = ANGLES[SEQ.angle_i]
+    SHOT.back, SHOT.orbit, SHOT.pitch = DISTANCES[SEQ.dist_i], an.orbit, an.pitch
     if not SEQ.spot then return end
     local x, z = SEQ.spot.x, SEQ.spot.z
     local mx, mz = EGG.x + (x - EGG.x)*SHOT.mid, EGG.z + (z - EGG.z)*SHOT.mid
     local gy = cave.ground_y(mx, mz)
+    local o, p = SHOT.orbit*pi/180, SHOT.pitch*pi/180
+    local bx, bz = -ROOM_H.x*cos(o) + SIDE_DIR.x*sin(o), -ROOM_H.y*cos(o) + SIDE_DIR.z*sin(o)
+    local hd = SHOT.back*cos(p)
     SEQ.tgt = v(mx, gy + SHOT.look_y, mz)
-    SEQ.eye = v(mx - ROOM_H.x*SHOT.back, gy + SHOT.look_y + SHOT.up, mz - ROOM_H.y*SHOT.back)
+    SEQ.eye = v(mx + bx*hd, gy + SHOT.look_y + SHOT.back*sin(p), mz + bz*hd)
   end
 
   -- ------------------------------------------------------------------ input
@@ -387,8 +393,9 @@ function GM.create(R, hud_layer)
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
     if SEQ.on then
-      -- round 56b: the framings, in the game
-      if hit('left') or hit('right') then set_framing(SEQ.framing + (hit('right') and 1 or -1)); SEQ.label_n = 150 end
+      -- round 56b/c: the framings, in the game
+      if hit('left') or hit('right') then set_framing(SEQ.dist_i + (hit('right') and 1 or -1), SEQ.angle_i); SEQ.label_n = 150 end
+      if hit('up') or hit('down') then set_framing(SEQ.dist_i, SEQ.angle_i + (hit('up') and 1 or -1)); SEQ.label_n = 150 end
       return
     end
     if END.won then return end
@@ -527,7 +534,7 @@ function GM.create(R, hud_layer)
       -- (round 56b: which framing, for 2.5 s after a change; counted in drawn frames, the game may be stopped)
       SEQ.label_n = SEQ.label_n - 1
       HUD.alpha(min(1, SEQ.label_n/30))
-      HUD.text('FRAMING ' .. SEQ.framing .. '/' .. #FRAMINGS .. ': ' .. FRAMINGS[SEQ.framing].name .. '   (LEFT / RIGHT)', R.W/2, R.H - 18, '#f2e3c2', 1, 'center', nil, INK)
+      HUD.text(DISTANCES[SEQ.dist_i] .. ' M BACK, ' .. ANGLES[SEQ.angle_i].name .. '   (LEFT / RIGHT: DISTANCE   UP / DOWN: ANGLE)', R.W/2, R.H - 18, '#f2e3c2', 1, 'center', nil, INK)
       HUD.alpha(1)
     end
     if goal then
@@ -610,8 +617,8 @@ function GM.create(R, hud_layer)
     if not VARIED then return end
     if START_AT == 'ENDING' and not G.started then
       G.started = true
-      -- (thrown behind where the two-shot's camera will stand, so they lie out of it)
-      for i = 0, 5 do if powers.is_on(powers.ALL[i + 1]) then powers.toggle(i); if items then items.throw(i, pi + (i - 2.5)*0.22) end end end
+      -- (thrown off to the south-east, where they lie outside every framing of the two-shot)
+      for i = 0, 5 do if powers.is_on(powers.ALL[i + 1]) then powers.toggle(i); if items then items.throw(i, 2.0 + (i - 2.5)*0.12) end end end
       snakes.gather(8, 4.0, 6.5, 1.5)
     end
     if not SEQ.on then
@@ -629,7 +636,7 @@ function GM.create(R, hud_layer)
       SEQ.spot = v(x, cave.ground_y(x, z), z)
       SEQ.R = side
       SEQ.th1 = atan2(z - SEQ.c.z, x - SEQ.c.x)
-      set_framing(SEQ.framing)
+      set_framing(SEQ.dist_i, SEQ.angle_i)
     end
     SEQ.t = SEQ.t + dt
     -- the camera follows the covering (never back, never faster than SHOT.rate of the way a second)
@@ -748,6 +755,8 @@ function GM.create(R, hud_layer)
     for k, s in ipairs(snakes.S) do out[k] = { r3(s.x), r3(s.z), s.dying, r3(s.delay) } end
     return out
   end
+  -- round 56c: a framing by index (distance, angle); returns its label
+  function GAME.framing(di, ai) set_framing(di, ai); return DISTANCES[SEQ.dist_i] .. ' M BACK, ' .. ANGLES[SEQ.angle_i].name end
   -- round 56: the ending's sequence (on, its progress, frozen, his distance to his spot, the covering)
   function GAME.seq()
     return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), frozen = SEQ.frozen, won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
