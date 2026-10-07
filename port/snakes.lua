@@ -285,9 +285,13 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     s.pooled = false
     s.prog_t, s.prog_v, s.prog_m, s.stuck, s.ghost = 0, nil, 0, 0, false
     s.trail = {}
-    for i = 0, 399 do s.trail[i + 1] = { s.x - cos(s.dir)*i*0.01, s.z - sin(s.dir)*i*0.01 } end
+    -- (round 54, the white squares: the old 400 points (3.99 m) are shorter than the body (LEN 4.4 m), so for its
+    -- first ~0.4 s the last tail rings stood stacked on the trail's end point; gpu_tube gave them zero normals, the
+    -- vertex shader's normalize() a NaN pixel, and the bloom's blur spread that into a 96 px white square)
+    local NT0 = varied and 460 or 400
+    for i = 0, NT0 - 1 do s.trail[i + 1] = { s.x - cos(s.dir)*i*0.01, s.z - sin(s.dir)*i*0.01 } end
     -- (each point keeps [3] = its distance to the next: the walks along the trail read it)
-    for i = 1, 399 do local a, b = s.trail[i], s.trail[i + 1]; a[3] = js_hypot(b[1] - a[1], b[2] - a[2]) end
+    for i = 1, NT0 - 1 do local a, b = s.trail[i], s.trail[i + 1]; a[3] = js_hypot(b[1] - a[1], b[2] - a[2]) end
     s.dying = -1; s.delay = delay; s.scale = 1; s.dist = 0
     s.burn = nil; s.sag = 0; s.sink = -1; s.burnt = false
     s.fx = nil; s.leak = 0; s.leak_at = nil; s.claim = nil; s.coil = nil
@@ -472,7 +476,11 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   local Tv, Nn, Bn, UP = Vector3.new(), Vector3.new(), Vector3.new(0, 1, 0), Vector3.new(0, 1, 0)
   Bn:set(0, 0, 0)
   local RK, GL, SH, RR = {}, {}, { 0, 0, 0 }, {}
-  local TUBE = { sides = SIDES, belly = 0.8, up = { 0, 1, 0 } }
+  -- (round 54, the white squares: `up` is gpu_tube's fallback for a ring whose direction lies along its own up. It was
+  -- the same up, so a ring running straight up or down (a struck rope hanging; a tail stacked on one point; anything
+  -- within gpu_precision's rounding, ~0.1 mm, of vertical) got zero normals; the vertex shader's normalize() made a NaN
+  -- pixel and the bloom's blur spread it into a 96 px white square. A level fallback frames it like any other ring.)
+  local TUBE = { sides = SIDES, belly = 0.8, up = { 1, 0, 0 } }
   for i = 1, RINGS do P[i] = Vector3.new(); UU[i] = Vector3.new(0, 1, 0); RK[i] = 0; GL[i] = 0 end
 
   local function free(s) return s.delay <= 0 and s.dying < 0 and not s.burn and s.sink < 0 and not s.fx and not s.coil end
@@ -736,6 +744,12 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
           if acc + l >= target then local ff = (target - acc)/(l == 0 and 1 or l); x = a[1] + (b[1] - a[1])*ff; z = a[2] + (b[2] - a[2])*ff; break end
           acc = acc + l; ti = ti + 1
         end
+        -- (round 54: past the trail's end the body goes on straight back, never stacked on its last point)
+        if varied and ti >= NT - 1 and target > acc and NT > 1 then
+          local a, b = trail[NT - 1], trail[NT]
+          local l = a[3]
+          if l and l > 0 then local ff = (target - acc)/l; x = b[1] + (b[1] - a[1])*ff; z = b[2] + (b[2] - a[2])*ff end
+        end
         local r = R0*RAD[i + 1]*sc*RK[i + 1]
         local lift = RAISE*smoothstep(RAISE_LEN, 0.05, target)*sc*(1 - smoothstep(0, 1, s.sag))
         SH[1], SH[2], SH[3] = 0, 0, 0
@@ -776,6 +790,8 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     nor[tip + 1] = Tv.x; nor[tip + 2] = Tv.y; nor[tip + 3] = Tv.z
     pos[en + 1] = P[RINGS].x; pos[en + 2] = P[RINGS].y; pos[en + 3] = P[RINGS].z
     nor[en + 1] = -Tv.x; nor[en + 2] = 0; nor[en + 3] = -Tv.z
+    -- (round 54: with the head straight up or down that level normal was zero, see TUBE)
+    if Tv.x*Tv.x + Tv.z*Tv.z < 1e-12 then nor[en + 1] = -cos(s.dir); nor[en + 3] = -sin(s.dir) end
     s.m.geometry.attributes.position.needs_update = true
     s.m.geometry.attributes.normal.needs_update = true
     -- the eyes: on the sides of the head, a little up
