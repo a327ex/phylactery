@@ -136,6 +136,24 @@ function GM.create(R, hud_layer)
   local END_ZOOM = { on = true, dur = 2.6, extra = 1.4 }
   if not os.getenv('LICH_ROOM') then OVER.hold = OVER.hold + END_ZOOM.extra end
   local MESSAGE = { '[ YOUR MESSAGE ]' }                -- his to write; one entry per line
+  -- round 56 (owner, 2026-10-07: "as the egg gets enveloped, the camera zooms in slowly, the lich stops being
+  -- controlled by the player and slowly moves to the right of the egg, facing left, the camera should lower such
+  -- that the frame we have is egg <- lich composed nicely, once we have that frame, let's just stop everything
+  -- there and pause the game"): from the first grip his control ends and he drifts to a spot right of the egg
+  -- (as the room camera sees it), facing it; the camera eases from the room's frame down to a low two-shot as
+  -- the shell is covered; once it is there (won, he in place) everything stops (SEQ.frozen). It takes the place
+  -- of round 47's push-in and the cut to black for now. Without LICH_ROOM only.
+  local SEQ = { on = false, t = 0, k = 0, frozen = false, spot = nil, eye = nil, tgt = nil }
+  G.SEQ = SEQ
+  -- the two-shot: his spot `side` m right of the egg; the camera `back` m behind the point `mid` of the way from
+  -- the egg to him, `up` m over the look point (look_y over the floor); its fov; his pace there; the camera's
+  -- fastest progress (of the whole move) per second
+  local SHOT = { side = 1.5, mid = 0.5, back = 3.8, up = 0.4, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
+  G.SHOT = SHOT
+  -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
+  -- egg"): every power already given up (their objects thrown out of the two-shot) and the pool sent in from 4-6.5 m
+  -- out, 1.5 s apart, so the shell is being covered within seconds. 'GAME': the game as it starts for players.
+  local START_AT = os.getenv('LICH_START') or 'ENDING'        -- (LICH_START=GAME in the environment: the players' start)
   local function over_black() return END.won and END.over >= OVER.hold + OVER.fade end
   local end_rng = U.make_rng(77)
   local function remove_all()
@@ -216,8 +234,15 @@ function GM.create(R, hud_layer)
     cave.set_dome_visible(c.dome ~= false)
     local C = R.world_camera
     C.fov = (G.cam == 0 and G.look and G.look.fov) or c.fov; C:update_projection_matrix()
-    -- the end: in on his face (round 47)
-    if END.won and END_ZOOM.on and G.cam == 0 and not G.look then
+    -- round 56: down from the room's frame to the two-shot as the shell is covered
+    if SEQ.on and G.cam == 0 and not G.look then
+      local k = SEQ.k*SEQ.k*(3 - 2*SEQ.k)
+      eye = eye:clone():lerp(SEQ.eye, k)
+      tgt = tgt:clone():lerp(SEQ.tgt, k)
+      C.fov = C.fov + (SHOT.fov - C.fov)*k; C:update_projection_matrix()
+    end
+    -- the end: in on his face (round 47; not while round 56's sequence runs)
+    if END.won and END_ZOOM.on and G.cam == 0 and not G.look and not SEQ.on then
       local k = smoothstep(0.15, END_ZOOM.dur, END.over)
       k = k*k*(3 - 2*k)
       if k > 0 then
@@ -279,6 +304,14 @@ function GM.create(R, hud_layer)
 
   local cf = Vector3.new()
   local function wanted_velocity()
+    -- round 56: his own way to the spot right of the egg, slowly, easing in
+    if SEQ.on then
+      local dx, dz = SEQ.spot.x - L.x, SEQ.spot.z - L.z
+      local d = js_hypot(dx, dz)
+      if d < 0.03 then return { x = 0, z = 0 } end
+      local s = min(SHOT.pace, sqrt(2*MV.MOVE.dec*max(0, d - 0.02))*0.5)
+      return { x = dx/d*s, z = dz/d*s }
+    end
     if END.won then return { x = 0, z = 0 } end
     local keys = script_keys
     if keys == nil then keys = ''; for k in pairs(held) do keys = keys .. k end end
@@ -313,7 +346,7 @@ function GM.create(R, hud_layer)
   local function hit(k) return key_is_pressed(k) or key_is_repeated(k) end
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
-    if END.won then return end
+    if END.won or SEQ.on then return end
     if inspect_active() then
       if inspect.S.accept then
         if hit('return') or hit('enter') or hit('kpenter') or hit('space') then inspect.accept() end
@@ -387,13 +420,13 @@ function GM.create(R, hud_layer)
     local mx, my = mouse_position()
     local moved = mx ~= mouse.px or my ~= mouse.py
     mouse.px, mouse.py = mx, my
-    if mouse_is_pressed(1) and not (inspect_active() or END.won) then
+    if mouse_is_pressed(1) and not (inspect_active() or END.won or SEQ.on) then
       local sl = slot_at(mx, my)
       if sl then
         if powers.is_on(powers.ALL[sl + 1]) then held = {}; mouse.down = false; ask_remove(sl); return end
       else mouse.down = true; pick_goal() end
     end
-    if mouse_is_pressed(2) and not (inspect_active() or END.won) and (G.cam == CAM_FREE or G.cam == CAM_EGG) then drag = { mx, my } end
+    if mouse_is_pressed(2) and not (inspect_active() or END.won or SEQ.on) and (G.cam == CAM_FREE or G.cam == CAM_EGG) then drag = { mx, my } end
     if mouse_is_released(1) then mouse.down = false end
     if mouse_is_released(2) then drag = nil end
     -- the inspect view's own listeners (inspect.js: down on the canvas, up anywhere, move)
@@ -443,7 +476,8 @@ function GM.create(R, hud_layer)
   local function draw_hud()
     HUD.begin()
     if inspect_active() then inspect.draw_hud(); return end      -- (round 49: not the testing text's)
-    if not END.won then draw_inventory() end
+    if not END.won and not SEQ.on then draw_inventory()
+    elseif SEQ.on and SEQ.t < 1.2 then HUD.alpha(1 - smoothstep(0, 1.2, SEQ.t)); draw_inventory(); HUD.alpha(1) end   -- (round 56: it fades as he is taken)
     if goal then
       gp:copy(goal):project(R.world_camera)
       if gp.z < 1 then
@@ -519,9 +553,42 @@ function GM.create(R, hud_layer)
   if inspect then for i = 0, 5 do icons[i] = inspect.icon(i, INV.px) end end
   -- (his mask takes its place on its first tick)
 
+  -- ------------------------------------------------------------------ the ending's sequence (round 56)
+  local function seq_tick(dt)
+    if not VARIED then return end
+    if START_AT == 'ENDING' and not G.started then
+      G.started = true
+      -- (thrown behind where the two-shot's camera will stand, so they lie out of it)
+      for i = 0, 5 do if powers.is_on(powers.ALL[i + 1]) then powers.toggle(i); if items then items.throw(i, pi + (i - 2.5)*0.22) end end end
+      snakes.gather(8, 4.0, 6.5, 1.5)
+    end
+    if not SEQ.on then
+      if END.grips == 0 then return end
+      SEQ.on = true; SEQ.t = 0
+      held = {}; mouse.down = false; goal = nil
+      snakes.hold = true          -- (no new waves while it plays: those already coming still come)
+      -- his spot: right of the egg as the room camera sees it, on floor he can stand on
+      local side = SHOT.side
+      local x, z = EGG.x + SIDE_DIR.x*side, EGG.z + SIDE_DIR.z*side
+      while side > 0.8 and nav.is_blocked(x, z) do side = side - 0.05; x, z = EGG.x + SIDE_DIR.x*side, EGG.z + SIDE_DIR.z*side end
+      SEQ.spot = v(x, cave.ground_y(x, z), z)
+      -- the two-shot: from behind the point between them (the room camera's heading), a little over them
+      local mx, mz = EGG.x + (x - EGG.x)*SHOT.mid, EGG.z + (z - EGG.z)*SHOT.mid
+      local gy = cave.ground_y(mx, mz)
+      SEQ.tgt = v(mx, gy + SHOT.look_y, mz)
+      SEQ.eye = v(mx - ROOM_H.x*SHOT.back, gy + SHOT.look_y + SHOT.up, mz - ROOM_H.y*SHOT.back)
+    end
+    SEQ.t = SEQ.t + dt
+    -- the camera follows the covering (never back, never faster than SHOT.rate of the way a second)
+    local want = END.won and 1 or clamp(END.level/0.97, 0, 1)
+    SEQ.k = min(1, SEQ.k + clamp(want - SEQ.k, 0, SHOT.rate*dt))
+    if END.won and SEQ.k >= 1 and js_hypot(SEQ.spot.x - L.x, SEQ.spot.z - L.z) < 0.06 and mover.speed() < 0.03 then SEQ.frozen = true end
+  end
+
   -- ------------------------------------------------------------------ sim + render
   local function tick()
-    if END.won then END.over = END.over + DT; if over_black() then return end end
+    if SEQ.frozen then return end                                   -- (round 56: the frame reached: everything stops)
+    if END.won and not SEQ.on then END.over = END.over + DT; if over_black() then return end end
     if inspect_active() then inspect.tick(DT); return end
     -- the model viewer put away with THROW: he throws it (round 48)
     if inspect and inspect.S.result then
@@ -534,6 +601,7 @@ function GM.create(R, hud_layer)
     mover.tick(G.t, DT, wanted_velocity())
     powers.tick(G.t, DT)
     ending_tick(DT)
+    seq_tick(DT)
     lich.pose(G.t, DT, mover.motion)
     powers.after_pose(G.t)
     lich.update(G.t)
@@ -626,6 +694,12 @@ function GM.create(R, hud_layer)
     local out = {}
     for k, s in ipairs(snakes.S) do out[k] = { r3(s.x), r3(s.z), s.dying, r3(s.delay) } end
     return out
+  end
+  -- round 56: the ending's sequence (on, its progress, frozen, his distance to his spot, the covering)
+  function GAME.seq()
+    return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), frozen = SEQ.frozen, won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
+      d = SEQ.spot and r3(js_hypot(SEQ.spot.x - L.x, SEQ.spot.z - L.z)) or nil, spot = SEQ.spot and { r3(SEQ.spot.x), r3(SEQ.spot.z) } or nil,
+      lich = { r3(L.x), r3(L.z) }, egg = { r3(EGG.x), r3(EGG.z) } }
   end
   function GAME.state()
     return { t = r3(G.t), tick = G.tick, cam = CAMS[G.cam + 1].name, lich = { r3(L.x), r3(L.y), r3(L.z) }, speed = r3(mover.speed()), yaw = r3(mover.yaw()),
