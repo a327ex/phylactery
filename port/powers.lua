@@ -759,6 +759,7 @@ function PW.create(ctx)
   function P.aborts() return aborts end
   function P.groups() groups.LIFT = lift.knots(); return groups end
   function P.gesture_phase() return G.phase, G.ab and G.ab.name, #G.targets end
+  function P.gesture_debug() return { t = G.t, quick = G.quick, still = G.still, pw = G.pw, on_t = G.on_t, primary = G.primary, targets = G.targets } end
   function P.get_facing() return facing end
   function P.set_facing(i) local n = #PW.FACINGS; facing = ((i % n) + n) % n end
   function P.drops() return drops end
