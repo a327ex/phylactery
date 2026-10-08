@@ -28,7 +28,7 @@ local SL = require('port.silhouette')
 local U = require('port.util')
 local Vector3, Quaternion = TM.Vector3, TM.Quaternion
 local sin, cos, sqrt, abs, acos, atan2, floor, ceil, min, max, pi = math.sin, math.cos, math.sqrt, math.abs, math.acos, math.atan, math.floor, math.ceil, math.min, math.max, math.pi
-local clamp = U.clamp
+local clamp, smoothstep = U.clamp, U.smoothstep
 
 local EP = {}
 local H = 0.4                     -- the shell's half height: its centre is H above the egg's base
@@ -40,8 +40,13 @@ local H = 0.4                     -- the shell's half height: its centre is H ab
 EP.EGG = { shell_kg = 3, core_kg = 45, core_r = 0.08, core_y = 0.09, friction = 0.7, restitution = 0.05, damping = 0.8,
   spheres = { { 0.25, 0.25 }, { 0.30, 0.40 }, { 0.20, 0.58 } } }
 -- the knocks: the first delay and the last (s); the push (N s) at strength 0 and added at 1, the lift added at 1
--- (times s^2); the juice: the squash spring's pull and the jitter (rad), both at strength 1
-EP.KN = { first = 1.0, last = 0.06, j0 = 2.8, j1 = 2.0, up = 14, squash = 0.09, jitter = 0.045 }
+-- (times s^2); the juice: the squash spring's pull and the jitter (rad), both at strength 1. Round 62 (owner: "Make
+-- the egg movement slightly more constrained as it's about to hatch, and make the juice shaking appear slightly
+-- earlier"): the juice's strength rises as progress^juice_pow (earlier than the push's), its jitter lasting longer,
+-- so the knocks' shivers run together sooner; over the last `calm_t` s before it opens the push eases off by up to
+-- `calm` and the rocking is damped up to `damp_late` more
+EP.KN = { first = 1.0, last = 0.06, j0 = 2.8, j1 = 2.0, up = 14, squash = 0.09, jitter = 0.045,
+  juice_pow = 0.5, calm_t = 3.0, calm = 0.55, damp_late = 3.0 }
 -- the break: the band in `n` shards `thick` m thick; the pieces' kg, their friction and bounce; how long the egg's
 -- pieces pass through each other (s, so the burst can part them)
 EP.BREAK = { n = 18, thick = 0.007, cap_kg = 4, bottom_kg = 9, shard_density = 1200, friction = 0.6, restitution = 0.25, apart = 0.12 }
@@ -307,8 +312,10 @@ function EP.create(opts)
   local function knock()
     if not body then return end
     knock_i = knock_i + 1
-    local s = clamp(knock_i/knock_n, 0, 1)^0.9
     local K = EP.KN
+    local p = clamp(knock_i/knock_n, 0, 1)
+    local s, sj = p^0.9, p^K.juice_pow
+    local calm = 1 - K.calm*api.late()
     -- a push from inside: the wall on its upper half outward, what pushes (the core, at the centre of mass) back: it
     -- turns the egg and does not move it; late, what pushes down on the bottom lifts it off the floor (`up`)
     local th = rng.float(0, 2*pi)
@@ -316,18 +323,22 @@ function EP.create(opts)
     local px, py, pz = to_world(body, x, y + H, z)
     local nx, ny, nz = dir_world(body, cos(th), 0, sin(th))
     local cx, cy, cz = centre(body)
-    local j = (K.j0 + K.j1*s)*rng.float(0.75, 1.25)
-    local up = K.up*s*s*rng.float(0.4, 1.0)
+    local j = (K.j0 + K.j1*s)*calm*rng.float(0.75, 1.25)
+    local up = K.up*s*s*calm*rng.float(0.4, 1.0)
     physics3_apply_impulse_at(body, nx*j, ny*j, nz*j, px, py, pz)
     physics3_apply_impulse_at(body, -nx*j, -ny*j + up, -nz*j, cx, cy, cz)
     -- the juice: the squash spring and a jitter, on the drawn egg about its base
-    spring_pull(spr, 'main', K.squash*(0.35 + 0.65*s), 8, 0.5)
-    shake_shake(shk, K.jitter*(0.3 + 0.7*s), 0.1 + 0.15*s, 40)
+    spring_pull(spr, 'main', K.squash*(0.35 + 0.65*sj), 8, 0.5)
+    shake_shake(shk, K.jitter*(0.35 + 0.65*sj), 0.15 + 0.2*sj, 40)
     api.knocks_done = knock_i
   end
   -- one knock now, then `n` more whose delays shrink from KN.first to KN.last (quad_out), as many as fit in `duration`
+  -- (0 until `calm_t` s before it opens, then up to 1 as it does)
+  local kt, kdur
+  function api.late() return kdur and smoothstep(kdur - EP.KN.calm_t, kdur, kt) or 0 end
   function api.knocks(duration)
     local K = EP.KN
+    kt, kdur = 0, duration
     local function total(n)
       local sum = 0
       for i = 1, n do sum = sum + math.lerp(math.quad_out((i - 1)/(n - 1)), K.first, K.last) end
@@ -555,6 +566,10 @@ function EP.create(opts)
   function api.tick(dt)
     if not api.started then return end
     timer_update(tm, dt)
+    if kt and body then
+      kt = kt + dt
+      physics3_set_angular_damping(body, EP.EGG.damping + EP.KN.damp_late*api.late())
+    end
     spring_update(spr, dt)
     shake_update(shk, dt)
     if api.apart_t then
