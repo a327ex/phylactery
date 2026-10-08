@@ -68,9 +68,9 @@ local WAVE_W = { 2.2, 2.0, 2.4, 1.4, 1.1 }
 
 function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   count = count or 8; seed = seed or 5
-  local rng = U.make_rng(seed)
+  local rng = U.run_rng(seed)
   local varied = opts and opts.varied or false
-  local wrng = U.make_rng(seed*977 + 3)          -- the waves' own draws (the old flow's rng stays as it was)
+  local wrng = U.run_rng(seed*977 + 3)          -- the waves' own draws (the old flow's rng stays as it was)
   -- round 50 fix: the rocks (the route field, the floor over the stones it climbs)
   local snav = varied and opts.nav or nil
   local route_at, floor_at = nil, nil
@@ -213,7 +213,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   local eye_geo = A.geometry('sphere_1_8_6')
   local egg = cave.egg.position
   local S = {}
-  local coil = CL.create({ centre = { egg.x, egg.y + 0.4, egg.z }, ground_y = cave.ground_y, rng = U.make_rng(seed*131 + 7), len = LEN })
+  local coil = CL.create({ centre = { egg.x, egg.y + 0.4, egg.z }, ground_y = cave.ground_y, rng = U.run_rng(seed*131 + 7), len = LEN })
   local coiled = {}
   local coil_mode, cover_tick = 0, 0
   local covered_mask = {}

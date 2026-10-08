@@ -32,7 +32,7 @@ local LOOKS = F.LOOKS
 local spectrum = FX.spectrum
 
 function F.create(R, cave, seed)
-  local rng = U.make_rng(seed or 13)
+  local rng = U.run_rng(seed or 13)
   local flames = FX.sprite_pool(R, 900, true, 'flame')
   local sparks = FX.sprite_pool(R, 160, true, 'dot')
   local smoke = FX.sprite_pool(R, 320, false, 'dot')
