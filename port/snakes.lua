@@ -154,12 +154,13 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
       end end
       bump[k] = sum/n
     end
+    -- (round 64: `at` made once, not a closure per call: it was a quarter of the game's garbage)
+    local function at(F, a, b) return F[min(nz - 1, max(0, b))*nx + min(nx - 1, max(0, a))] end
     local function sample(F, x, z)
       local fx, fz = (x - x0)/cell - 0.5, (z - z0)/cell - 0.5
       local i, j = floor(fx), floor(fz)
       local u, v = fx - i, fz - j
-      local function at(a, b) return F[min(nz - 1, max(0, b))*nx + min(nx - 1, max(0, a))] end
-      return (at(i, j)*(1 - u) + at(i + 1, j)*u)*(1 - v) + (at(i, j + 1)*(1 - u) + at(i + 1, j + 1)*u)*v
+      return (at(F, i, j)*(1 - u) + at(F, i + 1, j)*u)*(1 - v) + (at(F, i, j + 1)*(1 - u) + at(F, i + 1, j + 1)*u)*v
     end
     route_at = function(x, z) return sample(D, x, z) end
     floor_at = function(x, z) return cave.ground_y(x, z) + sample(bump, x, z) end

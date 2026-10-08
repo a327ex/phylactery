@@ -29,10 +29,18 @@ function HUD.set_font(name) if FONTS[name] then HUD.font_name = name end; return
 function HUD.font_label() local f = FONTS[HUD.font_name]; return f and f.label or HUD.font_name end
 local function k_hi(f) return f.hi and (HUD.HI or 2) or 1 end
 -- (in the font's own pixels) each advance holds the letter and the gap after it; the last gap is not width
+-- (round 64: byte by byte through a per-font byte -> glyph table, upper-cased as it is filled: no copies, no iterator)
 local function glyph_width(f, str, scale)
-  local G = f.glyphs
+  local G, gb = f.glyphs, f._by_byte
+  if not gb then gb = {}; f._by_byte = gb end
+  local s = tostring(str)
   local w = 0
-  for ch in tostring(str):upper():gmatch('.') do w = w + (G[ch] or G['?']).w*scale end
+  for i = 1, #s do
+    local b = string.byte(s, i)
+    local g = gb[b]
+    if not g then g = G[string.char(b):upper()] or G['?']; gb[b] = g end
+    w = w + g.w*scale
+  end
   return max(0, w - scale)
 end
 -- a text's height and width in game pixels at this scale

@@ -65,3 +65,6 @@ do
   local index = require('assets.port.programs.programs')
   for key in pairs(index) do G.R.renderer:program(key) end
 end
+
+-- round 64: the garbage collector paced by the game, a little every tick (port/gcpace.lua)
+require('port.gcpace').start()

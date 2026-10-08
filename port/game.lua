@@ -35,6 +35,7 @@ local HUD = require('port.hud')
 local SL = require('port.silhouette')
 local RG = require('port.ragdoll')
 local EP = require('port.eggphys')
+local GCP = require('port.gcpace')
 local MAT = require('port.three.materials')
 local UI = require('port.ui_style')
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
@@ -802,6 +803,7 @@ function GM.create(R, hud_layer)
 
   -- ------------------------------------------------------------------ sim + render
   local function tick()
+    GCP.tick()                         -- (round 64: the collector, a little every tick)
     if END.won and not SEQ.on then END.over = END.over + DT; if over_black() then return end end
     if inspect_active() then inspect.tick(DT); return end
     -- the model viewer put away with THROW: he throws it (round 48)
