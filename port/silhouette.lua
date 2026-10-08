@@ -16,6 +16,10 @@
   band round the crack (crack_lo .. crack_hi, `gap` wide either side, uneven) that shatters into shards, the cap
   above it and the bottom below it each a body of their own (port/eggphys.lua); uClip 3 = a loose piece of shell (no
   cut, its inside on its back faces). The cap's mask is drawn where its body is (subjects.cap).
+  Round 62 (owner, 2026-10-08: "as the egg is moving and breaking, fade everything in the background out to the
+  website's background color, so that only the egg remains visible"): the mask keeps the egg apart from the rest
+  (red: the egg and its pieces; green: the lich; blue: the burst's gore, by its fade), and by S.fade the last pass
+  takes everything but the egg to SL.SITE_BG.
 ]]
 local MAT = require('port.three.materials')
 local RD = require('port.three.renderer')
@@ -25,6 +29,8 @@ local abs, floor = math.abs, math.floor
 
 local SL = {}
 SL.PALE = { 0.90, 0.86, 0.78 }               -- sRGB, as it shows
+-- round 62: a327ex.com's page (renderer/theme.lua site_next: bg #111111), as it shows
+SL.SITE_BG = { 17/255, 17/255, 17/255 }
 -- the crack, in the shell's own space (its centre at 0, 0.8 m tall): round 60 (owner: "the way it hatches should be
 -- more irregular, it's currently too neat, like the edges and so on"): uneven jags (four saw waves of 5, 11, 19, 37
 -- teeth round it at their own phases, summed) `a` high about `y`, the whole line slanted `tilt` (CRACK_GLSL / crack_y)
@@ -143,14 +149,16 @@ in vec2 vUv;
 uniform sampler2D tFinal;
 uniform sampler2D tSil;
 uniform sampler2D tBlur;
-uniform float uE, uDim, uBlur;
+uniform float uE, uDim, uBlur, uFade;
+uniform vec3 uFadeCol;
 out vec4 fragColor;
 void main(){
   vec3 c = texture(tFinal, vUv).rgb;
   vec4 s = texture(tSil, vUv);
   vec3 b = texture(tBlur, vUv).rgb;
   vec3 bg = mix(c, b, uBlur*uE)*mix(1.0, uDim, uE);
-  fragColor = vec4(mix(bg, c, s.a), 1.0);
+  vec3 o = mix(bg, c, max(s.r, max(s.g, s.b)));
+  fragColor = vec4(mix(o, uFadeCol, uFade*(1.0 - s.r)), 1.0);
 }
 ]]
 
@@ -163,24 +171,26 @@ end
 
 function SL.create(R)
   local rt = RD.RenderTarget.new(R.W, R.H, { type = 'byte', min_filter = 'nearest', mag_filter = 'nearest' })
-  local P = SL.PALE
-  local flat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) }, uAlpha = { value = 1 } }, side = MAT.DoubleSide })
+  -- (round 62: which subject a pixel is, by channel: red the egg, green the lich, blue the gore)
+  local function flat_mat(r, g, b) return MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(r, g, b) }, uAlpha = { value = 1 } }, side = MAT.DoubleSide }) end
+  local flat_egg, flat_lich = flat_mat(1, 0, 0), flat_mat(0, 1, 0)
   local C = SL.CRACK
   local function clip(which)
-    return MAT.ShaderMaterial.new({ name = 'sil.clip', side = MAT.DoubleSide, uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) },
+    return MAT.ShaderMaterial.new({ name = 'sil.clip', side = MAT.DoubleSide, uniforms = { uColor = { value = Vector3.new(1, 0, 0) },
       uClip = { value = which }, uCrackY = { value = C.y }, uCrackA = { value = C.a }, uCrackGap = { value = 0 } } })
   end
   local below, above = clip(1), clip(2)
   -- the snakes' burst (round 58): pale, then fading into the dark (S.gore_fade) so the egg is left alone
-  local gore_mat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) }, uAlpha = { value = 1 } }, side = MAT.DoubleSide })
+  local gore_mat = flat_mat(0, 0, 1)
   -- (gap: the band's half width once it is open, round 61)
-  local S = { e = 0, bg = 1, BGS = SL.BGS, gore_fade = 1, rt = rt, texture = rt.texture, hatch_t = nil, gap = 0 }
+  -- (fade: everything but the egg toward the site's page, round 62)
+  local S = { e = 0, bg = 1, BGS = SL.BGS, gore_fade = 1, rt = rt, texture = rt.texture, hatch_t = nil, gap = 0, fade = 0, fade_col = SL.SITE_BG }
   local function collect(o, out)
     if o.visible == false then return end
     if o.is_mesh then out[#out + 1] = o end
     for _, c in ipairs(o.children or {}) do collect(c, out) end
   end
-  local list = {}
+  local list, n_egg = {}, 0
   -- subjects() -> { egg = { roots }, lich = { roots }, shell = the egg's shell mesh, cap = its cap once open }, asked
   -- each frame (the cap is one of the egg's roots' meshes: drawn cut above the band)
   function S.render(renderer, camera, subjects)
@@ -191,18 +201,18 @@ function SL.create(R)
     renderer.cur_prog, renderer.cur_mat_id = nil, nil
     for k = #list, 1, -1 do list[k] = nil end
     for _, root in ipairs(subjects.egg) do collect(root, list) end
+    n_egg = #list
     for _, root in ipairs(subjects.lich) do collect(root, list) end
     local shell, cap = subjects.shell, subjects.cap
     local hatching = S.hatch_t ~= nil and shell ~= nil and S.hatch_t >= SL.HATCH.crack_t     -- (open: cut, the cap off)
     below.uniforms.uCrackGap.value = S.gap; above.uniforms.uCrackGap.value = S.gap
-    for _, m in ipairs(list) do
+    for i, m in ipairs(list) do
       if hatching and m == shell then renderer:render_object(camera, 'sil', m, m.geometry, below, nil, nil, 'sil')
       elseif m == cap then renderer:render_object(camera, 'sil', m, m.geometry, above, nil, nil, 'sil')
-      else renderer:render_object(camera, 'sil', m, m.geometry, flat, nil, nil, 'sil') end
+      else renderer:render_object(camera, 'sil', m, m.geometry, i <= n_egg and flat_egg or flat_lich, nil, nil, 'sil') end
     end
     if subjects.gore and S.gore_fade > 0 then
-      local f = S.gore_fade
-      gore_mat.uniforms.uAlpha.value = f
+      gore_mat.uniforms.uColor.value:set(0, 0, S.gore_fade)
       for _, m in ipairs(subjects.gore) do if m.visible ~= false then renderer:render_object(camera, 'sil', m, m.geometry, gore_mat, nil, nil, 'sil') end end
     end
     renderer:set_render_target(prev)

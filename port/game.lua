@@ -199,8 +199,11 @@ function GM.create(R, hud_layer)
   -- away from the egg) and every snake bursts; from `wobble_at` s the egg is knocked from inside, faster and faster
   -- (round 61: port/eggphys.lua); from `zoom_at` s the camera goes in on it over `zoom` s (eased), to `close` m
   -- from a point `close_y` m up it; at `hatch_k` of the way it hatches (silhouette.lua); the burst's pieces fade into
-  -- the dark between `gore_fade` s after it
-  local DIE = { hold = 4.0, back = 0.5, out = 0.0, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 } }
+  -- the dark between `gore_fade` s after it. Round 62 (owner: "as the egg is moving and breaking, fade everything in
+  -- the background out to the website's background color, so that only the egg remains visible"): from the first
+  -- knock to `fade_after` s after it opens, everything but the egg and its pieces goes to the site's page colour
+  local DIE = { hold = 4.0, back = 0.5, out = 0.0, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 },
+    fade_after = 1.0 }
   SEQ.label_n = 0
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
@@ -772,6 +775,7 @@ function GM.create(R, hud_layer)
       end
       ep.tick(dt)
       sil.gore_fade = 1 - smoothstep(DIE.gore_fade[1], DIE.gore_fade[2], d)
+      sil.fade = smoothstep(DIE.wobble_at, open_at + DIE.fade_after, d)
       if d >= DIE.zoom_at then SEQ.k2 = min(1, (d - DIE.zoom_at)/DIE.zoom) end
       if not SEQ.hatch and SEQ.k2 >= DIE.hatch_k then SEQ.hatch = SEQ.t; crack_egg() end
     end

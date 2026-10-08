@@ -98,7 +98,8 @@ function P.create(opts)
   local blur_mat = mk('post.blur', { tSrc = { value = nil }, uDir = { value = Vector2.new() } })
   local copy_mat = mk('post.copy', { tSrc = { value = rt_final.texture } })
   local comp_mat = mk('sil.comp', { tFinal = { value = rt_final.texture }, tSil = { value = black }, uE = { value = 0 },
-    tBlur = { value = rt_sb_a.texture }, uDim = { value = 1 }, uBlur = { value = 0 } })   -- (round 57/59)
+    tBlur = { value = rt_sb_a.texture }, uDim = { value = 1 }, uBlur = { value = 0 },   -- (round 57/59)
+    uFade = { value = 0 }, uFadeCol = { value = Vector3.new(0, 0, 0) } })                  -- (round 62)
   R.hook_uniforms = {}
   function R.rebuild() for k, v in pairs(R.hook_uniforms) do U[k] = v end end
 
@@ -191,6 +192,8 @@ function P.create(opts)
       comp_mat.uniforms.uDim.value = bg.dim; comp_mat.uniforms.uBlur.value = bg.blur
       comp_mat.uniforms.tSil.value = sl.texture
       comp_mat.uniforms.uE.value = sl.e
+      comp_mat.uniforms.uFade.value = sl.fade
+      comp_mat.uniforms.uFadeCol.value:set(sl.fade_col[1], sl.fade_col[2], sl.fade_col[3])
       pass(comp_mat, rt_comp)
       R.out = rt_comp
     end
