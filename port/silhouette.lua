@@ -21,12 +21,32 @@ local max, min, exp = math.max, math.min, math.exp
 
 local SL = {}
 SL.PALE = { 0.90, 0.86, 0.78 }               -- sRGB, as it shows
--- the crack, in the shell's own space (its centre at 0, 0.8 m tall): a zig-zag `n` teeth round, `a` high, at `y`
-SL.CRACK = { y = 0.08, a = 0.045, n = 7 }
--- the hatch: a crack opens (the cap rises `open` m over `open_t` s), then the cap pops (up at `v` m/s against `g`,
--- turning `spin` rad/s, drifting `drift` m/s), and from `flood_at` s the light from the opening grows to fill the
--- screen in `flood_t` s (radius in screen heights)
-SL.HATCH = { open = 0.025, open_t = 0.3, v = 2.4, g = 6.5, spin = 1.8, drift = 0.35, flood_at = 0.45, flood_t = 1.8, flood_r = 2.4 }
+-- the crack, in the shell's own space (its centre at 0, 0.8 m tall): round 60 (owner: "the way it hatches should be
+-- more irregular, it's currently too neat, like the edges and so on"): uneven jags (four saw waves of 5, 11, 19, 37
+-- teeth round it at their own phases, summed) `a` high about `y`, the whole line slanted `tilt` (CRACK_GLSL / crack_y)
+SL.CRACK = { y = 0.08, a = 0.05, tilt = 0.05, rim = 0.28 }
+-- the hatch: a glowing crack spreads round the shell from the side facing the camera for `crack_t` s; then the cap
+-- hinges up on its back (`hinge` rad in `hinge_t` s), breaks off and flies off to the side away from him and back (up
+-- at `v` m/s against `g`, `back` and `side` m/s), tumbling `spin` rad/s about a tilted axis; from `flood_at` s the light
+-- from the opening grows to fill the screen in `flood_t` s (radius in screen heights)
+SL.HATCH = { crack_t = 0.8, hinge = 0.6, hinge_t = 0.14, v = 1.5, g = 6.5, back = 0.6, side = 0.85, spin = 3.4, flood_at = 1.05, flood_t = 1.8, flood_r = 2.4 }
+-- the crack's height round the shell (GLSL; needs uCrackY, uCrackA declared)
+local CRACK_GLSL = [[
+float ck_tri(float x){ return abs(fract(x)*2.0 - 1.0)*2.0 - 1.0; }
+float crack_y(vec3 p){
+  float t = atan(p.z, p.x)/6.2831853;
+  float j = 0.5*ck_tri(t*5.0 + 0.13) + 0.3*ck_tri(t*11.0 + 0.71) + 0.2*ck_tri(t*19.0 + 0.37) + 0.12*ck_tri(t*37.0 + 0.9);
+  return uCrackY + uCrackA*j + 0.05*cos(t*6.2831853 - 1.1);
+}
+]]
+-- the same in Lua (where the shards break from)
+function SL.crack_y(th)
+  local C = SL.CRACK
+  local t = th/(2*math.pi)
+  local function tri(x) return math.abs((x - math.floor(x))*2 - 1)*2 - 1 end
+  local j = 0.5*tri(t*5 + 0.13) + 0.3*tri(t*11 + 0.71) + 0.2*tri(t*19 + 0.37) + 0.12*tri(t*37 + 0.9)
+  return C.y + C.a*j + C.tilt*math.cos(t*2*math.pi - 1.1)
+end
 -- the background (UP / DOWN in the sequence): how dark it goes (its light times `dim`) and how blurred (0..1)
 SL.BGS = {
   { name = 'DIM AND BLURRED', dim = 0.22, blur = 1.0 },
@@ -68,20 +88,20 @@ void main(){ vP = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(
 local FS_CLIP = [[#version 300 es
 precision highp float;
 uniform vec3 uColor;
-uniform float uClip, uCrackY, uCrackA, uCrackN;
+uniform float uClip, uCrackY, uCrackA;
 in vec3 vP;
 out vec4 fragColor;
+]] .. CRACK_GLSL .. [[
 void main(){
-  float th = atan(vP.z, vP.x);
-  float zz = abs(fract(th*uCrackN/6.2831853)*2.0 - 1.0)*2.0 - 1.0;
-  float yc = uCrackY + uCrackA*zz;
+  float yc = crack_y(vP);
   if (uClip > 1.5 ? vP.y < yc : vP.y > yc) discard;
   fragColor = vec4(uColor, 1.0);
 }
 ]]
 -- the real egg's program (cave.egg), patched to cut along the same crack (uClip 0: whole); once cut its inside is
--- the light (uInner, linear HDR) that then floods out
-local EGG_DECL = 'varying vec3 vEggP;\nuniform float uClip, uCrackY, uCrackA, uCrackN;\nuniform vec3 uInner;\n'
+-- the light (uInner, linear HDR) that then floods out; before, the crack shows as a glowing line on the shell spreading
+-- round it (uCrackGrow 0..1, from the angle uCrackStart, in turns)
+local EGG_DECL = 'varying vec3 vEggP;\nuniform float uClip, uCrackY, uCrackA, uCrackGrow, uCrackStart;\nuniform vec3 uInner;\n' .. CRACK_GLSL
 function SL.patch_egg(vs, fs)
   local function sub(src, a, b)
     local i, j = src:find(a, 1, true)
@@ -92,11 +112,13 @@ function SL.patch_egg(vs, fs)
   vs = sub(vs, 'void main() {', 'varying vec3 vEggP;\nvoid main() {')
   fs = sub(fs, 'void main() {', EGG_DECL .. [[void main() {
   if (uClip > 0.5 && !gl_FrontFacing) { gl_FragColor = vec4(uInner, 1.0); return; }
-  if (uClip > 0.5) {
-    float th = atan(vEggP.z, vEggP.x);
-    float zz = abs(fract(th*uCrackN/6.2831853)*2.0 - 1.0)*2.0 - 1.0;
-    float yc = uCrackY + uCrackA*zz;
-    if (uClip > 1.5 ? vEggP.y < yc : vEggP.y > yc) discard;
+  if (uClip > 0.5 || uCrackGrow > 0.0) {
+    float yc = crack_y(vEggP);
+    if (uClip > 0.5) { if (uClip > 1.5 ? vEggP.y < yc : vEggP.y > yc) discard; }
+    else {
+      float da = abs(fract(atan(vEggP.z, vEggP.x)/6.2831853 - uCrackStart + 0.5) - 0.5);
+      if (da < 0.5*uCrackGrow && abs(vEggP.y - yc) < 0.007) { gl_FragColor = vec4(uInner, 1.0); return; }
+    }
   }]])
   return vs, fs
 end
@@ -146,29 +168,41 @@ function SL.create(R)
   local C = SL.CRACK
   local function clip(which)
     return MAT.ShaderMaterial.new({ name = 'sil.clip', side = MAT.DoubleSide, uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) },
-      uClip = { value = which }, uCrackY = { value = C.y }, uCrackA = { value = C.a }, uCrackN = { value = C.n } } })
+      uClip = { value = which }, uCrackY = { value = C.y }, uCrackA = { value = C.a } } })
   end
   local below, above = clip(1), clip(2)
   -- the snakes' burst (round 58): pale, then fading into the dark (S.gore_fade) so the egg is left alone
   local gore_mat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) }, uAlpha = { value = 1 } }, side = MAT.DoubleSide })
-  local S = { e = 0, bg = 1, BGS = SL.BGS, gore_fade = 1, rt = rt, texture = rt.texture, hatch_t = nil, flood_r = 0, flood_c = Vector2.new(0.5, 0.5), flood_col = Vector3.new(P[1], P[2], P[3]) }
+  local S = { e = 0, bg = 1, BGS = SL.BGS, gore_fade = 1, back = { 0, 1 }, fly_side = 1, rt = rt, texture = rt.texture, hatch_t = nil, flood_r = 0, flood_c = Vector2.new(0.5, 0.5), flood_col = Vector3.new(P[1], P[2], P[3]) }
   local cap = nil                                   -- the shell's top half once it hatches (its geometry, our matrix)
-  local CAP, MA, MB, AXZ, Q = Matrix4.new(), Matrix4.new(), Matrix4.new(), Vector3.new(0, 0, 1), Vector3.new()
+  local CAP, MA, MA2, MB, AX, AX2, Q = Matrix4.new(), Matrix4.new(), Matrix4.new(), Matrix4.new(), Vector3.new(0, 0, 1), Vector3.new(), Vector3.new()
   local function collect(o, out)
     if o.visible == false then return end
     if o.is_mesh then out[#out + 1] = o end
     for _, c in ipairs(o.children or {}) do collect(c, out) end
   end
   local list = {}
-  -- the cap's place in the shell's space at hatch time t
+  -- the cap's place in the shell's space at hatch time t: shut while the crack spreads; then hinged up on its back (the
+  -- side away from the camera, S.back) so the opening faces the camera, then off, away and turning
   local function cap_matrix(t)
     local H = SL.HATCH
-    local lift, ang, dx = H.open*min(1, t/H.open_t), 0, 0
-    local tp = t - H.open_t
-    if tp > 0 then lift = lift + H.v*tp - 0.5*H.g*tp*tp; ang = H.spin*tp; dx = H.drift*tp end
-    CAP:make_translation(dx, lift + C.y, 0)
-    CAP:multiply(MA:make_rotation_axis(AXZ, -ang))
-    CAP:multiply(MB:make_translation(0, -C.y, 0))
+    if t < H.crack_t then return CAP:identity() end
+    local tau = t - H.crack_t
+    local bx, bz = S.back[1], S.back[2]
+    local hx, hy, hz = bx*C.rim, C.y, bz*C.rim
+    local tp = max(0, tau - H.hinge_t)
+    local ah = H.hinge*min(1, tau/H.hinge_t)
+    local at = H.spin*tp
+    local sd = S.fly_side
+    local fx = (bx*H.back - bz*H.side*sd)*tp
+    local fz = (bz*H.back + bx*H.side*sd)*tp
+    local fy = H.v*tp - 0.5*H.g*tp*tp
+    AX:set(-bz, 0, bx)
+    AX2:set(-bz*0.6*sd + bx*0.3, 0.75, bx*0.6*sd + bz*0.3):normalize()
+    CAP:make_translation(hx + fx, hy + fy, hz + fz)
+    CAP:multiply(MA:make_rotation_axis(AX2, -at*sd))
+    CAP:multiply(MA2:make_rotation_axis(AX, -ah - 0.5*at))
+    CAP:multiply(MB:make_translation(-hx, -hy, -hz))
     return CAP
   end
   S.cap_matrix = cap_matrix
@@ -183,7 +217,7 @@ function SL.create(R)
     for _, root in ipairs(subjects.egg) do collect(root, list) end
     for _, root in ipairs(subjects.lich) do collect(root, list) end
     local shell = subjects.shell
-    local hatching = S.hatch_t ~= nil and shell ~= nil
+    local hatching = S.hatch_t ~= nil and shell ~= nil and S.hatch_t >= SL.HATCH.crack_t     -- (open: cut, the cap off)
     for _, m in ipairs(list) do
       if hatching and m == shell then renderer:render_object(camera, 'sil', m, m.geometry, below, nil, nil, 'sil')
       else renderer:render_object(camera, 'sil', m, m.geometry, flat, nil, nil, 'sil') end
