@@ -34,7 +34,7 @@ local CL = require('port.coil')
 local HUD = require('port.hud')
 local SL = require('port.silhouette')
 local RG = require('port.ragdoll')
-local ES = require('port.eggshards')
+local EP = require('port.eggphys')
 local MAT = require('port.three.materials')
 local UI = require('port.ui_style')
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
@@ -96,14 +96,21 @@ function GM.create(R, hud_layer)
   R.sil_subjects = function()
     local egg = { cave.egg }
     for _, s in ipairs(snakes.coiled) do egg[#egg + 1] = s.m; egg[#egg + 1] = s.eyes[1]; egg[#egg + 1] = s.eyes[2] end
+    -- (round 61: the egg's pieces once it breaks: the cap, the shards)
+    if G.eggphys then for _, r in ipairs(G.eggphys.roots) do egg[#egg + 1] = r end end
     -- (round 58: the snakes' burst, pale, then fading, from his death on: before it any gore is the dark's)
-    if G.shards then for _, m in ipairs(G.shards.meshes) do egg[#egg + 1] = m end end
-    return { egg = egg, lich = { lich.root, lmask.mesh }, shell = cave.egg.user_data.shell, gore = (G.SEQ and G.SEQ.dead) and gore.meshes() or nil }
+    return { egg = egg, lich = { lich.root, lmask.mesh }, shell = cave.egg.user_data.shell, cap = G.eggphys and G.eggphys.cap and G.eggphys.cap.mesh,
+      gore = (G.SEQ and G.SEQ.dead) and gore.meshes() or nil }
   end
   G.sil = sil
-  -- round 60: bits of shell for the hatch (port/eggshards.lua)
-  local shards = ES.create({ R = R, ground_y = cave.ground_y, sun = { cave.LAYOUT.sun_dir.x, cave.LAYOUT.sun_dir.y, cave.LAYOUT.sun_dir.z } })
-  G.shards = shards
+  -- round 61: the egg as a physics object from his death on, its knocks and its break (port/eggphys.lua)
+  local ep
+  do
+    local floor_geo
+    for _, m in ipairs(cave.group.children) do if m.material and m.material.name == 'cave.floor' then floor_geo = m.geometry end end
+    ep = EP.create({ R = R, egg = cave.egg, shell = cave.egg.user_data.shell, floor_geo = floor_geo, rock_geo = cave.rock_geo, ground_y = cave.ground_y })
+  end
+  G.eggphys = ep
   gore.follow(function() return L end)
   local POWER_KEYS = { '5', '6', '7', '8', '9', '0' }
 
@@ -189,8 +196,8 @@ function GM.create(R, hud_layer)
   -- `hold` s after the silhouettes are whole he dies (round 59: as a rag doll, port/ragdoll.lua, the arm that pointed
   -- reaching for the egg; round 59b, owner: "Lich is falling too close to the egg, should fall more to the side ...
   -- such that it's kind of (not totally) on the background": pushed `back` m/s away from the camera and `out` m/s
-  -- away from the egg) and every snake bursts; from `wobble_at` s the egg rocks in bursts (a pokeball's: three rocks, a
-  -- rest, a little harder each time); from `zoom_at` s the camera goes in on it over `zoom` s (eased), to `close` m
+  -- away from the egg) and every snake bursts; from `wobble_at` s the egg is knocked from inside, faster and faster
+  -- (round 61: port/eggphys.lua); from `zoom_at` s the camera goes in on it over `zoom` s (eased), to `close` m
   -- from a point `close_y` m up it; at `hatch_k` of the way it hatches (silhouette.lua); the burst's pieces fade into
   -- the dark between `gore_fade` s after it
   local DIE = { hold = 4.0, back = 0.5, out = 0.0, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 } }
@@ -648,21 +655,6 @@ function GM.create(R, hud_layer)
   -- (his mask takes its place on its first tick)
 
   -- ------------------------------------------------------------------ the ending's sequence (round 56)
-  -- round 58: the egg's rocking (a pokeball's); round 60 (owner: "It should increasingly shake more as it gets closer
-  -- to hatching"): at strength I (0..1, toward the opening) the rocks come faster (1.3 -> 4.1 Hz), wider (0.06 -> 0.2 rad)
-  -- and in longer bursts (the rests between shrink to none), a second rock across, a tremor growing as I^2, small hops
-  -- past 0.65. Returns the two rocks (rad) and the hop (m).
-  local function shake(t, I, dt)
-    local K = SEQ.shk
-    K.ph = K.ph + dt*2*pi*(1.3 + 2.8*I)
-    local w = 0.5*sin(t*1.9) + 0.3*sin(t*3.1 + 1.7) + 0.2*sin(t*5.3 + 0.4)
-    local gate = smoothstep(0.35 - 0.9*I, 0.55 - 0.9*I, w)
-    K.g = K.g + (gate - K.g)*min(1, dt*10)
-    local a = (0.06 + 0.14*I)*K.g
-    local j = (0.004 + 0.035*I*I)*(0.6*sin(t*47.3) + 0.4*sin(t*61.7 + 1.3))
-    local hop = I > 0.65 and max(0, sin(t*8.7))*0.014*(I - 0.65)/0.35*K.g or 0
-    return a*sin(K.ph) + j, 0.45*a*sin(K.ph*1.37 + 0.6) + 0.7*j, hop
-  end
   -- round 58/59: he dies: he falls as a rag doll (port/ragdoll.lua) on the cave's floor, toward the egg, the arm that
   -- pointed at it reaching for it; his mask drops; every snake bursts; the egg will rock on its base
   local function die()
@@ -676,22 +668,19 @@ function GM.create(R, hud_layer)
       push = { -fx*DIE.back - hx*DIE.out, 0, -fz*DIE.back - hz*DIE.out } })
     lmask.drop(cave.ground_y)
     snakes.burst_all(gore.burst)
-    cave.egg.user_data.wobble_axis = { ROOM_H.x, ROOM_H.y }
-    cave.egg.user_data.wobble = 0
+    ep.start()                -- (round 61: from here the egg is a physics object)
   end
   -- round 59: the real egg cracks: its shell cut along the crack (its program patched, silhouette.lua) and the cap a
-  -- real piece of it (the shell's geometry and look, cut the other way), a child of the egg. Round 60: first a glowing
-  -- crack spreads round it from the side facing the camera (crack_t s), then it opens (open_egg), bits of shell flying
-  local CAPM = TM.Matrix4.new()
+  -- real piece of it (the shell's geometry and look, cut the other way). Round 60: first a glowing crack spreads round
+  -- it from the side facing the camera (crack_t s), then it opens (open_egg). Round 61: it breaks as physics
+  -- (port/eggphys.lua): the bottom, the cap and the band round the crack as shards, each its own body
   local function crack_egg()
     local em = cave.M.egg
     local C = SL.CRACK
     em.custom = em.custom or {}
-    em.custom.uClip = { value = 0 }; em.custom.uCrackY = { value = C.y }; em.custom.uCrackA = { value = C.a }
+    em.custom.uClip = { value = 0 }; em.custom.uCrackY = { value = C.y }; em.custom.uCrackA = { value = C.a }; em.custom.uCrackGap = { value = 0 }
     em.custom.uCrackGrow = { value = 0 }; em.custom.uCrackStart = { value = atan2(-ROOM_H.y, -ROOM_H.x)/(2*pi) }
     em.custom.uInner = { value = TM.Vector3.new(4.2, 3.6, 2.8) }
-    sil.back = { ROOM_H.x, ROOM_H.y }
-    sil.fly_side = -(SEQ.side or 1)                 -- (the cap flies off on the side away from him)
     local cm = MAT.MeshLambertMaterial.new({ name = em.name, map = em.map, side = MAT.DoubleSide, flat_shading = em.flat_shading })
     cm.color:copy(em.color)
     cm.custom = {}
@@ -701,18 +690,18 @@ function GM.create(R, hud_layer)
     cm.custom.uInner = { value = TM.Vector3.new(0.30, 0.20, 0.11) }     -- (the cap's inside: warm, in shade; ~1 and up shows white)
     local shell = cave.egg.user_data.shell
     local cap = T.Mesh.new(shell.geometry, cm)
-    cap.receive_shadow = true
     cap.visible = false
-    cave.egg:add(cap)
     SEQ.cap = cap
   end
   local function open_egg()
     local em = cave.M.egg
     em.custom.uClip.value = 1
+    em.custom.uCrackGap.value = SL.CRACK.gap
+    sil.gap = SL.CRACK.gap
     em.side = MAT.DoubleSide
-    SEQ.cap.visible = true
-    local C = SL.CRACK
-    shards.spawn(cave.egg.user_data.shell, function(th) return C.rim*cos(th), SL.crack_y(th), C.rim*sin(th) end, { ROOM_H.x, ROOM_H.y })
+    -- (the cap flies off back, away from the camera, and to the side away from him)
+    local sd = -(SEQ.side or 1)
+    ep.open({ em = em, cap = SEQ.cap, back = { ROOM_H.x, ROOM_H.y }, side = { -ROOM_H.y*sd, ROOM_H.x*sd } })
   end
   local function seq_tick(dt)
     if not VARIED then return end
@@ -750,7 +739,6 @@ function GM.create(R, hud_layer)
       SEQ.R = side
       SEQ.th1 = atan2(z - SEQ.c.z, x - SEQ.c.x)
       set_framing()
-      SEQ.shk = { ph = 0, g = 0 }
       if egg_start then
         -- (round 60: there already: at his spot facing the egg, the two-shot, the dark whole, dying now)
         mover.place(SEQ.spot.x, SEQ.spot.z, atan2(EGG.x - SEQ.spot.x, EGG.z - SEQ.spot.z))
@@ -772,35 +760,20 @@ function GM.create(R, hud_layer)
       local d = SEQ.t - SEQ.dead
       -- (dead: no hurt pose, no pointing; the rag doll sets his bones after the pose)
       lich.hurt.w = 0; lich.hurt.level = 0; mover.motion.point = nil
-      local ud = cave.egg.user_data
       local H = SL.HATCH
       local open_at = DIE.zoom_at + DIE.hatch_k*DIE.zoom + H.crack_t
       local ht = SEQ.hatch and SEQ.t - SEQ.hatch or nil
-      if ht and ht >= H.crack_t then
-        -- (open: the shaking dies away)
-        ud.wobble = (ud.wobble or 0)*exp(-dt*8); ud.wobble2 = (ud.wobble2 or 0)*exp(-dt*8); ud.hop = (ud.hop or 0)*exp(-dt*8)
-      elseif d >= DIE.wobble_at then
-        local I = clamp((d - DIE.wobble_at)/(open_at - DIE.wobble_at), 0, 1)^1.4
-        local a1, a2, hop = shake(d, I, dt)
-        local x = ht and 1.25 or 1                      -- (hardest while the crack spreads)
-        ud.wobble, ud.wobble2, ud.hop = a1*x, a2*x, hop*x
-      end
+      -- round 61: from `wobble_at` the knocks from inside, faster and faster until it opens (port/eggphys.lua)
+      if d >= DIE.wobble_at and not SEQ.knocking then SEQ.knocking = true; ep.knocks(open_at - d) end
       if ht then
         sil.hatch_t = ht
         cave.M.egg.custom.uCrackGrow.value = clamp(ht/H.crack_t + 0.05*sin(ht*23), 0, 1)
         if ht >= H.crack_t and not SEQ.opened then SEQ.opened = true; open_egg() end
-        shards.update(dt)
       end
+      ep.tick(dt)
       sil.gore_fade = 1 - smoothstep(DIE.gore_fade[1], DIE.gore_fade[2], d)
       if d >= DIE.zoom_at then SEQ.k2 = min(1, (d - DIE.zoom_at)/DIE.zoom) end
       if not SEQ.hatch and SEQ.k2 >= DIE.hatch_k then SEQ.hatch = SEQ.t; crack_egg() end
-      if SEQ.cap then
-        -- (round 59: the real cap where the mask's is: the shell's place in the egg, times the cap's in the shell)
-        local shell = cave.egg.user_data.shell
-        shell:update_matrix()
-        CAPM:multiply_matrices(shell.matrix, sil.cap_matrix(SEQ.t - SEQ.hatch))
-        CAPM:decompose(SEQ.cap.position, SEQ.cap.quaternion, SEQ.cap.scale)
-      end
     end
   end
 
@@ -915,6 +888,7 @@ function GM.create(R, hud_layer)
     return out
   end
   -- round 56: the ending's sequence (on, its progress, the silhouettes' strength, his distance to his spot, the covering)
+  function GAME.egg() return ep.state() end
   function GAME.seq()
     return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), e = r3(sil.e), k2 = r3(SEQ.k2), dead = SEQ.dead ~= nil, hatch = sil.hatch_t and r3(sil.hatch_t) or nil, side = SEQ.side, won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
       d = SEQ.spot and r3(js_hypot(SEQ.spot.x - L.x, SEQ.spot.z - L.z)) or nil, spot = SEQ.spot and { r3(SEQ.spot.x), r3(SEQ.spot.z) } or nil,
