@@ -2,7 +2,8 @@
   mover.lua -- the port to Anchor: web/src/mover.js. The lich's body through the room: he eases
   into motion, drifts out of it, turns to face where he is sent (or, with `face`, what he points
   at), rides over stones, is stopped by rock, the egg and the room camera's edges; each tick he
-  hands lich.pose() what his pelvis felt.
+  hands lich.pose() what his pelvis felt. Round 63: mover.free = nothing stops him (his walk in
+  from out of the frame, where the grid is all edge).
 ]]
 local TM = require('port.three.math')
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
@@ -49,7 +50,7 @@ function MV.create(nav, lich, start, yaw0)
     v.x = v.x + push.x*dt; v.z = v.z + push.y*dt
     if not pushing and js_hypot(v.x, v.z) < 0.02 and js_hypot(push.x, push.y) < 0.05 then v.x = 0; v.z = 0; push:set(0, 0) end
     p.x = p.x + v.x*dt; p.z = p.z + v.z*dt
-    if nav.resolve(p, v, MOVE.radius) then
+    if not mover.free and nav.resolve(p, v, MOVE.radius) then
       local s = js_hypot(v.x, v.z)
       local ps = js_hypot(push.x, push.y)
       if s > 1e-4 and ps > 1e-4 then local along = (push.x*v.x + push.y*v.z)/s; push:set(v.x/s*along, v.z/s*along) end

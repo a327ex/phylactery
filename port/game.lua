@@ -210,8 +210,18 @@ function GM.create(R, hud_layer)
   -- egg"): every power already given up (their objects thrown out of the two-shot) and the pool sent in from 4-6.5 m
   -- out, 1.5 s apart, so the shell is being covered within seconds. 'EGG' (round 60, owner: "Let's focus on the egg
   -- now. Start the scene from there"): the sequence already at the two-shot, dim, and he dies on the first tick, so the
-  -- egg's part follows at once (no snakes, no coil). 'GAME': the game as it starts for players.
-  local START_AT = os.getenv('LICH_START') or 'EGG'        -- (LICH_START=GAME in the environment: the players' start)
+  -- egg's part follows at once (no snakes, no coil). 'GAME': the game as it starts for players (round 63, owner: "now
+  -- let me start from the actual start of the game": the default again).
+  local START_AT = os.getenv('LICH_START') or 'GAME'       -- (LICH_START=EGG / ENDING in the environment: the ending's tests)
+  -- round 63 (owner, 2026-10-08: "The lich should appear walking automatically towards the egg from offscreen. This
+  -- will later be tied to the event of the player focusing on the play window when we upload the game to the
+  -- website"): in the players' start he waits out of the room camera's frame, `from` down the lane from the tunnel,
+  -- until game.begin() (`auto`: at once, for now; on the site, the window's focus); then he walks in on his own at
+  -- `pace` m/s to where the game starts him, facing the egg, and only there is he the player's and do the waves start
+  local INTRO = { from = { x = START.x, z = -8.6 }, pace = 1.5, auto = true, state = nil }
+  if VARIED and START_AT == 'GAME' then INTRO.state = 'wait' end
+  local function intro_on() return INTRO.state == 'wait' or INTRO.state == 'walk' end
+  local function begin() if INTRO.state == 'wait' then INTRO.state = 'walk' end end
   local function over_black() return END.won and END.over >= OVER.hold + OVER.fade end
   local end_rng = U.make_rng(77)
   local function remove_all()
@@ -381,6 +391,15 @@ function GM.create(R, hud_layer)
 
   local cf = Vector3.new()
   local function wanted_velocity()
+    -- round 63: waiting out of frame; then his walk in to where the game starts him, easing to a stop there
+    if INTRO.state == 'wait' then return { x = 0, z = 0 } end
+    if INTRO.state == 'walk' then
+      local dx, dz = START.x - L.x, START.z - L.z
+      local d = js_hypot(dx, dz)
+      if d < 0.03 then return { x = 0, z = 0 } end
+      local s = min(INTRO.pace, max(0, d - 0.02)*1.1)            -- (slowing from ~1.4 m out: the mover lags, a later stop overshot)
+      return { x = dx/d*s, z = dz/d*s }
+    end
     -- round 56: his own way to the spot right of the egg, slowly, easing in; 56b: round the light's edge (onto
     -- its circle, along it the short way, then in to the spot), never across the pool
     if SEQ.on then
@@ -462,7 +481,7 @@ function GM.create(R, hud_layer)
       if hit('h') then G.hud = not G.hud end
       return
     end
-    if hit('i') and inspect then held = {}; mouse.down = false; inspect.open(); return end
+    if hit('i') and inspect and not intro_on() then held = {}; mouse.down = false; inspect.open(); return end
     if items then
       if hit('m') then items.set_hand_mat(items.opts.hand_mat + 1) end
       if hit('z') then items.set_size(items.opts.size + 1) end
@@ -482,10 +501,10 @@ function GM.create(R, hud_layer)
     if hit('x') then lich.set_recoil(lich.get_recoil() + 1) end
     if hit('o') then powers.set_facing(powers.get_facing() + 1) end
     if hit('l') then powers.lens.set_look(powers.lens.get_look() + 1) end
-    if hit('t') then remove_all() end
+    if hit('t') and not intro_on() then remove_all() end
     if hit('u') then snakes.set_coil_mode(snakes.coil_mode + 1) end
     if hit('n') then END.hand = (END.hand + 1) % #lich.HANDS end
-    for i, pk in ipairs(POWER_KEYS) do if hit(pk) or hit('kp' .. pk) then held = {}; mouse.down = false; ask_remove(i - 1) end end
+    for i, pk in ipairs(POWER_KEYS) do if (hit(pk) or hit('kp' .. pk)) and not intro_on() then held = {}; mouse.down = false; ask_remove(i - 1) end end
     if hit('b') then G.dark = (G.dark + 1) % #cave.DARK; cave.set_darkness(G.dark) end
     if hit('v') then G.surface = (G.surface + 1) % #cave.SURF; cave.set_surface(G.surface) end
     if hit('f1') then UI.set_bundle(UI.S.bundle + 1) end
@@ -495,8 +514,8 @@ function GM.create(R, hud_layer)
     if hit('f7') then local MK = require('port.orbmarks'); MK.set_style(MK.style + 1) end
     if hit('f8') then END_ZOOM.on = not END_ZOOM.on end
     if hit('f3') then powers.force_plan(powers.get_force() + 1) end
-    if hit('f9') then snakes.send('PACK') end
-    if hit('f10') then snakes.send('SPREAD') end
+    if hit('f9') and not intro_on() then snakes.send('PACK') end
+    if hit('f10') and not intro_on() then snakes.send('SPREAD') end
   end
   -- the inventory: the six objects he carries, top right, each its own little render (inspect.icon)
   local INV = { px = UI.ICON, pad = UI.PAD, gap = UI.GAP, y = 8 }   -- round 42: smaller (was 34 px)
@@ -517,7 +536,7 @@ function GM.create(R, hud_layer)
     local mx, my = mouse_position()
     local moved = mx ~= mouse.px or my ~= mouse.py
     mouse.px, mouse.py = mx, my
-    if mouse_is_pressed(1) and not (inspect_active() or END.won or SEQ.on) then
+    if mouse_is_pressed(1) and not (inspect_active() or END.won or SEQ.on or intro_on()) then
       local sl = slot_at(mx, my)
       if sl then
         if powers.is_on(powers.ALL[sl + 1]) then held = {}; mouse.down = false; ask_remove(sl); return end
@@ -793,7 +812,11 @@ function GM.create(R, hud_layer)
     end
     G.tick = G.tick + 1
     G.t = G.t + DT
+    if INTRO.state == 'wait' and INTRO.auto then begin() end
     mover.tick(G.t, DT, wanted_velocity())
+    if INTRO.state == 'walk' and js_hypot(START.x - L.x, START.z - L.z) < 0.05 and mover.speed() < 0.05 then
+      INTRO.state = 'done'; mover.free = false; snakes.hold = false
+    end
     powers.tick(G.t, DT)
     ending_tick(DT)
     seq_tick(DT)
@@ -830,7 +853,17 @@ function GM.create(R, hud_layer)
     R.render(dt)
   end
 
+  if INTRO.state == 'wait' then
+    mover.place(INTRO.from.x, INTRO.from.z, atan2(EGG.x - INTRO.from.x, EGG.z - INTRO.from.z))
+    mover.free = true
+    F:copy(L)
+    snakes.hold = true
+  end
+  G.INTRO = INTRO
+
   local game = { G = G, tick = tick, place_camera = place_camera, render = render, input_update = input_update, CAMS = CAMS }
+  -- round 63: his walk in starts (the site will call it when the play window takes focus)
+  game.begin = begin
   function game.frame(dt)
     -- one tick per 1/60 s (main.js: at most 8 a frame)
     if G.manual then return end
@@ -893,6 +926,9 @@ function GM.create(R, hud_layer)
   end
   -- round 56: the ending's sequence (on, its progress, the silhouettes' strength, his distance to his spot, the covering)
   function GAME.egg() return ep.state() end
+  function GAME.begin() begin(); return INTRO.state end
+  function GAME.snake_count() local n = 0; for _, s in ipairs(snakes.S) do if not s.pooled and s.dying < 0 then n = n + 1 end end; return n end
+  function GAME.intro() return { state = INTRO.state, x = r3(L.x), z = r3(L.z), speed = r3(mover.speed()) } end
   function GAME.seq()
     return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), e = r3(sil.e), k2 = r3(SEQ.k2), dead = SEQ.dead ~= nil, hatch = sil.hatch_t and r3(sil.hatch_t) or nil, side = SEQ.side, won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
       d = SEQ.spot and r3(js_hypot(SEQ.spot.x - L.x, SEQ.spot.z - L.z)) or nil, spot = SEQ.spot and { r3(SEQ.spot.x), r3(SEQ.spot.z) } or nil,
