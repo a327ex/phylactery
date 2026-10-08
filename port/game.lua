@@ -46,8 +46,12 @@ local DT = 1/60
 local GM = {}
 
 function GM.create(R, hud_layer)
-  -- round 65: each run its own (the engine's seed); LICH_ROOM keeps the fixed seeds (the digests)
-  U.RUN = (not os.getenv('LICH_ROOM')) and (random_get_seed() & 0xFFFFFFFF) or nil
+  -- round 65: each run its own (the engine's seed); LICH_ROOM keeps the fixed seeds (the digests). LICH_SEED in the
+  -- environment: a number = that run's seed; 'fixed' = the fixed seeds (the game as it played before round 65)
+  local ls = os.getenv('LICH_SEED')
+  if os.getenv('LICH_ROOM') or ls == 'fixed' then U.RUN = nil
+  elseif ls and tonumber(ls) then U.RUN = math.floor(tonumber(ls)) & 0xFFFFFFFF
+  else U.RUN = random_get_seed() & 0xFFFFFFFF end
   local cave = CAVE.build(R)
   local lich = LICH.create(R, { GU = cave.GU })
   -- round 45: the lich's own mask, flat white (port/lichmask.lua; F5 cycles it for comparison)
@@ -219,12 +223,15 @@ function GM.create(R, hud_layer)
   -- round 63 (owner, 2026-10-08: "The lich should appear walking automatically towards the egg from offscreen. This
   -- will later be tied to the event of the player focusing on the play window when we upload the game to the
   -- website"): in the players' start he waits out of the room camera's frame, `from` down the lane from the tunnel,
-  -- until game.begin() (`auto`: at once, for now; on the site, the window's focus); then he walks in on his own at
-  -- `pace` m/s to where the game starts him, facing the egg, and only there is he the player's and do the waves start
-  local INTRO = { from = { x = START.x, z = -8.6 }, pace = 1.5, auto = true, state = nil }
+  -- until game.begin() (`auto`: at once, for now; on the site, the window's focus); then he walks in on his own to
+  -- where the game starts him, facing the egg, and only there is he the player's and do the waves start. Round 66
+  -- (owner: "it should move there as though it was clicked to move near the egg"): his walk in is a click there,
+  -- the goal's own way (full pace, the same braking, the body's whole motion), aimed `short` m before his spot: a
+  -- click's floaty stop carries him on that far (measured 0.57 m), so he settles where the game starts him
+  local INTRO = { from = { x = START.x, z = -8.6 }, auto = true, state = nil, go = false, short = 0.57 }
   if VARIED and START_AT == 'GAME' then INTRO.state = 'wait' end
   local function intro_on() return INTRO.state == 'wait' or INTRO.state == 'walk' end
-  local function begin() if INTRO.state == 'wait' then INTRO.state = 'walk' end end
+  local function begin() if INTRO.state == 'wait' then INTRO.state = 'walk'; INTRO.go = true end end
   local function over_black() return END.won and END.over >= OVER.hold + OVER.fade end
   local end_rng = U.run_rng(77)
   local function remove_all()
@@ -394,14 +401,15 @@ function GM.create(R, hud_layer)
 
   local cf = Vector3.new()
   local function wanted_velocity()
-    -- round 63: waiting out of frame; then his walk in to where the game starts him, easing to a stop there
+    -- round 63: waiting out of frame; then his walk in to where the game starts him; round 66: as a click there (the
+    -- goal set once, then the goal's own way below; no keys, no mouse)
     if INTRO.state == 'wait' then return { x = 0, z = 0 } end
-    if INTRO.state == 'walk' then
-      local dx, dz = START.x - L.x, START.z - L.z
+    local walking_in = INTRO.state == 'walk'
+    if walking_in and INTRO.go then
+      INTRO.go = false
+      local dx, dz = START.x - INTRO.from.x, START.z - INTRO.from.z
       local d = js_hypot(dx, dz)
-      if d < 0.03 then return { x = 0, z = 0 } end
-      local s = min(INTRO.pace, max(0, d - 0.02)*1.1)            -- (slowing from ~1.4 m out: the mover lags, a later stop overshot)
-      return { x = dx/d*s, z = dz/d*s }
+      set_goal(v(START.x - dx/d*INTRO.short, 0, START.z - dz/d*INTRO.short))
     end
     -- round 56: his own way to the spot right of the egg, slowly, easing in; 56b: round the light's edge (onto
     -- its circle, along it the short way, then in to the spot), never across the pool
@@ -425,6 +433,7 @@ function GM.create(R, hud_layer)
     if END.won then return { x = 0, z = 0 } end
     local keys = script_keys
     if keys == nil then keys = ''; for k in pairs(held) do keys = keys .. k end end
+    if walking_in then keys = '' end
     local ix, iz = 0, 0
     if keys:find('w', 1, true) then iz = iz + 1 end
     if keys:find('s', 1, true) then iz = iz - 1 end
@@ -439,7 +448,7 @@ function GM.create(R, hud_layer)
       local sp = MV.MOVE.speed*(1 - 0.6*END.w)
       return { x = wx/l*sp, z = wz/l*sp }
     end
-    if mouse.down then pick_goal() end
+    if mouse.down and not walking_in then pick_goal() end
     if goal then
       local dx, dz = goal.x - L.x, goal.z - L.z
       local d = js_hypot(dx, dz)
@@ -818,7 +827,7 @@ function GM.create(R, hud_layer)
     G.t = G.t + DT
     if INTRO.state == 'wait' and INTRO.auto then begin() end
     mover.tick(G.t, DT, wanted_velocity())
-    if INTRO.state == 'walk' and js_hypot(START.x - L.x, START.z - L.z) < 0.05 and mover.speed() < 0.05 then
+    if INTRO.state == 'walk' and not INTRO.go and goal == nil and mover.speed() < 0.05 then
       INTRO.state = 'done'; mover.free = false; snakes.hold = false
     end
     powers.tick(G.t, DT)
