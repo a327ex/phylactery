@@ -332,7 +332,7 @@ function GO.create(R, cave, snakes, fx, rng)
     for i = 0, n - 1 do D[i + 1] = { life = 0 }; mesh:set_matrix_at(i, ZERO) end
     R.world_scene:add(mesh)
     local nxt = 0
-    local pool = {}
+    local pool = { mesh = mesh }
     function pool.spawn(o)
       local d, i = D[nxt + 1], nxt
       nxt = (nxt + 1) % n
@@ -730,6 +730,14 @@ function GO.create(R, cave, snakes, fx, rng)
   end
 
   local gore = { burst = burst, crush = crush, spatter = spatter }
+  -- round 58: the pieces flying and lying (not the blood or the stains on the floor), for the ending's silhouettes
+  function gore.meshes(out)
+    out = out or {}
+    for _, p in ipairs(PIECES) do if p.on then out[#out + 1] = p.m end end
+    for _, g in ipairs(GUTS) do if g.on then out[#out + 1] = g.m end end
+    for _, pool in ipairs({ meat, ribs, verts, scraps }) do out[#out + 1] = pool.mesh end
+    return out
+  end
   function gore.follow(fn) follow = fn end
   function gore.pieces()
     local out = {}

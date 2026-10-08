@@ -171,7 +171,33 @@ function LM.create(lich, GU, R)
     M.p = p:clone(); M.v:set(0, 0, 0)
     m.position:copy(M.p); m.quaternion:copy(q)
   end
+  -- round 58 (the ending, owner: "mask also drops and stops floating in front of him"): from where it is held it
+  -- falls, bounces a little and lies on the floor face up, still (ground_y: the cave's floor)
+  local LIE, FACE, UPV = Quaternion.new(), Vector3.new(), Vector3.new(0, 1, 0)
+  function M.drop(ground_y)
+    if M.dropped then return end
+    if not M.p then M.snap() end
+    M.dropped = { g = ground_y }
+    FACE:set(0, 0, 1):apply_quaternion(m.quaternion)
+    LIE:set_from_unit_vectors(FACE, UPV):multiply(m.quaternion)
+    M.v:add(Vector3.new(0, 0.6, 0))
+  end
+  local function fall(dt)
+    local P, V = M.p, M.v
+    V.y = V.y - 9.8*dt
+    P.x = P.x + V.x*dt; P.y = P.y + V.y*dt; P.z = P.z + V.z*dt
+    local fl = M.dropped.g(P.x, P.z) + 0.015
+    local near = P.y - fl < 0.06
+    if P.y < fl then
+      P.y = fl
+      if V.y < -0.7 then V.y = -V.y*0.3 else V.y = 0 end
+      V.x = V.x*0.6; V.z = V.z*0.6
+    end
+    m.position:copy(P)
+    m.quaternion:slerp(LIE, 1 - math.exp(-(near and 9 or 3)*dt))
+  end
   function M.tick(dt)
+    if M.dropped then fall(dt); return end
     local p, q = target()
     if not M.p then M.snap(); return end
     M.t = M.t + dt

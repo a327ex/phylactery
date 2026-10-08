@@ -933,6 +933,17 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   -- round 50: the waves (testing: send one now; the director's state)
   api.varied = varied
   function api.send(kind) DIR.force = kind; return kind end
+  -- round 58 (the ending, owner: "all snakes should explode as they do from the lift power"): every snake out (those
+  -- coiled on the egg and any still coming) bursts at once through `burst` (gore.burst) and goes to the pool
+  function api.burst_all(burst)
+    local mid = (RINGS - 1)//2
+    local n = 0
+    for _, s in ipairs(S) do
+      if not s.pooled and s.delay <= 0 and s.sink < 0 and s.dying < 0 then burst(s, mid, nil); to_pool(s); n = n + 1 end
+    end
+    for k = #coiled, 1, -1 do coiled[k] = nil end
+    return n
+  end
   -- round 56 (the ending's start, owner: "Start the game for me with snakes near the egg"): n of the pool
   -- sent from clear spots r0..r1 m out round the egg (not the camera's side), `spread` s apart, heading in
   function api.gather(n, r0, r1, spread)
