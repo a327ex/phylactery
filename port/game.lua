@@ -32,6 +32,7 @@ local BEAM = require('port.beam')
 local LENS = require('port.lens')
 local CL = require('port.coil')
 local HUD = require('port.hud')
+local SL = require('port.silhouette')
 local UI = require('port.ui_style')
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
 local clamp, smoothstep = U.clamp, U.smoothstep
@@ -86,6 +87,15 @@ function GM.create(R, hud_layer)
   local powers = PW.create({ R = R, cave = cave, snakes = snakes, fx = fx, gore = gore, warp = warp, fire = fire, lich = lich, mover = mover, egg = EGG,
     get_L = function() return L end, rng = U.make_rng(29), varied = VARIED })
   G.powers = powers; G.fx = fx; G.gore = gore; G.warp = warp
+  -- round 57: the ending's silhouettes (the egg with the snakes coiled on it; the lich with his mask)
+  local sil = SL.create(R)
+  R.sil = sil
+  R.sil_subjects = function()
+    local egg = { cave.egg }
+    for _, s in ipairs(snakes.coiled) do egg[#egg + 1] = s.m; egg[#egg + 1] = s.eyes[1]; egg[#egg + 1] = s.eyes[2] end
+    return { egg = egg, lich = { lich.root, lmask.mesh } }
+  end
+  G.sil = sil
   gore.follow(function() return L end)
   local POWER_KEYS = { '5', '6', '7', '8', '9', '0' }
 
@@ -141,9 +151,9 @@ function GM.create(R, hud_layer)
   -- that the frame we have is egg <- lich composed nicely, once we have that frame, let's just stop everything
   -- there and pause the game"): from the first grip his control ends and he drifts to a spot right of the egg
   -- (as the room camera sees it), facing it; the camera eases from the room's frame down to a low two-shot as
-  -- the shell is covered; once it is there (won, he in place) everything stops (SEQ.frozen). It takes the place
-  -- of round 47's push-in and the cut to black for now. Without LICH_ROOM only.
-  local SEQ = { on = false, t = 0, k = 0, frozen = false, spot = nil, eye = nil, tgt = nil }
+  -- the shell is covered (round 56 stopped everything there; round 57 lets it all play on, no end). It takes the
+  -- place of round 47's push-in and the cut to black for now. Without LICH_ROOM only.
+  local SEQ = { on = false, t = 0, k = 0, spot = nil, eye = nil, tgt = nil, sil_t0 = nil }
   G.SEQ = SEQ
   -- the two-shot: his spot on the sunlight's edge right of the egg (the shaft is the lid's hole, `edge` m round, leaning
   -- with the sun: its edge measured at `edge_h` m up, about his chest); the camera `back` m behind the point `mid` of
@@ -152,21 +162,18 @@ function GM.create(R, hud_layer)
   -- round 56b (owner: "The final shot is way too close, movement needs to be around the light source instead of
   -- through the middle, and the lich needs to also be around the light's edge instead of completely inside it"):
   -- he goes round the light's edge to his spot, which is on it; the camera further back.
-  -- round 56c (owner: "Let's see 8m, 9m, 10m back and slightly different angles too, all other options can go"):
-  -- LEFT / RIGHT the distance back, UP / DOWN the angle (along the room camera's heading, turned round the pair to
-  -- either side, from higher, from lower), while the sequence plays or once it has stopped; the camera looks at the
-  -- point `mid` of the way from the egg to him, look_y over the floor, `pitch` degrees down onto it, `orbit` degrees
-  -- round it (+: the camera to its right)
-  local SHOT = { edge = 1.9, edge_h = 1.4, mid = 0.5, back = 9.0, orbit = 0, pitch = 8, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
-  local DISTANCES = { 8, 9, 10 }
-  local ANGLES = {
-    { name = 'STRAIGHT ON', orbit = 0, pitch = 8 },
-    { name = 'TURNED 12 DEG LEFT', orbit = -12, pitch = 8 },
-    { name = 'TURNED 12 DEG RIGHT', orbit = 12, pitch = 8 },
-    { name = 'HIGHER', orbit = 0, pitch = 15 },
-    { name = 'LOWER', orbit = 0, pitch = 3 },
-  }
-  SEQ.dist_i, SEQ.angle_i, SEQ.label_n = 2, 1, 0
+  -- round 56c (owner: "Let's see 8m, 9m, 10m back and slightly different angles too"), settled in round 57 ("10m,
+  -- lower"): the camera looks at the point `mid` of the way from the egg to him, look_y over the floor, from `back` m
+  -- along the room camera's heading, `pitch` degrees down onto it
+  local SHOT = { edge = 1.9, edge_h = 1.4, mid = 0.5, back = 10.0, pitch = 3, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
+  -- round 57 (owner, 2026-10-07: "we get close to this final shot, we need some kind of shader or effect where the
+  -- only the egg and lich are visible but they become not textured, like flat colors, so the final shot is darkness
+  -- + two sillouettes ... The visual effect should start slowly in the middle of the movement towards the final shot,
+  -- then we get to the final shot at some percentage of the effect happening, then slowly it completes while at the
+  -- final shot"): port/silhouette.lua; it starts once the camera is `from` of the way down and runs `dur` s, eased in
+  -- and out; UP / DOWN in the sequence: its colours
+  local SIL = { from = 0.5, dur = 12 }
+  SEQ.label_n = 0
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
   -- egg"): every power already given up (their objects thrown out of the two-shot) and the pool sent in from 4-6.5 m
@@ -283,22 +290,15 @@ function GM.create(R, hud_layer)
     C:update_matrix_world()
   end
   local function set_cam(i) G.cam = clamp(floor(i), 0, #CAMS - 1); F:copy(L) end
-  -- round 56c: the two-shot for distance di and angle ai (the camera only)
-  local function set_framing(di, ai)
-    local nd, na = #DISTANCES, #ANGLES
-    SEQ.dist_i = ((di - 1) % nd + nd) % nd + 1
-    SEQ.angle_i = ((ai - 1) % na + na) % na + 1
-    local an = ANGLES[SEQ.angle_i]
-    SHOT.back, SHOT.orbit, SHOT.pitch = DISTANCES[SEQ.dist_i], an.orbit, an.pitch
-    if not SEQ.spot then return end
+  -- the two-shot (round 56c/57: 10 m back, lower)
+  local function set_framing()
     local x, z = SEQ.spot.x, SEQ.spot.z
     local mx, mz = EGG.x + (x - EGG.x)*SHOT.mid, EGG.z + (z - EGG.z)*SHOT.mid
     local gy = cave.ground_y(mx, mz)
-    local o, p = SHOT.orbit*pi/180, SHOT.pitch*pi/180
-    local bx, bz = -ROOM_H.x*cos(o) + SIDE_DIR.x*sin(o), -ROOM_H.y*cos(o) + SIDE_DIR.z*sin(o)
+    local p = SHOT.pitch*pi/180
     local hd = SHOT.back*cos(p)
     SEQ.tgt = v(mx, gy + SHOT.look_y, mz)
-    SEQ.eye = v(mx + bx*hd, gy + SHOT.look_y + SHOT.back*sin(p), mz + bz*hd)
+    SEQ.eye = v(mx - ROOM_H.x*hd, gy + SHOT.look_y + SHOT.back*sin(p), mz - ROOM_H.y*hd)
   end
 
   -- ------------------------------------------------------------------ input
@@ -393,9 +393,12 @@ function GM.create(R, hud_layer)
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
     if SEQ.on then
-      -- round 56b/c: the framings, in the game
-      if hit('left') or hit('right') then set_framing(SEQ.dist_i + (hit('right') and 1 or -1), SEQ.angle_i); SEQ.label_n = 150 end
-      if hit('up') or hit('down') then set_framing(SEQ.dist_i, SEQ.angle_i + (hit('up') and 1 or -1)); SEQ.label_n = 150 end
+      -- round 57: the silhouettes' colours, in the game
+      if hit('up') or hit('down') then
+        local n = #SL.STYLES
+        sil.style = ((sil.style - 1 + (hit('up') and 1 or -1)) % n + n) % n + 1
+        SEQ.label_n = 150
+      end
       return
     end
     if END.won then return end
@@ -534,7 +537,7 @@ function GM.create(R, hud_layer)
       -- (round 56b: which framing, for 2.5 s after a change; counted in drawn frames, the game may be stopped)
       SEQ.label_n = SEQ.label_n - 1
       HUD.alpha(min(1, SEQ.label_n/30))
-      HUD.text(DISTANCES[SEQ.dist_i] .. ' M BACK, ' .. ANGLES[SEQ.angle_i].name .. '   (LEFT / RIGHT: DISTANCE   UP / DOWN: ANGLE)', R.W/2, R.H - 18, '#f2e3c2', 1, 'center', nil, INK)
+      HUD.text('SILHOUETTES: ' .. SL.STYLES[sil.style].name .. '   (UP / DOWN)', R.W/2, R.H - 18, '#f2e3c2', 1, 'center', nil, INK)
       HUD.alpha(1)
     end
     if goal then
@@ -636,18 +639,19 @@ function GM.create(R, hud_layer)
       SEQ.spot = v(x, cave.ground_y(x, z), z)
       SEQ.R = side
       SEQ.th1 = atan2(z - SEQ.c.z, x - SEQ.c.x)
-      set_framing(SEQ.dist_i, SEQ.angle_i)
+      set_framing()
     end
     SEQ.t = SEQ.t + dt
     -- the camera follows the covering (never back, never faster than SHOT.rate of the way a second)
     local want = END.won and 1 or clamp(END.level/0.97, 0, 1)
     SEQ.k = min(1, SEQ.k + clamp(want - SEQ.k, 0, SHOT.rate*dt))
-    if END.won and SEQ.k >= 1 and js_hypot(SEQ.spot.x - L.x, SEQ.spot.z - L.z) < 0.06 and mover.speed() < 0.03 then SEQ.frozen = true end
+    -- round 57: the silhouettes, from half way down, eased in and out over SIL.dur s (the shot is reached part way)
+    if not SEQ.sil_t0 and SEQ.k >= SIL.from then SEQ.sil_t0 = SEQ.t end
+    if SEQ.sil_t0 then local u = clamp((SEQ.t - SEQ.sil_t0)/SIL.dur, 0, 1); sil.e = u*u*(3 - 2*u) end
   end
 
   -- ------------------------------------------------------------------ sim + render
   local function tick()
-    if SEQ.frozen then return end                                   -- (round 56: the frame reached: everything stops)
     if END.won and not SEQ.on then END.over = END.over + DT; if over_black() then return end end
     if inspect_active() then inspect.tick(DT); return end
     -- the model viewer put away with THROW: he throws it (round 48)
@@ -755,11 +759,9 @@ function GM.create(R, hud_layer)
     for k, s in ipairs(snakes.S) do out[k] = { r3(s.x), r3(s.z), s.dying, r3(s.delay) } end
     return out
   end
-  -- round 56c: a framing by index (distance, angle); returns its label
-  function GAME.framing(di, ai) set_framing(di, ai); return DISTANCES[SEQ.dist_i] .. ' M BACK, ' .. ANGLES[SEQ.angle_i].name end
-  -- round 56: the ending's sequence (on, its progress, frozen, his distance to his spot, the covering)
+  -- round 56: the ending's sequence (on, its progress, the silhouettes' strength, his distance to his spot, the covering)
   function GAME.seq()
-    return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), frozen = SEQ.frozen, won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
+    return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), e = r3(sil.e), won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
       d = SEQ.spot and r3(js_hypot(SEQ.spot.x - L.x, SEQ.spot.z - L.z)) or nil, spot = SEQ.spot and { r3(SEQ.spot.x), r3(SEQ.spot.z) } or nil,
       lich = { r3(L.x), r3(L.z) }, egg = { r3(EGG.x), r3(EGG.z) } }
   end

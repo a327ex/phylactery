@@ -30,6 +30,7 @@ function P.create(opts)
   local rt_warp = RD.RenderTarget.new(W, H, { type = 'half', min_filter = 'nearest', mag_filter = 'nearest', depth = false })
   local rt_final = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
   local rt_freeze = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
+  local rt_comp = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'nearest', mag_filter = 'nearest', depth = false })   -- (round 57)
 
   local world_scene = T.Scene.new(); world_scene.program_scene = 'world'; world_scene.name = 'world'
   world_scene.background = Color.new(0x9ec3e6)
@@ -93,6 +94,7 @@ function P.create(opts)
   local bright_mat = mk('post.bright', { tWorld = U.tWorld, tView = U.tView, uSrc = { value = Vector2.new(W, H) }, uThreshold = { value = 1 } })
   local blur_mat = mk('post.blur', { tSrc = { value = nil }, uDir = { value = Vector2.new() } })
   local copy_mat = mk('post.copy', { tSrc = { value = rt_final.texture } })
+  local comp_mat = mk('sil.comp', { tFinal = { value = rt_final.texture }, tSil = { value = black }, uE = { value = 0 } })   -- (round 57)
   R.hook_uniforms = {}
   function R.rebuild() for k, v in pairs(R.hook_uniforms) do U[k] = v end end
 
@@ -167,16 +169,27 @@ function P.create(opts)
     U.uFlash.value:from_array(p.flash); U.uHurtColor.value:from_array(p.hurt_color); U.uHurt.value = p.hurt; U.uDesat.value = p.desat
     U.uHud.value = p.hud; U.uWarpView.value = p.warp_view and 1 or 0
     pass(final_mat, rt_final)
+    -- round 57 (port/silhouette.lua): toward darkness, the egg and the lich as two flat shapes, by R.sil.e
+    R.out = rt_final
+    local sl = R.sil
+    if sl and sl.e > 0 and not ov then
+      sl.render(renderer, wc, R.sil_subjects())
+      comp_mat.uniforms.tSil.value = sl.texture
+      comp_mat.uniforms.uE.value = sl.e
+      pass(comp_mat, rt_comp)
+      R.out = rt_comp
+    end
   end
 
   -- the HUD layer (the final pass composites it last, as three.js composited its HUD canvas)
   function R.set_hud(layer) hud_tex = T.Texture.new(gpu_layer_texture(layer.handle or layer), W, H) end
   -- rt_final into an ordinary layer, whole-screen (GL rows are bottom-up: drawn flipped)
   local final_image = gpu_texture_image(rt_final.texture.gpu)
+  local comp_image = gpu_texture_image(rt_comp.texture.gpu)
   function R.present(layer)
     gpu_end()
     layer_push(layer, W/2, H/2, 0, 1, -1)
-    layer_draw_texture(layer, final_image, 0, 0)
+    layer_draw_texture(layer, R.out == rt_comp and comp_image or final_image, 0, 0)
     layer_pop(layer)
   end
 
