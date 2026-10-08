@@ -23,6 +23,8 @@ G = { render_acc = 0 }
 do
   local index = require('assets.port.programs.programs')
   local lib = setmetatable({}, { __index = function(t, key)
+    -- round 59: the egg drawn both sides once it cracks (its inside shows): the same program as its front side's
+    if key == 'cave.egg|world|2|-' then local src = t['cave.egg|world|0|-']; rawset(t, key, src); return src end
     local n = index[key]
     if not n then return nil end
     local nn = string.format('%02d', n)
@@ -30,6 +32,8 @@ do
     -- round 45: the orbs' markings (port/orbmarks.lua), patched into their tracer as it loads
     local mk = require('port.orbmarks').patch_for(key)
     if mk then src.fs = mk(src.fs) end
+    -- round 59: the egg cracks (port/silhouette.lua)
+    if key == 'cave.egg|world|0|-' then src.vs, src.fs = require('port.silhouette').patch_egg(src.vs, src.fs) end
     if key == 'post.final|post|0|-' then
       -- the HUD: three.js's canvas texture held straight alpha; an Anchor layer holds premultiplied
       local a, b = src.fs:find('c = mix(c, hud.rgb, hud.a*uHud);', 1, true)

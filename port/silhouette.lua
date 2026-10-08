@@ -7,6 +7,10 @@
   is, 1 = only the shapes). Programs of its own (GLSL here), added to three.js's library under their keys.
   Round 58: one colour, pale (owner: "pale (my choice)"); the hatch (S.hatch_t, seconds since it began): the shell cut
   along a zig-zag crack, its cap lifting, tumbling off, and a pale flood from the opening filling the screen.
+  Round 59 (owner: "we can remove the flat colors, keep everything textured but just dim the background, or blur it,
+  something to that effect"): the shapes are only a mask now: where they are the frame stays as it is, textured and
+  lit; elsewhere it goes dim and blurred (S.bg: SL.BGS), by S.e. The real egg cracks too: its program is patched
+  (SL.patch_egg) to cut along the same crack, and the cap is a real piece of shell (the game's, placed by cap_matrix).
 ]]
 local MAT = require('port.three.materials')
 local T = require('port.three.core')
@@ -23,6 +27,12 @@ SL.CRACK = { y = 0.08, a = 0.045, n = 7 }
 -- turning `spin` rad/s, drifting `drift` m/s), and from `flood_at` s the light from the opening grows to fill the
 -- screen in `flood_t` s (radius in screen heights)
 SL.HATCH = { open = 0.025, open_t = 0.3, v = 2.4, g = 6.5, spin = 1.8, drift = 0.35, flood_at = 0.45, flood_t = 1.8, flood_r = 2.4 }
+-- the background (UP / DOWN in the sequence): how dark it goes (its light times `dim`) and how blurred (0..1)
+SL.BGS = {
+  { name = 'DIM AND BLURRED', dim = 0.22, blur = 1.0 },
+  { name = 'DIM', dim = 0.18, blur = 0.0 },
+  { name = 'BLURRED', dim = 0.75, blur = 1.0 },
+}
 
 local VS = [[#version 300 es
 precision highp float;
@@ -42,8 +52,9 @@ void main(){ gl_Position = projectionMatrix*modelViewMatrix*instanceMatrix*vec4(
 local FS = [[#version 300 es
 precision highp float;
 uniform vec3 uColor;
+uniform float uAlpha;
 out vec4 fragColor;
-void main(){ fragColor = vec4(uColor, 1.0); }
+void main(){ fragColor = vec4(uColor, uAlpha); }
 ]]
 -- the shell, cut along the crack: uClip 1 keeps what is below it, 2 what is above
 local VS_CLIP = [[#version 300 es
@@ -68,6 +79,27 @@ void main(){
   fragColor = vec4(uColor, 1.0);
 }
 ]]
+-- the real egg's program (cave.egg), patched to cut along the same crack (uClip 0: whole); once cut its inside is
+-- the light (uInner, linear HDR) that then floods out
+local EGG_DECL = 'varying vec3 vEggP;\nuniform float uClip, uCrackY, uCrackA, uCrackN;\nuniform vec3 uInner;\n'
+function SL.patch_egg(vs, fs)
+  local function sub(src, a, b)
+    local i, j = src:find(a, 1, true)
+    assert(i, 'silhouette: the egg program moved (' .. a .. ')')
+    return src:sub(1, i - 1) .. b .. src:sub(j + 1)
+  end
+  vs = sub(vs, 'vec3 transformed = vec3( position );', 'vec3 transformed = vec3( position ); vEggP = position;')
+  vs = sub(vs, 'void main() {', 'varying vec3 vEggP;\nvoid main() {')
+  fs = sub(fs, 'void main() {', EGG_DECL .. [[void main() {
+  if (uClip > 0.5 && !gl_FrontFacing) { gl_FragColor = vec4(uInner, 1.0); return; }
+  if (uClip > 0.5) {
+    float th = atan(vEggP.z, vEggP.x);
+    float zz = abs(fract(th*uCrackN/6.2831853)*2.0 - 1.0)*2.0 - 1.0;
+    float yc = uCrackY + uCrackA*zz;
+    if (uClip > 1.5 ? vEggP.y < yc : vEggP.y > yc) discard;
+  }]])
+  return vs, fs
+end
 -- the last pass: the finished frame toward black, and toward the flat shapes where they are; the hatch's flood
 SL.COMP_VS = [[#version 300 es
 precision highp float;
@@ -81,16 +113,17 @@ precision highp float;
 in vec2 vUv;
 uniform sampler2D tFinal;
 uniform sampler2D tSil;
-uniform float uE, uFloodR, uAspect;
+uniform sampler2D tBlur;
+uniform float uE, uFloodR, uAspect, uDim, uBlur;
 uniform vec2 uFloodC;
 uniform vec3 uFloodCol;
 out vec4 fragColor;
 void main(){
   vec3 c = texture(tFinal, vUv).rgb;
   vec4 s = texture(tSil, vUv);
-  vec3 bg = c*(1.0 - uE);
-  vec3 fg = mix(c, s.rgb, uE);
-  vec3 o = mix(bg, fg, s.a);
+  vec3 b = texture(tBlur, vUv).rgb;
+  vec3 bg = mix(c, b, uBlur*uE)*mix(1.0, uDim, uE);
+  vec3 o = mix(bg, c, s.a);
   if (uFloodR > 0.0) {
     float d = length((vUv - uFloodC)*vec2(uAspect, 1.0));
     o = mix(o, uFloodCol, 1.0 - smoothstep(uFloodR*0.8, uFloodR, d));
@@ -109,7 +142,7 @@ end
 function SL.create(R)
   local rt = RD.RenderTarget.new(R.W, R.H, { type = 'byte', min_filter = 'nearest', mag_filter = 'nearest' })
   local P = SL.PALE
-  local flat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) } }, side = MAT.DoubleSide })
+  local flat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) }, uAlpha = { value = 1 } }, side = MAT.DoubleSide })
   local C = SL.CRACK
   local function clip(which)
     return MAT.ShaderMaterial.new({ name = 'sil.clip', side = MAT.DoubleSide, uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) },
@@ -117,8 +150,8 @@ function SL.create(R)
   end
   local below, above = clip(1), clip(2)
   -- the snakes' burst (round 58): pale, then fading into the dark (S.gore_fade) so the egg is left alone
-  local gore_mat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) } }, side = MAT.DoubleSide })
-  local S = { e = 0, gore_fade = 1, rt = rt, texture = rt.texture, hatch_t = nil, flood_r = 0, flood_c = Vector2.new(0.5, 0.5), flood_col = Vector3.new(P[1], P[2], P[3]) }
+  local gore_mat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) }, uAlpha = { value = 1 } }, side = MAT.DoubleSide })
+  local S = { e = 0, bg = 1, BGS = SL.BGS, gore_fade = 1, rt = rt, texture = rt.texture, hatch_t = nil, flood_r = 0, flood_c = Vector2.new(0.5, 0.5), flood_col = Vector3.new(P[1], P[2], P[3]) }
   local cap = nil                                   -- the shell's top half once it hatches (its geometry, our matrix)
   local CAP, MA, MB, AXZ, Q = Matrix4.new(), Matrix4.new(), Matrix4.new(), Vector3.new(0, 0, 1), Vector3.new()
   local function collect(o, out)
@@ -138,6 +171,7 @@ function SL.create(R)
     CAP:multiply(MB:make_translation(0, -C.y, 0))
     return CAP
   end
+  S.cap_matrix = cap_matrix
   -- subjects() -> { egg = { roots }, lich = { roots }, shell = the egg's shell mesh }, asked each frame
   function S.render(renderer, camera, subjects)
     local prev = renderer:get_render_target()
@@ -156,7 +190,7 @@ function SL.create(R)
     end
     if subjects.gore and S.gore_fade > 0 then
       local f = S.gore_fade
-      gore_mat.uniforms.uColor.value:set(P[1]*f, P[2]*f, P[3]*f)
+      gore_mat.uniforms.uAlpha.value = f
       for _, m in ipairs(subjects.gore) do if m.visible ~= false then renderer:render_object(camera, 'sil', m, m.geometry, gore_mat, nil, nil, 'sil') end end
     end
     S.flood_r = 0

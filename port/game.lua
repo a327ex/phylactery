@@ -33,6 +33,8 @@ local LENS = require('port.lens')
 local CL = require('port.coil')
 local HUD = require('port.hud')
 local SL = require('port.silhouette')
+local RG = require('port.ragdoll')
+local MAT = require('port.three.materials')
 local UI = require('port.ui_style')
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
 local clamp, smoothstep = U.clamp, U.smoothstep
@@ -179,12 +181,12 @@ function GM.create(R, hud_layer)
   -- His body should lie on the floor limp as though he died. At the same time as he drops, all snakes should explode
   -- as they do from the lift power and the egg should then be visible twitching, like a pokeball when its trying to
   -- capture a pokemon. The camera focuses and zooms on the egg hatching and once it's close enough it hatches"):
-  -- `hold` s after the silhouettes are whole he dies (he falls in `fall` s like a weight, w = (t/fall)^2, then a
-  -- small bounce) and every snake bursts; from `wobble_at` s the egg rocks in bursts (a pokeball's: three rocks, a
+  -- `hold` s after the silhouettes are whole he dies (round 59: as a rag doll, port/ragdoll.lua, pushed `push` m/s
+  -- toward the egg and `turn` m/s toward the camera, the arm that pointed reaching for the egg) and every snake bursts; from `wobble_at` s the egg rocks in bursts (a pokeball's: three rocks, a
   -- rest, a little harder each time); from `zoom_at` s the camera goes in on it over `zoom` s (eased), to `close` m
   -- from a point `close_y` m up it; at `hatch_k` of the way it hatches (silhouette.lua); the burst's pieces fade into
   -- the dark between `gore_fade` s after it
-  local DIE = { hold = 4.0, fall = 0.65, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 } }
+  local DIE = { hold = 4.0, push = 0.7, turn = 0.25, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 } }
   SEQ.label_n = 0
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
@@ -414,6 +416,12 @@ function GM.create(R, hud_layer)
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
     if SEQ.on then
+      -- round 59: the background (dim / blurred), in the game
+      if hit('up') or hit('down') then
+        local n = #SL.BGS
+        sil.bg = ((sil.bg - 1 + (hit('up') and 1 or -1)) % n + n) % n + 1
+        SEQ.label_n = 150
+      end
       return
     end
     if END.won then return end
@@ -548,6 +556,13 @@ function GM.create(R, hud_layer)
     if inspect_active() then inspect.draw_hud(); return end      -- (round 49: not the testing text's)
     if not END.won and not SEQ.on then draw_inventory()
     elseif SEQ.on and SEQ.t < 1.2 then HUD.alpha(1 - smoothstep(0, 1.2, SEQ.t)); draw_inventory(); HUD.alpha(1) end   -- (round 56: it fades as he is taken)
+    if SEQ.on and SEQ.label_n > 0 then
+      -- (round 59: which background, for 2.5 s after a change; counted in drawn frames)
+      SEQ.label_n = SEQ.label_n - 1
+      HUD.alpha(min(1, SEQ.label_n/30))
+      HUD.text('BACKGROUND: ' .. SL.BGS[sil.bg].name .. '   (UP / DOWN)', R.W/2, R.H - 18, '#f2e3c2', 1, 'center', nil, INK)
+      HUD.alpha(1)
+    end
     if goal then
       gp:copy(goal):project(R.world_camera)
       if gp.z < 1 then
@@ -632,27 +647,43 @@ function GM.create(R, hud_layer)
     if u > on then return 0 end
     return min(0.2, 0.09 + 0.035*n)*sin(u/on*3*pi)*sin(u/on*pi)
   end
-  -- round 58: he dies: he falls (lich.dead) to lie on the floor where he floats, along it toward the egg (his head),
-  -- facing the camera; his mask drops; every snake bursts; the egg will rock on its base
+  -- round 58/59: he dies: he falls as a rag doll (port/ragdoll.lua) on the cave's floor, toward the egg, the arm that
+  -- pointed at it reaching for it; his mask drops; every snake bursts; the egg will rock on its base
   local function die()
     SEQ.dead = SEQ.t; SEQ.k2 = 0
     local hx, hz = EGG.x - L.x, EGG.z - L.z
     local hl = sqrt(hx*hx + hz*hz)
     hx, hz = hx/hl, hz/hl
     local fx, fz = -ROOM_H.x, -ROOM_H.y
-    local dp = fx*hx + fz*hz
-    fx, fz = fx - dp*hx, fz - dp*hz
-    local fl = sqrt(fx*fx + fz*fz)
-    fx, fz = fx/fl, fz/fl
-    local Y, Z = v(hx, 0, hz), v(fx, 0, fz)
-    local X = v(0, 0, 0):cross_vectors(Y, Z)
-    local M4 = TM.Matrix4.new():set(X.x, Y.x, Z.x, 0, X.y, Y.y, Z.y, 0, X.z, Y.z, Z.z, 0, 0, 0, 0, 1)
-    SEQ.qw = TM.Quaternion.new():set_from_rotation_matrix(M4)
-    SEQ.pw = v(L.x, cave.ground_y(L.x, L.z) + 0.11, L.z)
+    SEQ.rag = RG.create(lich, { ground_y = cave.ground_y, egg = { x = EGG.x, y = EGG.y + 0.38, z = EGG.z, r = 0.36 },
+      reach = 2, reach_to = { EGG.x, EGG.y + 0.15, EGG.z },
+      push = { hx*DIE.push + fx*DIE.turn, 0, hz*DIE.push + fz*DIE.turn } })
     lmask.drop(cave.ground_y)
     snakes.burst_all(gore.burst)
     cave.egg.user_data.wobble_axis = { ROOM_H.x, ROOM_H.y }
     cave.egg.user_data.wobble = 0
+  end
+  -- round 59: the real egg cracks: its shell cut along the crack (its program patched, silhouette.lua) and the cap a
+  -- real piece of it (the shell's geometry and look, cut the other way), a child of the egg
+  local CAPM = TM.Matrix4.new()
+  local function crack_egg()
+    local em = cave.M.egg
+    local C = SL.CRACK
+    em.custom = em.custom or {}
+    em.custom.uClip = { value = 1 }; em.custom.uCrackY = { value = C.y }; em.custom.uCrackA = { value = C.a }; em.custom.uCrackN = { value = C.n }
+    em.custom.uInner = { value = TM.Vector3.new(4.2, 3.6, 2.8) }
+    em.side = MAT.DoubleSide
+    local cm = MAT.MeshLambertMaterial.new({ name = em.name, map = em.map, side = MAT.DoubleSide, flat_shading = em.flat_shading })
+    cm.color:copy(em.color)
+    cm.custom = {}
+    for k, u in pairs(em.custom) do cm.custom[k] = u end
+    cm.custom.uClip = { value = 2 }
+    cm.custom.uInner = { value = TM.Vector3.new(0.30, 0.20, 0.11) }     -- (the cap's inside: warm, in shade; ~1 and up shows white)
+    local shell = cave.egg.user_data.shell
+    local cap = T.Mesh.new(shell.geometry, cm)
+    cap.receive_shadow = true
+    cave.egg:add(cap)
+    SEQ.cap = cap
   end
   local function seq_tick(dt)
     if not VARIED then return end
@@ -694,14 +725,8 @@ function GM.create(R, hud_layer)
     if SEQ.e1 and not SEQ.dead and SEQ.t >= SEQ.e1 + DIE.hold then die() end
     if SEQ.dead then
       local d = SEQ.t - SEQ.dead
-      local D = lich.dead
-      local u = min(1, d/DIE.fall)
-      D.w = u*u
-      D.lift = d > DIE.fall and 0.035*exp(-(d - DIE.fall)*7)*abs(sin((d - DIE.fall)*13)) or 0
-      -- (where he lies, in the root's frame as it is now)
-      local rq = lich.root.quaternion:clone():invert()
-      D.q:copy(rq):multiply(SEQ.qw)
-      D.p:copy(SEQ.pw):sub(lich.root.position):apply_quaternion(rq)
+      -- (dead: no hurt pose, no pointing; the rag doll sets his bones after the pose)
+      lich.hurt.w = 0; lich.hurt.level = 0; mover.motion.point = nil
       local ud = cave.egg.user_data
       if SEQ.hatch then
         sil.hatch_t = SEQ.t - SEQ.hatch
@@ -709,7 +734,14 @@ function GM.create(R, hud_layer)
       elseif d >= DIE.wobble_at then ud.wobble = rock(d - DIE.wobble_at) end
       sil.gore_fade = 1 - smoothstep(DIE.gore_fade[1], DIE.gore_fade[2], d)
       if d >= DIE.zoom_at then SEQ.k2 = min(1, (d - DIE.zoom_at)/DIE.zoom) end
-      if not SEQ.hatch and SEQ.k2 >= DIE.hatch_k then SEQ.hatch = SEQ.t end
+      if not SEQ.hatch and SEQ.k2 >= DIE.hatch_k then SEQ.hatch = SEQ.t; crack_egg() end
+      if SEQ.cap then
+        -- (round 59: the real cap where the mask's is: the shell's place in the egg, times the cap's in the shell)
+        local shell = cave.egg.user_data.shell
+        shell:update_matrix()
+        CAPM:multiply_matrices(shell.matrix, sil.cap_matrix(SEQ.t - SEQ.hatch))
+        CAPM:decompose(SEQ.cap.position, SEQ.cap.quaternion, SEQ.cap.scale)
+      end
     end
   end
 
@@ -730,6 +762,7 @@ function GM.create(R, hud_layer)
     ending_tick(DT)
     seq_tick(DT)
     lich.pose(G.t, DT, mover.motion)
+    if SEQ.rag then SEQ.rag.step(DT); SEQ.rag.apply() end          -- (round 59: dead, a rag doll)
     powers.after_pose(G.t)
     lich.update(G.t)
     lmask.tick(DT)
