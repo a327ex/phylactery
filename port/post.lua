@@ -31,6 +31,9 @@ function P.create(opts)
   local rt_final = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
   local rt_freeze = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
   local rt_comp = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'nearest', mag_filter = 'nearest', depth = false })   -- (round 57)
+  -- round 59: the frame small and blurred, for the ending's background
+  local rt_sb_a = RD.RenderTarget.new(W//4, H//4, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
+  local rt_sb_b = RD.RenderTarget.new(W//4, H//4, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
 
   local world_scene = T.Scene.new(); world_scene.program_scene = 'world'; world_scene.name = 'world'
   world_scene.background = Color.new(0x9ec3e6)
@@ -95,7 +98,8 @@ function P.create(opts)
   local blur_mat = mk('post.blur', { tSrc = { value = nil }, uDir = { value = Vector2.new() } })
   local copy_mat = mk('post.copy', { tSrc = { value = rt_final.texture } })
   local comp_mat = mk('sil.comp', { tFinal = { value = rt_final.texture }, tSil = { value = black }, uE = { value = 0 },
-    uFloodR = { value = 0 }, uFloodC = { value = Vector2.new(0.5, 0.5) }, uFloodCol = { value = Vector3.new(1, 1, 1) }, uAspect = { value = W/H } })   -- (round 57)
+    uFloodR = { value = 0 }, uFloodC = { value = Vector2.new(0.5, 0.5) }, uFloodCol = { value = Vector3.new(1, 1, 1) }, uAspect = { value = W/H },
+    tBlur = { value = rt_sb_a.texture }, uDim = { value = 1 }, uBlur = { value = 0 } })   -- (round 57/59)
   R.hook_uniforms = {}
   function R.rebuild() for k, v in pairs(R.hook_uniforms) do U[k] = v end end
 
@@ -175,6 +179,17 @@ function P.create(opts)
     local sl = R.sil
     if sl and sl.e > 0 and not ov then
       sl.render(renderer, wc, R.sil_subjects())
+      -- (round 59: the background's blur, from the finished frame at a quarter of its size)
+      local bg = sl.BGS[sl.bg]
+      if bg.blur > 0 then
+        local SW, SH = W//4, H//4
+        pass(copy_mat, rt_sb_a)
+        blur_mat.uniforms.tSrc.value = rt_sb_a.texture; blur_mat.uniforms.uDir.value:set(1/SW, 0); pass(blur_mat, rt_sb_b)
+        blur_mat.uniforms.tSrc.value = rt_sb_b.texture; blur_mat.uniforms.uDir.value:set(0, 1/SH); pass(blur_mat, rt_sb_a)
+        blur_mat.uniforms.tSrc.value = rt_sb_a.texture; blur_mat.uniforms.uDir.value:set(2/SW, 0); pass(blur_mat, rt_sb_b)
+        blur_mat.uniforms.tSrc.value = rt_sb_b.texture; blur_mat.uniforms.uDir.value:set(0, 2/SH); pass(blur_mat, rt_sb_a)
+      end
+      comp_mat.uniforms.uDim.value = bg.dim; comp_mat.uniforms.uBlur.value = bg.blur
       comp_mat.uniforms.tSil.value = sl.texture
       comp_mat.uniforms.uE.value = sl.e
       comp_mat.uniforms.uFloodR.value = sl.flood_r; comp_mat.uniforms.uFloodC.value:copy(sl.flood_c); comp_mat.uniforms.uFloodCol.value:copy(sl.flood_col)
