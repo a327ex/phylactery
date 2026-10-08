@@ -313,15 +313,20 @@ function C.build(R)
     GU.uGIScale.value = d.gi
     return d.name
   end
-  local WQ, WAX = TM.Quaternion.new(), Vector3.new()
+  local WQ, WQ2, WAX = TM.Quaternion.new(), TM.Quaternion.new(), Vector3.new()
   function cave.update(t, dt)
     update_dust(t, dt)
     -- round 58 (the ending): user_data.wobble (radians) rocks the egg on its base about user_data.wobble_axis ({x, z})
-    -- instead of its idle tremble
-    local wb = egg.user_data.wobble
+    -- instead of its idle tremble; round 60: user_data.wobble2 about the level axis square to it, user_data.hop (m) up
+    local ud = egg.user_data
+    local wb = ud.wobble
     if wb then
-      local ax = egg.user_data.wobble_axis
-      egg.quaternion:copy(WQ:set_from_axis_angle(WAX:set(ax[1], 0, ax[2]), wb))
+      local ax = ud.wobble_axis
+      if not ud.base then ud.base = egg.position:clone() end
+      WQ:set_from_axis_angle(WAX:set(ax[1], 0, ax[2]), wb)
+      WQ2:set_from_axis_angle(WAX:set(-ax[2], 0, ax[1]), ud.wobble2 or 0)
+      egg.quaternion:copy(WQ):multiply(WQ2)
+      egg.position:copy(ud.base); egg.position.y = egg.position.y + (ud.hop or 0)
       shell.rotation.z = 0; shell.rotation.x = 0
       return
     end

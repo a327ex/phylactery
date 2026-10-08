@@ -34,6 +34,7 @@ local CL = require('port.coil')
 local HUD = require('port.hud')
 local SL = require('port.silhouette')
 local RG = require('port.ragdoll')
+local ES = require('port.eggshards')
 local MAT = require('port.three.materials')
 local UI = require('port.ui_style')
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
@@ -96,9 +97,13 @@ function GM.create(R, hud_layer)
     local egg = { cave.egg }
     for _, s in ipairs(snakes.coiled) do egg[#egg + 1] = s.m; egg[#egg + 1] = s.eyes[1]; egg[#egg + 1] = s.eyes[2] end
     -- (round 58: the snakes' burst, pale, then fading, from his death on: before it any gore is the dark's)
+    if G.shards then for _, m in ipairs(G.shards.meshes) do egg[#egg + 1] = m end end
     return { egg = egg, lich = { lich.root, lmask.mesh }, shell = cave.egg.user_data.shell, gore = (G.SEQ and G.SEQ.dead) and gore.meshes() or nil }
   end
   G.sil = sil
+  -- round 60: bits of shell for the hatch (port/eggshards.lua)
+  local shards = ES.create({ R = R, ground_y = cave.ground_y, sun = { cave.LAYOUT.sun_dir.x, cave.LAYOUT.sun_dir.y, cave.LAYOUT.sun_dir.z } })
+  G.shards = shards
   gore.follow(function() return L end)
   local POWER_KEYS = { '5', '6', '7', '8', '9', '0' }
 
@@ -193,8 +198,10 @@ function GM.create(R, hud_layer)
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
   -- egg"): every power already given up (their objects thrown out of the two-shot) and the pool sent in from 4-6.5 m
-  -- out, 1.5 s apart, so the shell is being covered within seconds. 'GAME': the game as it starts for players.
-  local START_AT = os.getenv('LICH_START') or 'ENDING'        -- (LICH_START=GAME in the environment: the players' start)
+  -- out, 1.5 s apart, so the shell is being covered within seconds. 'EGG' (round 60, owner: "Let's focus on the egg
+  -- now. Start the scene from there"): the sequence already at the two-shot, dim, and he dies on the first tick, so the
+  -- egg's part follows at once (no snakes, no coil). 'GAME': the game as it starts for players.
+  local START_AT = os.getenv('LICH_START') or 'EGG'        -- (LICH_START=GAME in the environment: the players' start)
   local function over_black() return END.won and END.over >= OVER.hold + OVER.fade end
   local end_rng = U.make_rng(77)
   local function remove_all()
@@ -641,13 +648,20 @@ function GM.create(R, hud_layer)
   -- (his mask takes its place on its first tick)
 
   -- ------------------------------------------------------------------ the ending's sequence (round 56)
-  -- round 58: the egg's rocking at time t (a pokeball's: three rocks, a rest, again a little harder)
-  local function rock(t)
-    local per, on = 1.9, 1.0
-    local n = floor(t/per)
-    local u = t - n*per
-    if u > on then return 0 end
-    return min(0.2, 0.09 + 0.035*n)*sin(u/on*3*pi)*sin(u/on*pi)
+  -- round 58: the egg's rocking (a pokeball's); round 60 (owner: "It should increasingly shake more as it gets closer
+  -- to hatching"): at strength I (0..1, toward the opening) the rocks come faster (1.3 -> 4.1 Hz), wider (0.06 -> 0.2 rad)
+  -- and in longer bursts (the rests between shrink to none), a second rock across, a tremor growing as I^2, small hops
+  -- past 0.65. Returns the two rocks (rad) and the hop (m).
+  local function shake(t, I, dt)
+    local K = SEQ.shk
+    K.ph = K.ph + dt*2*pi*(1.3 + 2.8*I)
+    local w = 0.5*sin(t*1.9) + 0.3*sin(t*3.1 + 1.7) + 0.2*sin(t*5.3 + 0.4)
+    local gate = smoothstep(0.35 - 0.9*I, 0.55 - 0.9*I, w)
+    K.g = K.g + (gate - K.g)*min(1, dt*10)
+    local a = (0.06 + 0.14*I)*K.g
+    local j = (0.004 + 0.035*I*I)*(0.6*sin(t*47.3) + 0.4*sin(t*61.7 + 1.3))
+    local hop = I > 0.65 and max(0, sin(t*8.7))*0.014*(I - 0.65)/0.35*K.g or 0
+    return a*sin(K.ph) + j, 0.45*a*sin(K.ph*1.37 + 0.6) + 0.7*j, hop
   end
   -- round 58/59: he dies: he falls as a rag doll (port/ragdoll.lua) on the cave's floor, toward the egg, the arm that
   -- pointed at it reaching for it; his mask drops; every snake bursts; the egg will rock on its base
@@ -666,26 +680,39 @@ function GM.create(R, hud_layer)
     cave.egg.user_data.wobble = 0
   end
   -- round 59: the real egg cracks: its shell cut along the crack (its program patched, silhouette.lua) and the cap a
-  -- real piece of it (the shell's geometry and look, cut the other way), a child of the egg
+  -- real piece of it (the shell's geometry and look, cut the other way), a child of the egg. Round 60: first a glowing
+  -- crack spreads round it from the side facing the camera (crack_t s), then it opens (open_egg), bits of shell flying
   local CAPM = TM.Matrix4.new()
   local function crack_egg()
     local em = cave.M.egg
     local C = SL.CRACK
     em.custom = em.custom or {}
-    em.custom.uClip = { value = 1 }; em.custom.uCrackY = { value = C.y }; em.custom.uCrackA = { value = C.a }; em.custom.uCrackN = { value = C.n }
+    em.custom.uClip = { value = 0 }; em.custom.uCrackY = { value = C.y }; em.custom.uCrackA = { value = C.a }
+    em.custom.uCrackGrow = { value = 0 }; em.custom.uCrackStart = { value = atan2(-ROOM_H.y, -ROOM_H.x)/(2*pi) }
     em.custom.uInner = { value = TM.Vector3.new(4.2, 3.6, 2.8) }
-    em.side = MAT.DoubleSide
+    sil.back = { ROOM_H.x, ROOM_H.y }
+    sil.fly_side = -(SEQ.side or 1)                 -- (the cap flies off on the side away from him)
     local cm = MAT.MeshLambertMaterial.new({ name = em.name, map = em.map, side = MAT.DoubleSide, flat_shading = em.flat_shading })
     cm.color:copy(em.color)
     cm.custom = {}
     for k, u in pairs(em.custom) do cm.custom[k] = u end
     cm.custom.uClip = { value = 2 }
+    cm.custom.uCrackGrow = { value = 0 }
     cm.custom.uInner = { value = TM.Vector3.new(0.30, 0.20, 0.11) }     -- (the cap's inside: warm, in shade; ~1 and up shows white)
     local shell = cave.egg.user_data.shell
     local cap = T.Mesh.new(shell.geometry, cm)
     cap.receive_shadow = true
+    cap.visible = false
     cave.egg:add(cap)
     SEQ.cap = cap
+  end
+  local function open_egg()
+    local em = cave.M.egg
+    em.custom.uClip.value = 1
+    em.side = MAT.DoubleSide
+    SEQ.cap.visible = true
+    local C = SL.CRACK
+    shards.spawn(cave.egg.user_data.shell, function(th) return C.rim*cos(th), SL.crack_y(th), C.rim*sin(th) end, { ROOM_H.x, ROOM_H.y })
   end
   local function seq_tick(dt)
     if not VARIED then return end
@@ -695,8 +722,13 @@ function GM.create(R, hud_layer)
       for i = 0, 5 do if powers.is_on(powers.ALL[i + 1]) then powers.toggle(i); if items then items.throw(i, 2.0 + (i - 2.5)*0.12) end end end
       snakes.gather(8, 4.0, 6.5, 1.5)
     end
+    local egg_start = START_AT == 'EGG' and not G.started
+    if egg_start then
+      G.started = true
+      for i = 0, 5 do if powers.is_on(powers.ALL[i + 1]) then powers.toggle(i); if items then items.throw(i, 2.0 + (i - 2.5)*0.12) end end end
+    end
     if not SEQ.on then
-      if END.grips == 0 then return end
+      if END.grips == 0 and not egg_start then return end
       SEQ.on = true; SEQ.t = 0
       held = {}; mouse.down = false; goal = nil
       snakes.hold = true          -- (no new waves while it plays: those already coming still come)
@@ -718,6 +750,13 @@ function GM.create(R, hud_layer)
       SEQ.R = side
       SEQ.th1 = atan2(z - SEQ.c.z, x - SEQ.c.x)
       set_framing()
+      SEQ.shk = { ph = 0, g = 0 }
+      if egg_start then
+        -- (round 60: there already: at his spot facing the egg, the two-shot, the dark whole, dying now)
+        mover.place(SEQ.spot.x, SEQ.spot.z, atan2(EGG.x - SEQ.spot.x, EGG.z - SEQ.spot.z))
+        F:copy(L)
+        SEQ.k = 1; SEQ.sil_t0 = -SIL.dur; sil.e = 1; SEQ.e1 = -DIE.hold
+      end
     end
     SEQ.t = SEQ.t + dt
     -- the camera follows the covering (never back, never faster than SHOT.rate of the way a second)
@@ -734,10 +773,24 @@ function GM.create(R, hud_layer)
       -- (dead: no hurt pose, no pointing; the rag doll sets his bones after the pose)
       lich.hurt.w = 0; lich.hurt.level = 0; mover.motion.point = nil
       local ud = cave.egg.user_data
-      if SEQ.hatch then
-        sil.hatch_t = SEQ.t - SEQ.hatch
-        ud.wobble = (ud.wobble or 0)*exp(-dt*8)
-      elseif d >= DIE.wobble_at then ud.wobble = rock(d - DIE.wobble_at) end
+      local H = SL.HATCH
+      local open_at = DIE.zoom_at + DIE.hatch_k*DIE.zoom + H.crack_t
+      local ht = SEQ.hatch and SEQ.t - SEQ.hatch or nil
+      if ht and ht >= H.crack_t then
+        -- (open: the shaking dies away)
+        ud.wobble = (ud.wobble or 0)*exp(-dt*8); ud.wobble2 = (ud.wobble2 or 0)*exp(-dt*8); ud.hop = (ud.hop or 0)*exp(-dt*8)
+      elseif d >= DIE.wobble_at then
+        local I = clamp((d - DIE.wobble_at)/(open_at - DIE.wobble_at), 0, 1)^1.4
+        local a1, a2, hop = shake(d, I, dt)
+        local x = ht and 1.25 or 1                      -- (hardest while the crack spreads)
+        ud.wobble, ud.wobble2, ud.hop = a1*x, a2*x, hop*x
+      end
+      if ht then
+        sil.hatch_t = ht
+        cave.M.egg.custom.uCrackGrow.value = clamp(ht/H.crack_t + 0.05*sin(ht*23), 0, 1)
+        if ht >= H.crack_t and not SEQ.opened then SEQ.opened = true; open_egg() end
+        shards.update(dt)
+      end
       sil.gore_fade = 1 - smoothstep(DIE.gore_fade[1], DIE.gore_fade[2], d)
       if d >= DIE.zoom_at then SEQ.k2 = min(1, (d - DIE.zoom_at)/DIE.zoom) end
       if not SEQ.hatch and SEQ.k2 >= DIE.hatch_k then SEQ.hatch = SEQ.t; crack_egg() end
