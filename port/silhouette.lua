@@ -1,23 +1,28 @@
 --[[
   silhouette.lua -- round 57 (owner, 2026-10-07: "we need some kind of shader or effect where the only the egg and
   lich are visible but they become not textured, like flat colors, so the final shot is darkness + two
-  sillouettes"). The egg (with the snakes coiled on it) and the lich (with his mask) are drawn a second time, each in
-  one flat colour, into a target of their own with its own depth; post.lua's last pass (sil.comp) then takes the
-  frame toward darkness and, where they are, toward those flat colours, by SL.e (0 = the game as it is, 1 = only the
-  two shapes). Programs of its own (GLSL here), added to three.js's library under their keys.
+  sillouettes"). The egg (with the snakes coiled on it, later the gore of their burst) and the lich (with his mask) are
+  drawn a second time in one flat colour into a target of their own with its own depth; post.lua's last pass
+  (sil.comp) then takes the frame toward darkness and, where they are, toward that colour, by S.e (0 = the game as it
+  is, 1 = only the shapes). Programs of its own (GLSL here), added to three.js's library under their keys.
+  Round 58: one colour, pale (owner: "pale (my choice)"); the hatch (S.hatch_t, seconds since it began): the shell cut
+  along a zig-zag crack, its cap lifting, tumbling off, and a pale flood from the opening filling the screen.
 ]]
 local MAT = require('port.three.materials')
+local T = require('port.three.core')
 local RD = require('port.three.renderer')
 local TM = require('port.three.math')
-local Vector3 = TM.Vector3
+local Vector3, Vector2, Matrix4 = TM.Vector3, TM.Vector2, TM.Matrix4
+local max, min, exp = math.max, math.min, math.exp
 
 local SL = {}
--- the colours (UP / DOWN in the sequence): sRGB, as they show
-SL.STYLES = {
-  { name = 'THEIR OWN COLOURS', egg = { 0.93, 0.70, 0.34 }, lich = { 0.90, 0.80, 0.76 } },
-  { name = 'BOTH PALE', egg = { 0.90, 0.86, 0.78 }, lich = { 0.90, 0.86, 0.78 } },
-  { name = 'BOTH WARM', egg = { 0.88, 0.64, 0.31 }, lich = { 0.88, 0.64, 0.31 } },
-}
+SL.PALE = { 0.90, 0.86, 0.78 }               -- sRGB, as it shows
+-- the crack, in the shell's own space (its centre at 0, 0.8 m tall): a zig-zag `n` teeth round, `a` high, at `y`
+SL.CRACK = { y = 0.08, a = 0.045, n = 7 }
+-- the hatch: a crack opens (the cap rises `open` m over `open_t` s), then the cap pops (up at `v` m/s against `g`,
+-- turning `spin` rad/s, drifting `drift` m/s), and from `flood_at` s the light from the opening grows to fill the
+-- screen in `flood_t` s (radius in screen heights)
+SL.HATCH = { open = 0.025, open_t = 0.3, v = 2.4, g = 6.5, spin = 1.8, drift = 0.35, flood_at = 0.45, flood_t = 1.8, flood_r = 2.4 }
 
 local VS = [[#version 300 es
 precision highp float;
@@ -40,7 +45,30 @@ uniform vec3 uColor;
 out vec4 fragColor;
 void main(){ fragColor = vec4(uColor, 1.0); }
 ]]
--- the last pass: the finished frame toward black, and toward the flat shapes where they are
+-- the shell, cut along the crack: uClip 1 keeps what is below it, 2 what is above
+local VS_CLIP = [[#version 300 es
+precision highp float;
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+in vec3 position;
+out vec3 vP;
+void main(){ vP = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }
+]]
+local FS_CLIP = [[#version 300 es
+precision highp float;
+uniform vec3 uColor;
+uniform float uClip, uCrackY, uCrackA, uCrackN;
+in vec3 vP;
+out vec4 fragColor;
+void main(){
+  float th = atan(vP.z, vP.x);
+  float zz = abs(fract(th*uCrackN/6.2831853)*2.0 - 1.0)*2.0 - 1.0;
+  float yc = uCrackY + uCrackA*zz;
+  if (uClip > 1.5 ? vP.y < yc : vP.y > yc) discard;
+  fragColor = vec4(uColor, 1.0);
+}
+]]
+-- the last pass: the finished frame toward black, and toward the flat shapes where they are; the hatch's flood
 SL.COMP_VS = [[#version 300 es
 precision highp float;
 in vec3 position;
@@ -53,49 +81,98 @@ precision highp float;
 in vec2 vUv;
 uniform sampler2D tFinal;
 uniform sampler2D tSil;
-uniform float uE;
+uniform float uE, uFloodR, uAspect;
+uniform vec2 uFloodC;
+uniform vec3 uFloodCol;
 out vec4 fragColor;
 void main(){
   vec3 c = texture(tFinal, vUv).rgb;
   vec4 s = texture(tSil, vUv);
   vec3 bg = c*(1.0 - uE);
   vec3 fg = mix(c, s.rgb, uE);
-  fragColor = vec4(mix(bg, fg, s.a), 1.0);
+  vec3 o = mix(bg, fg, s.a);
+  if (uFloodR > 0.0) {
+    float d = length((vUv - uFloodC)*vec2(uAspect, 1.0));
+    o = mix(o, uFloodCol, 1.0 - smoothstep(uFloodR*0.8, uFloodR, d));
+  }
+  fragColor = vec4(o, 1.0);
 }
 ]]
 
 function SL.add_programs(lib)
   rawset(lib, 'sil.flat|sil|2|-', { vs = VS, fs = FS })
   rawset(lib, 'sil.flat|sil|2|i', { vs = VS_I, fs = FS })
+  rawset(lib, 'sil.clip|sil|2|-', { vs = VS_CLIP, fs = FS_CLIP })
   rawset(lib, 'sil.comp|post|0|-', { vs = SL.COMP_VS, fs = SL.COMP_FS })
 end
 
 function SL.create(R)
   local rt = RD.RenderTarget.new(R.W, R.H, { type = 'byte', min_filter = 'nearest', mag_filter = 'nearest' })
-  local function flat() return MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(1, 1, 1) } }, side = MAT.DoubleSide }) end
-  local mats = { egg = flat(), lich = flat() }
-  local S = { e = 0, style = 1, rt = rt, texture = rt.texture }
+  local P = SL.PALE
+  local flat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) } }, side = MAT.DoubleSide })
+  local C = SL.CRACK
+  local function clip(which)
+    return MAT.ShaderMaterial.new({ name = 'sil.clip', side = MAT.DoubleSide, uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) },
+      uClip = { value = which }, uCrackY = { value = C.y }, uCrackA = { value = C.a }, uCrackN = { value = C.n } } })
+  end
+  local below, above = clip(1), clip(2)
+  -- the snakes' burst (round 58): pale, then fading into the dark (S.gore_fade) so the egg is left alone
+  local gore_mat = MAT.ShaderMaterial.new({ name = 'sil.flat', uniforms = { uColor = { value = Vector3.new(P[1], P[2], P[3]) } }, side = MAT.DoubleSide })
+  local S = { e = 0, gore_fade = 1, rt = rt, texture = rt.texture, hatch_t = nil, flood_r = 0, flood_c = Vector2.new(0.5, 0.5), flood_col = Vector3.new(P[1], P[2], P[3]) }
+  local cap = nil                                   -- the shell's top half once it hatches (its geometry, our matrix)
+  local CAP, MA, MB, AXZ, Q = Matrix4.new(), Matrix4.new(), Matrix4.new(), Vector3.new(0, 0, 1), Vector3.new()
   local function collect(o, out)
     if o.visible == false then return end
     if o.is_mesh then out[#out + 1] = o end
     for _, c in ipairs(o.children or {}) do collect(c, out) end
   end
-  local list = { egg = {}, lich = {} }
-  -- subjects() -> { egg = { roots }, lich = { roots } }, asked each frame (the coiled snakes change)
+  local list = {}
+  -- the cap's place in the shell's space at hatch time t
+  local function cap_matrix(t)
+    local H = SL.HATCH
+    local lift, ang, dx = H.open*min(1, t/H.open_t), 0, 0
+    local tp = t - H.open_t
+    if tp > 0 then lift = lift + H.v*tp - 0.5*H.g*tp*tp; ang = H.spin*tp; dx = H.drift*tp end
+    CAP:make_translation(dx, lift + C.y, 0)
+    CAP:multiply(MA:make_rotation_axis(AXZ, -ang))
+    CAP:multiply(MB:make_translation(0, -C.y, 0))
+    return CAP
+  end
+  -- subjects() -> { egg = { roots }, lich = { roots }, shell = the egg's shell mesh }, asked each frame
   function S.render(renderer, camera, subjects)
-    local st = SL.STYLES[S.style]
-    mats.egg.uniforms.uColor.value:set(st.egg[1], st.egg[2], st.egg[3])
-    mats.lich.uniforms.uColor.value:set(st.lich[1], st.lich[2], st.lich[3])
     local prev = renderer:get_render_target()
     renderer:set_render_target(rt)
     renderer:set_clear_color(0x000000, 0)
     renderer:clear()
     renderer.cur_prog, renderer.cur_mat_id = nil, nil
-    for _, who in ipairs({ 'egg', 'lich' }) do
-      local out = list[who]
-      for k = #out, 1, -1 do out[k] = nil end
-      for _, root in ipairs(subjects[who]) do collect(root, out) end
-      for _, m in ipairs(out) do renderer:render_object(camera, 'sil', m, m.geometry, mats[who], nil, nil, 'sil') end
+    for k = #list, 1, -1 do list[k] = nil end
+    for _, root in ipairs(subjects.egg) do collect(root, list) end
+    for _, root in ipairs(subjects.lich) do collect(root, list) end
+    local shell = subjects.shell
+    local hatching = S.hatch_t ~= nil and shell ~= nil
+    for _, m in ipairs(list) do
+      if hatching and m == shell then renderer:render_object(camera, 'sil', m, m.geometry, below, nil, nil, 'sil')
+      else renderer:render_object(camera, 'sil', m, m.geometry, flat, nil, nil, 'sil') end
+    end
+    if subjects.gore and S.gore_fade > 0 then
+      local f = S.gore_fade
+      gore_mat.uniforms.uColor.value:set(P[1]*f, P[2]*f, P[3]*f)
+      for _, m in ipairs(subjects.gore) do if m.visible ~= false then renderer:render_object(camera, 'sil', m, m.geometry, gore_mat, nil, nil, 'sil') end end
+    end
+    S.flood_r = 0
+    if hatching then
+      if not cap then cap = T.Mesh.new(shell.geometry, above) end
+      shell:update_world_matrix(true, false)
+      cap.matrix_world:multiply_matrices(shell.matrix_world, cap_matrix(S.hatch_t))
+      renderer:render_object(camera, 'sil', cap, cap.geometry, above, nil, nil, 'sil')
+      -- the light from the opening
+      local H = SL.HATCH
+      local u = (S.hatch_t - H.flood_at)/H.flood_t
+      if u > 0 then
+        Q:set(0, C.y, 0):apply_matrix4(shell.matrix_world):project(camera)
+        S.flood_c:set(Q.x*0.5 + 0.5, Q.y*0.5 + 0.5)
+        S.flood_r = H.flood_r*min(1, u)^2
+      end
     end
     renderer:set_render_target(prev)
   end

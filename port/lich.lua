@@ -157,6 +157,9 @@ function L.create(R, opts)
   local RECOILS = { { name = 'HEAVY', gain = 1.7 }, { name = 'MEDIUM', gain = 1 }, { name = 'LIGHT', gain = 0.5 }, { name = 'OFF', gain = 0 } }
   local recoil = 0
   local HURT = { w = 0, level = 0, hand = 0, drop = SP(), clench = SP(), legs = SP() }
+  -- round 58 (the ending): dead. DEAD.w 0..1 takes the whole pose to him lying on the floor, limp: the body to DEAD.p /
+  -- DEAD.q (in the root's frame; the game sets them), every joint to a slack pose, on top of whatever the springs did
+  local DEAD = { w = 0, p = Vector3.new(), q = Quaternion.new(), lift = 0 }
   local HANDS = { 'OPEN, CLAWED (THE IMAGE)', 'POINTING (HIS CASTING HAND)' }
   local CLAW = { 0.12, 0.62, 0.7 }
   local fq, dz = 1, 1
@@ -179,7 +182,7 @@ function L.create(R, opts)
   local lich = {
     root = root, body = body, mat = mat, light = light, MODES = MODES, tris = tris,
     nodes = { pelvis = pelvis, spine = spine, chest = chest, neck = neck, head = head, jaw = jaw, arms = arms, legs = legs },
-    JUICE = JUICE, springs = S, GLOWS = GLOWS, PATTERNS = L.PATTERNS, rc = RC, hurt = HURT, HANDS = HANDS, RECOILS = RECOILS,
+    JUICE = JUICE, springs = S, GLOWS = GLOWS, PATTERNS = L.PATTERNS, rc = RC, hurt = HURT, dead = DEAD, HANDS = HANDS, RECOILS = RECOILS,
     hover_h = 1.28, recoil_gain = 1,
   }
   function lich.get_pattern() return GU.uPattern.value end
@@ -364,6 +367,28 @@ function L.create(R, opts)
         AQ.t:copy(AQ.e):invert():multiply(AQ.c):multiply(AQ.e)
         Ar.wr.quaternion:premultiply(AQ.t)
         recoil_on()
+      end
+    end
+    -- round 58: dead, limp on the floor (the reaching arm out along it toward his head, the other slack before him,
+    -- the legs drawn up a little, the head lolled, the jaw fallen open)
+    if DEAD.w > 0 then
+      local w = DEAD.w
+      body.position:lerp(DEAD.p, w)
+      body.position.y = body.position.y + DEAD.lift
+      body.quaternion:slerp(DEAD.q, w)
+      local function to(n, x, y, z) local r = n.rotation; r:set(mix(r.x, x, w), mix(r.y, y, w), mix(r.z, z, w)) end
+      to(pelvis, 0, 0, 0); to(spine, 0.18, 0, 0.05); to(chest, 0.12, 0, 0.04); to(neck, 0.25, 0.1, 0.2); to(head, 0.3, 0.35, 0.35)
+      jaw.rotation.x = mix(jaw.rotation.x, 0.32, w)
+      for k0 = 0, 1 do
+        local Ar = arms[k0 + 1]
+        local s = Ar.s
+        if k0 == 0 then to(Ar.sh, -2.3, 0.1, s*0.25); to(Ar.el, -0.25, 0, 0); to(Ar.wr, 0.25, -s*0.9, 0)
+        else to(Ar.sh, -0.5, 0.1, s*0.5); to(Ar.el, -1.0, 0, 0); to(Ar.wr, 0.4, -s*1.1, 0) end
+        for _, segs in ipairs(Ar.fingers) do for j0, n in ipairs(segs) do to(n, 0, 0, -s*(0.35 + 0.15*j0)) end end
+      end
+      for _, l in ipairs(legs) do
+        local k = l.s > 0 and 1 or 0
+        to(l.hip, k == 1 and -0.9 or -0.35, 0, 0.06*l.s); to(l.kn, k == 1 and 1.3 or 0.6, 0, 0); to(l.an, 1.1, 0, 0)
       end
     end
   end

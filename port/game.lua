@@ -93,7 +93,8 @@ function GM.create(R, hud_layer)
   R.sil_subjects = function()
     local egg = { cave.egg }
     for _, s in ipairs(snakes.coiled) do egg[#egg + 1] = s.m; egg[#egg + 1] = s.eyes[1]; egg[#egg + 1] = s.eyes[2] end
-    return { egg = egg, lich = { lich.root, lmask.mesh } }
+    -- (round 58: the snakes' burst, pale, then fading, from his death on: before it any gore is the dark's)
+    return { egg = egg, lich = { lich.root, lmask.mesh }, shell = cave.egg.user_data.shell, gore = (G.SEQ and G.SEQ.dead) and gore.meshes() or nil }
   end
   G.sil = sil
   gore.follow(function() return L end)
@@ -153,7 +154,7 @@ function GM.create(R, hud_layer)
   -- (as the room camera sees it), facing it; the camera eases from the room's frame down to a low two-shot as
   -- the shell is covered (round 56 stopped everything there; round 57 lets it all play on, no end). It takes the
   -- place of round 47's push-in and the cut to black for now. Without LICH_ROOM only.
-  local SEQ = { on = false, t = 0, k = 0, spot = nil, eye = nil, tgt = nil, sil_t0 = nil }
+  local SEQ = { on = false, t = 0, k = 0, spot = nil, eye = nil, tgt = nil, sil_t0 = nil, k2 = 0 }
   G.SEQ = SEQ
   -- the two-shot: his spot on the sunlight's edge right of the egg (the shaft is the lid's hole, `edge` m round, leaning
   -- with the sun: its edge measured at `edge_h` m up, about his chest); the camera `back` m behind the point `mid` of
@@ -165,7 +166,7 @@ function GM.create(R, hud_layer)
   -- round 56c (owner: "Let's see 8m, 9m, 10m back and slightly different angles too"), settled in round 57 ("10m,
   -- lower"): the camera looks at the point `mid` of the way from the egg to him, look_y over the floor, from `back` m
   -- along the room camera's heading, `pitch` degrees down onto it
-  local SHOT = { edge = 1.9, edge_h = 1.4, mid = 0.5, back = 10.0, pitch = 3, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
+  local SHOT = { edge = 2.2, edge_h = 1.4, mid = 0.5, back = 10.0, pitch = 3, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
   -- round 57 (owner, 2026-10-07: "we get close to this final shot, we need some kind of shader or effect where the
   -- only the egg and lich are visible but they become not textured, like flat colors, so the final shot is darkness
   -- + two sillouettes ... The visual effect should start slowly in the middle of the movement towards the final shot,
@@ -173,6 +174,17 @@ function GM.create(R, hud_layer)
   -- final shot"): port/silhouette.lua; it starts once the camera is `from` of the way down and runs `dur` s, eased in
   -- and out; UP / DOWN in the sequence: its colours
   local SIL = { from = 0.5, dur = 12 }
+  -- round 58 (owner, 2026-10-07: "After they've both turned pale (my choice) and the final shot has played for a
+  -- while, make the lich fall on the floor, face to the camera, mask also drops and stops floating in front of him.
+  -- His body should lie on the floor limp as though he died. At the same time as he drops, all snakes should explode
+  -- as they do from the lift power and the egg should then be visible twitching, like a pokeball when its trying to
+  -- capture a pokemon. The camera focuses and zooms on the egg hatching and once it's close enough it hatches"):
+  -- `hold` s after the silhouettes are whole he dies (he falls in `fall` s like a weight, w = (t/fall)^2, then a
+  -- small bounce) and every snake bursts; from `wobble_at` s the egg rocks in bursts (a pokeball's: three rocks, a
+  -- rest, a little harder each time); from `zoom_at` s the camera goes in on it over `zoom` s (eased), to `close` m
+  -- from a point `close_y` m up it; at `hatch_k` of the way it hatches (silhouette.lua); the burst's pieces fade into
+  -- the dark between `gore_fade` s after it
+  local DIE = { hold = 4.0, fall = 0.65, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 } }
   SEQ.label_n = 0
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
@@ -265,6 +277,15 @@ function GM.create(R, hud_layer)
       eye = eye:clone():lerp(SEQ.eye, k)
       tgt = tgt:clone():lerp(SEQ.tgt, k)
       C.fov = C.fov + (SHOT.fov - C.fov)*k; C:update_projection_matrix()
+    end
+    -- round 58: in on the egg as it rocks, until it hatches
+    if SEQ.k2 > 0 and G.cam == 0 and not G.look then
+      local k = SEQ.k2
+      k = k*k*k*(k*(k*6 - 15) + 10)
+      local ct = v(EGG.x, EGG.y + DIE.close_y, EGG.z)
+      local ce = v(EGG.x - ROOM_H.x*DIE.close, EGG.y + DIE.close_y + DIE.close*sin(SHOT.pitch*pi/180), EGG.z - ROOM_H.y*DIE.close)
+      eye = eye:clone():lerp(ce, k)
+      tgt = tgt:clone():lerp(ct, k)
     end
     -- the end: in on his face (round 47; not while round 56's sequence runs)
     if END.won and END_ZOOM.on and G.cam == 0 and not G.look and not SEQ.on then
@@ -393,12 +414,6 @@ function GM.create(R, hud_layer)
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
     if SEQ.on then
-      -- round 57: the silhouettes' colours, in the game
-      if hit('up') or hit('down') then
-        local n = #SL.STYLES
-        sil.style = ((sil.style - 1 + (hit('up') and 1 or -1)) % n + n) % n + 1
-        SEQ.label_n = 150
-      end
       return
     end
     if END.won then return end
@@ -533,13 +548,6 @@ function GM.create(R, hud_layer)
     if inspect_active() then inspect.draw_hud(); return end      -- (round 49: not the testing text's)
     if not END.won and not SEQ.on then draw_inventory()
     elseif SEQ.on and SEQ.t < 1.2 then HUD.alpha(1 - smoothstep(0, 1.2, SEQ.t)); draw_inventory(); HUD.alpha(1) end   -- (round 56: it fades as he is taken)
-    if SEQ.on and SEQ.label_n > 0 then
-      -- (round 56b: which framing, for 2.5 s after a change; counted in drawn frames, the game may be stopped)
-      SEQ.label_n = SEQ.label_n - 1
-      HUD.alpha(min(1, SEQ.label_n/30))
-      HUD.text('SILHOUETTES: ' .. SL.STYLES[sil.style].name .. '   (UP / DOWN)', R.W/2, R.H - 18, '#f2e3c2', 1, 'center', nil, INK)
-      HUD.alpha(1)
-    end
     if goal then
       gp:copy(goal):project(R.world_camera)
       if gp.z < 1 then
@@ -616,6 +624,36 @@ function GM.create(R, hud_layer)
   -- (his mask takes its place on its first tick)
 
   -- ------------------------------------------------------------------ the ending's sequence (round 56)
+  -- round 58: the egg's rocking at time t (a pokeball's: three rocks, a rest, again a little harder)
+  local function rock(t)
+    local per, on = 1.9, 1.0
+    local n = floor(t/per)
+    local u = t - n*per
+    if u > on then return 0 end
+    return min(0.2, 0.09 + 0.035*n)*sin(u/on*3*pi)*sin(u/on*pi)
+  end
+  -- round 58: he dies: he falls (lich.dead) to lie on the floor where he floats, along it toward the egg (his head),
+  -- facing the camera; his mask drops; every snake bursts; the egg will rock on its base
+  local function die()
+    SEQ.dead = SEQ.t; SEQ.k2 = 0
+    local hx, hz = EGG.x - L.x, EGG.z - L.z
+    local hl = sqrt(hx*hx + hz*hz)
+    hx, hz = hx/hl, hz/hl
+    local fx, fz = -ROOM_H.x, -ROOM_H.y
+    local dp = fx*hx + fz*hz
+    fx, fz = fx - dp*hx, fz - dp*hz
+    local fl = sqrt(fx*fx + fz*fz)
+    fx, fz = fx/fl, fz/fl
+    local Y, Z = v(hx, 0, hz), v(fx, 0, fz)
+    local X = v(0, 0, 0):cross_vectors(Y, Z)
+    local M4 = TM.Matrix4.new():set(X.x, Y.x, Z.x, 0, X.y, Y.y, Z.y, 0, X.z, Y.z, Z.z, 0, 0, 0, 0, 1)
+    SEQ.qw = TM.Quaternion.new():set_from_rotation_matrix(M4)
+    SEQ.pw = v(L.x, cave.ground_y(L.x, L.z) + 0.11, L.z)
+    lmask.drop(cave.ground_y)
+    snakes.burst_all(gore.burst)
+    cave.egg.user_data.wobble_axis = { ROOM_H.x, ROOM_H.y }
+    cave.egg.user_data.wobble = 0
+  end
   local function seq_tick(dt)
     if not VARIED then return end
     if START_AT == 'ENDING' and not G.started then
@@ -629,13 +667,16 @@ function GM.create(R, hud_layer)
       SEQ.on = true; SEQ.t = 0
       held = {}; mouse.down = false; goal = nil
       snakes.hold = true          -- (no new waves while it plays: those already coming still come)
-      -- his spot: on the light's edge (the shaft's centre at his chest's height), right of the egg as the room
-      -- camera sees it, on floor he can stand on
+      -- his spot: on the light's edge (the shaft's centre at his chest's height), on the side of the egg he is on as
+      -- the room camera sees it (round 58: "if he happens to be on the left side of the screen he can stay to the left
+      -- instead"), on floor he can stand on
       local S = cave.LAYOUT.sun_dir
       SEQ.c = v(EGG.x + S.x/S.y*SHOT.edge_h, 0, EGG.z + S.z/S.y*SHOT.edge_h)
+      local sd = ((L.x - SEQ.c.x)*SIDE_DIR.x + (L.z - SEQ.c.z)*SIDE_DIR.z >= 0) and 1 or -1
+      SEQ.side = sd
       local side = SHOT.edge
-      local x, z = SEQ.c.x + SIDE_DIR.x*side, SEQ.c.z + SIDE_DIR.z*side
-      while side < SHOT.edge + 0.6 and nav.is_blocked(x, z) do side = side + 0.05; x, z = SEQ.c.x + SIDE_DIR.x*side, SEQ.c.z + SIDE_DIR.z*side end
+      local x, z = SEQ.c.x + sd*SIDE_DIR.x*side, SEQ.c.z + sd*SIDE_DIR.z*side
+      while side < SHOT.edge + 0.6 and nav.is_blocked(x, z) do side = side + 0.05; x, z = SEQ.c.x + sd*SIDE_DIR.x*side, SEQ.c.z + sd*SIDE_DIR.z*side end
       SEQ.spot = v(x, cave.ground_y(x, z), z)
       SEQ.R = side
       SEQ.th1 = atan2(z - SEQ.c.z, x - SEQ.c.x)
@@ -648,6 +689,28 @@ function GM.create(R, hud_layer)
     -- round 57: the silhouettes, from half way down, eased in and out over SIL.dur s (the shot is reached part way)
     if not SEQ.sil_t0 and SEQ.k >= SIL.from then SEQ.sil_t0 = SEQ.t end
     if SEQ.sil_t0 then local u = clamp((SEQ.t - SEQ.sil_t0)/SIL.dur, 0, 1); sil.e = u*u*(3 - 2*u) end
+    -- round 58: his death, the snakes' burst, the egg rocking, the camera in on it, the hatch
+    if sil.e >= 1 and not SEQ.e1 then SEQ.e1 = SEQ.t end
+    if SEQ.e1 and not SEQ.dead and SEQ.t >= SEQ.e1 + DIE.hold then die() end
+    if SEQ.dead then
+      local d = SEQ.t - SEQ.dead
+      local D = lich.dead
+      local u = min(1, d/DIE.fall)
+      D.w = u*u
+      D.lift = d > DIE.fall and 0.035*exp(-(d - DIE.fall)*7)*abs(sin((d - DIE.fall)*13)) or 0
+      -- (where he lies, in the root's frame as it is now)
+      local rq = lich.root.quaternion:clone():invert()
+      D.q:copy(rq):multiply(SEQ.qw)
+      D.p:copy(SEQ.pw):sub(lich.root.position):apply_quaternion(rq)
+      local ud = cave.egg.user_data
+      if SEQ.hatch then
+        sil.hatch_t = SEQ.t - SEQ.hatch
+        ud.wobble = (ud.wobble or 0)*exp(-dt*8)
+      elseif d >= DIE.wobble_at then ud.wobble = rock(d - DIE.wobble_at) end
+      sil.gore_fade = 1 - smoothstep(DIE.gore_fade[1], DIE.gore_fade[2], d)
+      if d >= DIE.zoom_at then SEQ.k2 = min(1, (d - DIE.zoom_at)/DIE.zoom) end
+      if not SEQ.hatch and SEQ.k2 >= DIE.hatch_k then SEQ.hatch = SEQ.t end
+    end
   end
 
   -- ------------------------------------------------------------------ sim + render
@@ -761,7 +824,7 @@ function GM.create(R, hud_layer)
   end
   -- round 56: the ending's sequence (on, its progress, the silhouettes' strength, his distance to his spot, the covering)
   function GAME.seq()
-    return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), e = r3(sil.e), won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
+    return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), e = r3(sil.e), k2 = r3(SEQ.k2), dead = SEQ.dead ~= nil, hatch = sil.hatch_t and r3(sil.hatch_t) or nil, side = SEQ.side, won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
       d = SEQ.spot and r3(js_hypot(SEQ.spot.x - L.x, SEQ.spot.z - L.z)) or nil, spot = SEQ.spot and { r3(SEQ.spot.x), r3(SEQ.spot.z) } or nil,
       lich = { r3(L.x), r3(L.z) }, egg = { r3(EGG.x), r3(EGG.z) } }
   end
