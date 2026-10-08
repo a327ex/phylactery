@@ -98,7 +98,6 @@ function P.create(opts)
   local blur_mat = mk('post.blur', { tSrc = { value = nil }, uDir = { value = Vector2.new() } })
   local copy_mat = mk('post.copy', { tSrc = { value = rt_final.texture } })
   local comp_mat = mk('sil.comp', { tFinal = { value = rt_final.texture }, tSil = { value = black }, uE = { value = 0 },
-    uFloodR = { value = 0 }, uFloodC = { value = Vector2.new(0.5, 0.5) }, uFloodCol = { value = Vector3.new(1, 1, 1) }, uAspect = { value = W/H },
     tBlur = { value = rt_sb_a.texture }, uDim = { value = 1 }, uBlur = { value = 0 } })   -- (round 57/59)
   R.hook_uniforms = {}
   function R.rebuild() for k, v in pairs(R.hook_uniforms) do U[k] = v end end
@@ -192,7 +191,6 @@ function P.create(opts)
       comp_mat.uniforms.uDim.value = bg.dim; comp_mat.uniforms.uBlur.value = bg.blur
       comp_mat.uniforms.tSil.value = sl.texture
       comp_mat.uniforms.uE.value = sl.e
-      comp_mat.uniforms.uFloodR.value = sl.flood_r; comp_mat.uniforms.uFloodC.value:copy(sl.flood_c); comp_mat.uniforms.uFloodCol.value:copy(sl.flood_col)
       pass(comp_mat, rt_comp)
       R.out = rt_comp
     end

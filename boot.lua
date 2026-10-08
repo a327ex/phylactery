@@ -44,7 +44,6 @@ do
     return src
   end })
   require('port.silhouette').add_programs(lib)     -- (round 57: its own programs, under three.js-style keys)
-  require('port.eggshards').add_programs(lib)      -- (round 60)
   G.programs = lib
 end
 

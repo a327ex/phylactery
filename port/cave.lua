@@ -319,6 +319,7 @@ function C.build(R)
     -- round 58 (the ending): user_data.wobble (radians) rocks the egg on its base about user_data.wobble_axis ({x, z})
     -- instead of its idle tremble; round 60: user_data.wobble2 about the level axis square to it, user_data.hop (m) up
     local ud = egg.user_data
+    if ud.phys then return end           -- (round 61: a physics object from his death on, port/eggphys.lua)
     local wb = ud.wobble
     if wb then
       local ax = ud.wobble_axis
