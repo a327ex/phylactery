@@ -4,6 +4,11 @@
   scraps, strands of gut, blood in streaks through the air and splashes on the floor, a red mist.
   The random draws happen in gore.js's order (argument lists and object literals left to right),
   so the same seed makes the same mess.
+  Round 64 (owner, 2026-10-08: "Game is noticeably slowing down when snakes gore explode from lift"): the same mess for
+  less: what lies still is not posed again (a resting lump, a full-grown stain: their matrices stay as they are until
+  they sink), a buffer goes to the GPU only when something in it changed (it was every tick, idle or not: ~26k floats
+  a tick, into every recording too), the guts' rings take their turns from a table, and a gut lying still on the
+  floor is left lying until it sinks. Measured with lift bursts about: gore's tick 4.5 -> 2.5 ms (RECORD.md round 64).
 ]]
 local TM = require('port.three.math')
 local T = require('port.three.core')
@@ -61,24 +66,29 @@ function GO.create(R, cave, snakes, fx, rng)
     local d = pool.D[pool.nxt + 1]
     pool.nxt = (pool.nxt + 1) % DEC_N
     d.life = rng.float(9, 13); d.x = x; d.z = z; d.y = gy(x, z) + 0.012; d.rot = rot; d.s0 = s*0.35; d.s1 = s; d.t = 0; d.grow = grow; d.sx = sx
+    d.full = false
   end
   local function update_decals(dt)
     for _, pool in ipairs(decals) do
+      local dirty = false
       for i = 0, DEC_N - 1 do
         local d = pool.D[i + 1]
         if d.life > 0 then
           d.life = d.life - dt; d.t = d.t + dt
-          local s = d.s0 + (d.s1 - d.s0)*smoothstep(0, d.grow, d.t)
-          local sink = d.life < 1.2 and (1.2 - d.life)*0.06 or 0
-          if d.life <= 0 then pool.mesh:set_matrix_at(i, M:make_scale(0, 0, 0))
-          else
+          if d.life <= 0 then pool.mesh:set_matrix_at(i, M:make_scale(0, 0, 0)); dirty = true
+          elseif not d.full or d.life < 1.2 then
+            -- (grown and not yet sinking it stays as it was last posed: posed once full-grown, then left)
+            local s = d.s0 + (d.s1 - d.s0)*smoothstep(0, d.grow, d.t)
+            local sink = d.life < 1.2 and (1.2 - d.life)*0.06 or 0
             Q:set_from_axis_angle(V:set(0, 1, 0), d.rot)
             M:compose(V2:set(d.x, d.y - sink, d.z), Q, SC:set(s*d.sx, 1, s))
             pool.mesh:set_matrix_at(i, M)
+            dirty = true
+            if d.t >= d.grow then d.full = true end
           end
         end
       end
-      pool.mesh.instance_matrix.needs_update = true
+      if dirty then pool.mesh.instance_matrix.needs_update = true end
     end
   end
 
@@ -97,7 +107,9 @@ function GO.create(R, cave, snakes, fx, rng)
   local B = {}
   for i = 1, BN do B[i] = { life = 0, x = 0, y = 0, z = 0, vx = 0, vy = 0, vz = 0, s = 0, splat = 0 } end
   local bnext = 0
+  local bidle = false               -- (nothing in the air and its sizes already sent as 0)
   local function drop(x, y, z, vx, vy, vz, s, splat, pl)
+    bidle = false
     if s == nil then s = 0.012 end
     if splat == nil then splat = 0.5 end
     if pl == nil then pl = 0 end
@@ -105,10 +117,13 @@ function GO.create(R, cave, snakes, fx, rng)
     b.life = 3; b.x = x; b.y = y; b.z = z; b.vx = vx; b.vy = vy; b.vz = vz; b.s = s; b.splat = splat; b.pl = pl; b.dark = rng.float(0.7, 1.15)
   end
   local function update_blood(dt)
+    if bidle then return end
+    local any = false
     for i = 0, BN - 1 do
       local b = B[i + 1]
       if b.life <= 0 then bsize[i + 1] = 0
       else
+        any = true
         b.life = b.life - dt
         b.vy = b.vy - GRAV*dt
         if b.pl > 0 then tug(b.x, b.y, b.z, b.pl); b.vx = b.vx + TUG.x*dt; b.vy = b.vy + TUG.y*dt; b.vz = b.vz + TUG.z*dt; b.pl = b.pl - dt end
@@ -131,6 +146,7 @@ function GO.create(R, cave, snakes, fx, rng)
       end
     end
     bposA.needs_update = true; bvelA.needs_update = true; bcolA.needs_update = true; bsizeA.needs_update = true
+    if not any then bidle = true end
   end
 
   -- ---------------------------------------------------------------- the pieces of its body
@@ -349,10 +365,12 @@ function GO.create(R, cave, snakes, fx, rng)
       return d
     end
     function pool.update(dt)
+      local dirty = false
       for i = 0, n - 1 do
         local d = D[i + 1]
         if d.life > 0 then
           d.life = d.life - dt; d.t = d.t + dt
+          local pose = true
           if d.rest <= 0 then
             d.vy = d.vy - GRAV*dt
             if d.pl and d.pl > 0 then tug(d.x, d.y, d.z, d.pl); d.vx = d.vx + TUG.x*dt; d.vy = d.vy + TUG.y*dt; d.vz = d.vz + TUG.z*dt; d.pl = d.pl - dt end
@@ -376,15 +394,19 @@ function GO.create(R, cave, snakes, fx, rng)
             end
           else
             d.rest = d.rest + dt
-            if d.life < SINK_T then d.y = d.y - 0.12*dt end
+            -- (lying still: posed as it came to rest, left so until it sinks)
+            if d.life < SINK_T then d.y = d.y - 0.12*dt else pose = false end
           end
-          E:set(d.rx, d.ry, d.rz); Q:set_from_euler(E)
-          local k = d.life < 0.3 and d.life/0.3 or 1
-          M:compose(V:set(d.x, d.y, d.z), Q, SC:set(d.s*d.sx*k, d.s*d.sy*k, d.s*d.sz*k))
-          mesh:set_matrix_at(i, M)
+          if pose then
+            E:set(d.rx, d.ry, d.rz); Q:set_from_euler(E)
+            local k = d.life < 0.3 and d.life/0.3 or 1
+            M:compose(V:set(d.x, d.y, d.z), Q, SC:set(d.s*d.sx*k, d.s*d.sy*k, d.s*d.sz*k))
+            mesh:set_matrix_at(i, M)
+            dirty = true
+          end
         end
       end
-      mesh.instance_matrix.needs_update = true
+      if dirty then mesh.instance_matrix.needs_update = true end
     end
     return pool
   end
@@ -421,7 +443,7 @@ function GO.create(R, cave, snakes, fx, rng)
     local G
     for _, q in ipairs(GUTS) do if not q.on then G = q; break end end
     if not G then return end
-    G.on = true; G.t = 0; G.piece = piece; G.en = en; G.m.visible = true; G.pl = follow_on and PULL_T or 0
+    G.on = true; G.t = 0; G.piece = piece; G.en = en; G.m.visible = true; G.pl = follow_on and PULL_T or 0; G.still = false
     G.len = rng.float(0.03, 0.045); G.r = rng.float(0.013, 0.018)
     for i = 0, GN - 1 do
       local sx = rng.spread(0.03)
@@ -431,9 +453,15 @@ function GO.create(R, cave, snakes, fx, rng)
     end
   end
   local Tt, Bn, Nn = Vector3.new(), Vector3.new(), Vector3.new()
+  local RCOS, RSIN = {}, {}
+  for j = 0, GS - 1 do local a = j/GS*6.2832; RCOS[j] = cos(a); RSIN[j] = sin(a) end
   local function update_guts(dt)
     for _, G in ipairs(GUTS) do
-      if G.on then
+      -- (still: every point moved less than 0.05 mm last tick, its piece (if any) lying still too, and not yet
+      -- sinking; then it lies as it is: nothing it does would show)
+      if G.on and G.still and G.t + dt <= PIECE_LIFE and not (G.piece and G.piece.on and G.piece.rest < 2.2) then
+        G.t = G.t + dt; G.pl = G.pl - dt
+      elseif G.on then
         G.t = G.t + dt; G.pl = G.pl - dt
         local P, Q0 = G.p, G.q
         for i = 1, GN do
@@ -457,14 +485,16 @@ function GO.create(R, cave, snakes, fx, rng)
           end
         end
         if G.t > PIECE_LIFE then for _, p in ipairs(P) do p.y = p.y - 0.25/SINK_T*dt end end
+        local mv = 0
+        for i = 1, GN do local dx, dy, dz = P[i].x - Q0[i].x, P[i].y - Q0[i].y, P[i].z - Q0[i].z; mv = max(mv, dx*dx + dy*dy + dz*dz) end
+        G.still = G.t > 0.5 and mv < 2.5e-9
         local pos, nor = G.m.geometry.attributes.position.array, G.m.geometry.attributes.normal.array
         for i = 0, GN - 1 do
           Tt:sub_vectors(P[min(GN - 1, i + 1) + 1], P[max(0, i - 1) + 1]):normalize()
           Bn:cross_vectors(Tt, UP); if Bn:length_sq() < 1e-6 then Bn:set(1, 0, 0) end; Bn:normalize(); Nn:cross_vectors(Bn, Tt)
           local r = G.r*((i == 0 or i == GN - 1) and 0.6 or 1)*(1 + 0.35*sin(i*2.3 + G.len*97))
           for j = 0, GS - 1 do
-            local a = j/GS*6.2832
-            local cx, cy = cos(a), sin(a)
+            local cx, cy = RCOS[j], RSIN[j]
             local o = (i*GS + j)*3
             nor[o + 1] = Bn.x*cx + Nn.x*cy; nor[o + 2] = Bn.y*cx + Nn.y*cy; nor[o + 3] = Bn.z*cx + Nn.z*cy
             pos[o + 1] = P[i + 1].x + nor[o + 1]*r; pos[o + 2] = P[i + 1].y + nor[o + 2]*r; pos[o + 3] = P[i + 1].z + nor[o + 3]*r

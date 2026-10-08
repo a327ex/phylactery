@@ -132,7 +132,15 @@ function Material:needs_update() self.version = self.version + 1 end
 
 -- ---------------------------------------------------------------------------- uniform values
 local IDENT3 = { 1, 0, 0, 0, 1, 0, 0, 0, 1 }
-local function col(c) return { c.r, c.g, c.b } end
+-- (round 64: constant values are shared tables and a colour's or vector's array is kept on it and refilled: these were
+-- new tables at every material change of every draw; gpu_set reads them at once, a trace copies them)
+local ONE2, ONE3, ZERO2, ZERO3 = { 1, 1 }, { 1, 1, 1 }, { 0, 0 }, { 0, 0, 0 }
+local function col(c)
+  local a = c._u3
+  if not a then a = {}; c._u3 = a end
+  a[1], a[2], a[3] = c.r, c.g, c.b
+  return a
+end
 local function transform(tex)
   if not tex then return IDENT3 end
   if tex.matrix_auto_update then tex:update_matrix() end
@@ -146,12 +154,13 @@ local function value_of(v)
   if ty == 'number' or ty == 'boolean' then return v end
   if ty ~= 'table' then return v end
   if v.gpu ~= nil then return v.gpu end                   -- a Texture
-  if v.is_color then return { v.r, v.g, v.b } end
+  if v.is_color then return col(v) end
   if v.elements then return v.elements end                -- Matrix3 / Matrix4
-  if v.w ~= nil and v.x ~= nil then return { v.x, v.y, v.z, v.w } end
-  if v.z ~= nil and v.x ~= nil then return { v.x, v.y, v.z } end
-  if v.x ~= nil and v.y ~= nil then return { v.x, v.y } end
-  if v._w ~= nil then return { v._x, v._y, v._z, v._w } end
+  local a = v._u
+  if v.w ~= nil and v.x ~= nil then if not a then a = {}; v._u = a end; a[1], a[2], a[3], a[4] = v.x, v.y, v.z, v.w; return a end
+  if v.z ~= nil and v.x ~= nil then if not a then a = {}; v._u = a end; a[1], a[2], a[3] = v.x, v.y, v.z; return a end
+  if v.x ~= nil and v.y ~= nil then if not a then a = {}; v._u = a end; a[1], a[2] = v.x, v.y; return a end
+  if v._w ~= nil then if not a then a = {}; v._u = a end; a[1], a[2], a[3], a[4] = v._x, v._y, v._z, v._w; return a end
   if #v > 0 and type(v[1]) == 'table' then                 -- an array of vectors
     local out = {}
     for _, e in ipairs(v) do for _, n in ipairs(value_of(e)) do out[#out + 1] = n end end
@@ -164,7 +173,12 @@ MAT.value_of = value_of
 local function common(m, set)
   set('opacity', m.opacity)
   set('diffuse', col(m.color or Color.new(0xffffff)))
-  if m.emissive then set('emissive', { m.emissive.r*m.emissive_intensity, m.emissive.g*m.emissive_intensity, m.emissive.b*m.emissive_intensity }) end
+  if m.emissive then
+    local a = m._emis
+    if not a then a = {}; m._emis = a end
+    a[1], a[2], a[3] = m.emissive.r*m.emissive_intensity, m.emissive.g*m.emissive_intensity, m.emissive.b*m.emissive_intensity
+    set('emissive', a)
+  end
   set('map', tex_of(m.map)); set('mapTransform', transform(m.map))
   set('alphaMap', tex_of(m.alpha_map)); set('alphaMapTransform', transform(m.alpha_map))
   set('alphaTest', m.alpha_test)
@@ -182,12 +196,12 @@ local function maps_defaults(set)
   set('lightMap', nil); set('lightMapIntensity', 1); set('lightMapTransform', IDENT3)
   set('emissiveMap', nil); set('emissiveMapTransform', IDENT3)
   set('bumpMap', nil); set('bumpMapTransform', IDENT3); set('bumpScale', 1)
-  set('normalMap', nil); set('normalMapTransform', IDENT3); set('normalScale', { 1, 1 })
+  set('normalMap', nil); set('normalMapTransform', IDENT3); set('normalScale', ONE2)
   set('displacementMap', nil); set('displacementMapTransform', IDENT3); set('displacementScale', 1); set('displacementBias', 0)
   set('specularMap', nil); set('specularMapTransform', IDENT3)
   set('roughnessMap', nil); set('roughnessMapTransform', IDENT3)
   set('metalnessMap', nil); set('metalnessMapTransform', IDENT3)
-  set('fogDensity', 0.00025); set('fogNear', 1); set('fogFar', 2000); set('fogColor', { 1, 1, 1 })
+  set('fogDensity', 0.00025); set('fogNear', 1); set('fogFar', 2000); set('fogColor', ONE3)
 end
 
 -- env = { lights = the renderer's light state (write_lights), transmission = { texture, w, h },
@@ -202,7 +216,7 @@ function MAT.write_uniforms(m, set, env)
     set('map', tex_of(m.map)); set('uvTransform', transform(m.map))
     set('alphaMap', tex_of(m.alpha_map)); set('alphaMapTransform', transform(m.alpha_map))
     set('alphaTest', m.alpha_test)
-    set('fogDensity', 0.00025); set('fogNear', 1); set('fogFar', 2000); set('fogColor', { 1, 1, 1 })
+    set('fogDensity', 0.00025); set('fogNear', 1); set('fogFar', 2000); set('fogColor', ONE3)
   elseif ty == 'MeshDepthMaterial' then
     set('opacity', m.opacity)
     set('map', tex_of(m.map)); set('mapTransform', transform(m.map))
@@ -224,7 +238,7 @@ function MAT.write_uniforms(m, set, env)
     end
     if m.is_physical then
       set('ior', m.ior)
-      set('clearcoat', m.clearcoat); set('clearcoatRoughness', m.clearcoat_roughness); set('clearcoatNormalScale', { 1, 1 })
+      set('clearcoat', m.clearcoat); set('clearcoatRoughness', m.clearcoat_roughness); set('clearcoatNormalScale', ONE2)
       set('clearcoatMap', nil); set('clearcoatRoughnessMap', nil); set('clearcoatNormalMap', nil)
       set('clearcoatMapTransform', IDENT3); set('clearcoatNormalMapTransform', IDENT3); set('clearcoatRoughnessMapTransform', IDENT3)
       set('dispersion', m.dispersion)
@@ -233,23 +247,23 @@ function MAT.write_uniforms(m, set, env)
       set('iridescenceThicknessMaximum', m.iridescence > 0 and m.iridescence_thickness_range[2] or 400)
       set('iridescenceMap', nil); set('iridescenceMapTransform', IDENT3); set('iridescenceThicknessMap', nil); set('iridescenceThicknessMapTransform', IDENT3)
       set('sheen', m.sheen)
-      set('sheenColor', m.sheen > 0 and { m.sheen_color.r*m.sheen, m.sheen_color.g*m.sheen, m.sheen_color.b*m.sheen } or { 0, 0, 0 })
+      set('sheenColor', m.sheen > 0 and { m.sheen_color.r*m.sheen, m.sheen_color.g*m.sheen, m.sheen_color.b*m.sheen } or ZERO3)
       set('sheenRoughness', m.sheen > 0 and m.sheen_roughness or 1)
       set('sheenColorMap', nil); set('sheenColorMapTransform', IDENT3); set('sheenRoughnessMap', nil); set('sheenRoughnessMapTransform', IDENT3)
       if m.transmission > 0 then
         set('transmission', m.transmission)
         local tr = env.transmission
         set('transmissionSamplerMap', tr and tr.texture or nil)
-        set('transmissionSamplerSize', tr and { tr.w, tr.h } or { 0, 0 })
+        set('transmissionSamplerSize', tr and { tr.w, tr.h } or ZERO2)
         set('thickness', m.thickness)
         set('attenuationDistance', m.attenuation_distance)
         set('attenuationColor', col(m.attenuation_color))
       else
-        set('transmission', 0); set('transmissionSamplerMap', nil); set('transmissionSamplerSize', { 0, 0 })
-        set('thickness', 0); set('attenuationDistance', 0); set('attenuationColor', { 0, 0, 0 })
+        set('transmission', 0); set('transmissionSamplerMap', nil); set('transmissionSamplerSize', ZERO2)
+        set('thickness', 0); set('attenuationDistance', 0); set('attenuationColor', ZERO3)
       end
       set('transmissionMap', nil); set('transmissionMapTransform', IDENT3); set('thicknessMap', nil); set('thicknessMapTransform', IDENT3)
-      set('anisotropyVector', m.anisotropy > 0 and { m.anisotropy*math.cos(m.anisotropy_rotation), m.anisotropy*math.sin(m.anisotropy_rotation) } or { 0, 0 })
+      set('anisotropyVector', m.anisotropy > 0 and { m.anisotropy*math.cos(m.anisotropy_rotation), m.anisotropy*math.sin(m.anisotropy_rotation) } or ZERO2)
       set('anisotropyMap', nil); set('anisotropyMapTransform', IDENT3)
       set('specularIntensity', m.specular_intensity); set('specularColor', col(m.specular_color))
       set('specularColorMap', nil); set('specularColorMapTransform', IDENT3); set('specularIntensityMap', nil); set('specularIntensityMapTransform', IDENT3)

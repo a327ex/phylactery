@@ -118,44 +118,72 @@ local function collect(scene)
   return lights, casters
 end
 -- WebGLLights.setup + setupView
-local function light_state(lights, camera)
-  -- shadow casting first, the rest in scene order (a stable sort)
-  local sorted = {}
-  for i, l in ipairs(lights) do sorted[i] = { l = l, i = i } end
-  table.sort(sorted, function(a, b)
-    local ka, kb = a.l.cast_shadow and 2 or 0, b.l.cast_shadow and 2 or 0
-    if ka ~= kb then return ka > kb end
-    return a.i < b.i
-  end)
-  local L = { ambient = { 0, 0, 0 }, probe = {}, directional = {}, directional_shadow = {}, point = {} }
+-- (round 64: the same order the stable sort gave, shadow casters first, the rest, each in scene order, and the same
+-- numbers, into tables kept between renders instead of new ones each time)
+local _sorted, _d3, _p3 = {}, Vector3.new(), Vector3.new()
+local function entry(list, n) local t = list[n]; if not t then t = {}; list[n] = t end; return t end
+local function arr(t, k, n) local a = t[k]; if not a then a = {}; for i = 1, n do a[i] = 0 end; t[k] = a end; return a end
+local function light_state(lights, camera, L)
+  local ns = 0
+  for _, l in ipairs(lights) do if l.cast_shadow then ns = ns + 1; _sorted[ns] = l end end
+  for _, l in ipairs(lights) do if not l.cast_shadow then ns = ns + 1; _sorted[ns] = l end end
+  for i = #_sorted, ns + 1, -1 do _sorted[i] = nil end
+  L = L or { ambient = { 0, 0, 0 }, probe = {}, directional = {}, directional_shadow = {}, point = {} }
+  L.ambient[1], L.ambient[2], L.ambient[3] = 0, 0, 0
   for i = 1, 27 do L.probe[i] = 0 end
+  local nd, nds, np = 0, 0, 0
   local view = camera.matrix_world_inverse
-  for _, e in ipairs(sorted) do
-    local l = e.l
+  for i = 1, ns do
+    local l = _sorted[i]
     if l.is_ambient_light then
       L.ambient[1] = L.ambient[1] + l.color.r*l.intensity
       L.ambient[2] = L.ambient[2] + l.color.g*l.intensity
       L.ambient[3] = L.ambient[3] + l.color.b*l.intensity
     elseif l.is_directional_light then
-      local d = Vector3.new():set_from_matrix_position(l.matrix_world)
+      local d = _d3:set_from_matrix_position(l.matrix_world)
       _v3:set_from_matrix_position(l.target.matrix_world)
       d:sub(_v3):transform_direction(view)
-      L.directional[#L.directional + 1] = { direction = { d.x, d.y, d.z }, color = { l.color.r*l.intensity, l.color.g*l.intensity, l.color.b*l.intensity } }
+      nd = nd + 1
+      local t = entry(L.directional, nd)
+      local dir, c = arr(t, 'direction', 3), arr(t, 'color', 3)
+      dir[1], dir[2], dir[3] = d.x, d.y, d.z
+      c[1], c[2], c[3] = l.color.r*l.intensity, l.color.g*l.intensity, l.color.b*l.intensity
       if l.cast_shadow then
         local s = l.shadow
-        L.directional_shadow[#L.directional_shadow + 1] = { intensity = s.intensity, bias = s.bias, normal_bias = s.normal_bias, radius = s.radius,
-          map_size = { s.map_size.x, s.map_size.y }, map = s.map and s.map.texture.gpu or nil, matrix = s.matrix.elements }
+        nds = nds + 1
+        local t2 = entry(L.directional_shadow, nds)
+        t2.intensity, t2.bias, t2.normal_bias, t2.radius = s.intensity, s.bias, s.normal_bias, s.radius
+        local ms = arr(t2, 'map_size', 2); ms[1], ms[2] = s.map_size.x, s.map_size.y
+        t2.map = s.map and s.map.texture.gpu or nil
+        t2.matrix = s.matrix.elements
       end
     elseif l.is_point_light then
-      local p = Vector3.new():set_from_matrix_position(l.matrix_world):apply_matrix4(view)
-      L.point[#L.point + 1] = { position = { p.x, p.y, p.z }, color = { l.color.r*l.intensity, l.color.g*l.intensity, l.color.b*l.intensity },
-        distance = l.distance, decay = l.decay }
+      local p = _p3:set_from_matrix_position(l.matrix_world):apply_matrix4(view)
+      np = np + 1
+      local t = entry(L.point, np)
+      local pos, c = arr(t, 'position', 3), arr(t, 'color', 3)
+      pos[1], pos[2], pos[3] = p.x, p.y, p.z
+      c[1], c[2], c[3] = l.color.r*l.intensity, l.color.g*l.intensity, l.color.b*l.intensity
+      t.distance, t.decay = l.distance, l.decay
     end
   end
+  for i = #L.directional, nd + 1, -1 do L.directional[i] = nil end
+  for i = #L.directional_shadow, nds + 1, -1 do L.directional_shadow[i] = nil end
+  for i = #L.point, np + 1, -1 do L.point[i] = nil end
   return L
 end
 
 -- ---------------------------------------------------------------------------- geometry upload
+local function up(m, sizes, name, a, divisor)
+  local n = a.array and #a.array or #a.blob
+  if sizes[name] ~= n then
+    gpu_mesh_attr(m, name, a.item_size, a.array or a.blob, divisor, a.dynamic)
+    sizes[name] = n; a.needs_update = false
+  elseif a.needs_update then
+    gpu_mesh_update(m, name, a.array)
+    a.needs_update = false
+  end
+end
 local function gpu_mesh_of(object, geometry)
   local holder = object.is_instanced_mesh and object or geometry
   local m = holder.gpu_mesh
@@ -169,20 +197,10 @@ local function gpu_mesh_of(object, geometry)
     if geometry.index then geometry.index.uploaded = nil end
   end
   local sizes = holder.gpu_sizes
-  local function up(name, a, divisor)
-    local n = a.array and #a.array or #a.blob
-    if sizes[name] ~= n then
-      gpu_mesh_attr(m, name, a.item_size, a.array or a.blob, divisor, a.dynamic)
-      sizes[name] = n; a.needs_update = false
-    elseif a.needs_update then
-      gpu_mesh_update(m, name, a.array)
-      a.needs_update = false
-    end
-  end
-  for _, name in ipairs(geometry.attribute_order) do up(name, geometry.attributes[name], 0) end
+  for _, name in ipairs(geometry.attribute_order) do up(m, sizes, name, geometry.attributes[name], 0) end
   if object.is_instanced_mesh then
-    up('instanceMatrix', object.instance_matrix, 1)
-    if object.instance_color then up('instanceColor', object.instance_color, 1) end
+    up(m, sizes, 'instanceMatrix', object.instance_matrix, 1)
+    if object.instance_color then up(m, sizes, 'instanceColor', object.instance_color, 1) end
   end
   local idx = geometry.index
   if idx then
@@ -237,12 +255,17 @@ local function draw_state(material, side, front_cw, o)
   end
   o.depth_test, o.depth_write, o.color_write = material.depth_test, material.depth_write, material.color_write
   o.depth_func = 'lequal'
-  o.polygon_offset = material.polygon_offset and { material.polygon_offset_factor, material.polygon_offset_units } or nil
+  if material.polygon_offset then
+    local po = material._po
+    if not po then po = {}; material._po = po end
+    po[1], po[2] = material.polygon_offset_factor, material.polygon_offset_units
+    o.polygon_offset = po
+  else o.polygon_offset = nil end
   return o
 end
 
 -- ---------------------------------------------------------------------------- one draw
-local _cam_pos = Vector3.new()
+local _cam_pos, _cam_arr = Vector3.new(), { 0, 0, 0 }
 -- the program key, kept on the material (name|scene|side|instanced)
 local function key_of(material, scene_tag, side, inst)
   local kc = material._keys
@@ -278,7 +301,12 @@ function Renderer:draw(camera, scene_tag, object, geometry, material, group, sid
   local tr = self.trace and {} or nil
   local set
   self._prog = prog
-  if tr then set = function(n, v) if gpu_set(prog, n, v) then tr[n] = v end end
+  if tr then set = function(n, v)
+      if gpu_set(prog, n, v) then
+        if type(v) == 'table' then local c = {}; for k, x in pairs(v) do c[k] = x end; v = c end
+        tr[n] = v
+      end
+    end
   else set = self._set end
   local refresh_prog = tr ~= nil or prog ~= self.cur_prog
   local refresh_mat = refresh_prog or material.id ~= self.cur_mat_id
@@ -288,7 +316,8 @@ function Renderer:draw(camera, scene_tag, object, geometry, material, group, sid
     set('projectionMatrix', camera.projection_matrix.elements)
     set('viewMatrix', camera.matrix_world_inverse.elements)
     _cam_pos:set_from_matrix_position(camera.matrix_world)
-    set('cameraPosition', { _cam_pos.x, _cam_pos.y, _cam_pos.z })
+    _cam_arr[1], _cam_arr[2], _cam_arr[3] = _cam_pos.x, _cam_pos.y, _cam_pos.z
+    set('cameraPosition', _cam_arr)
     set('isOrthographic', camera.is_orthographic_camera == true)
   end
   if refresh_mat then
@@ -334,17 +363,14 @@ local function frustum_of(m, out)
   local me4, me5, me6, me7 = e[5], e[6], e[7], e[8]
   local me8, me9, me10, me11 = e[9], e[10], e[11], e[12]
   local me12, me13, me14, me15 = e[13], e[14], e[15], e[16]
-  local P = {
-    { me3 - me0, me7 - me4, me11 - me8, me15 - me12 }, { me3 + me0, me7 + me4, me11 + me8, me15 + me12 },
-    { me3 + me1, me7 + me5, me11 + me9, me15 + me13 }, { me3 - me1, me7 - me5, me11 - me9, me15 - me13 },
-    { me3 - me2, me7 - me6, me11 - me10, me15 - me14 }, { me3 + me2, me7 + me6, me11 + me10, me15 + me14 },
-  }
-  for k = 1, 6 do
-    local p = P[k]
-    local il = 1/math.sqrt(p[1]*p[1] + p[2]*p[2] + p[3]*p[3])
-    local b = (k - 1)*4
-    out[b + 1], out[b + 2], out[b + 3], out[b + 4] = p[1]*il, p[2]*il, p[3]*il, p[4]*il
+  local function plane(k, a, b, c, d)
+    local il = 1/math.sqrt(a*a + b*b + c*c)
+    local o = (k - 1)*4
+    out[o + 1], out[o + 2], out[o + 3], out[o + 4] = a*il, b*il, c*il, d*il
   end
+  plane(1, me3 - me0, me7 - me4, me11 - me8, me15 - me12); plane(2, me3 + me0, me7 + me4, me11 + me8, me15 + me12)
+  plane(3, me3 + me1, me7 + me5, me11 + me9, me15 + me13); plane(4, me3 - me1, me7 - me5, me11 - me9, me15 - me13)
+  plane(5, me3 - me2, me7 - me6, me11 - me10, me15 - me14); plane(6, me3 + me2, me7 + me6, me11 + me10, me15 + me14)
   return out
 end
 RD.frustum_of = frustum_of
@@ -372,7 +398,8 @@ local function instanced_sphere(o)
         local dx, dy, dz = sx - cx, sy - cy, sz - cz
         local dl = math.sqrt(dx*dx + dy*dy + dz*dz)
         dx, dy, dz = dx/dl*sr, dy/dl*sr, dz/dl*sr
-        for _, sg in ipairs({ 1, -1 }) do
+        for sgi = 1, 2 do
+          local sg = sgi == 1 and 1 or -1
           local px, py, pz = sx + dx*sg, sy + dy*sg, sz + dz*sg
           local qx, qy, qz = px - cx, py - cy, pz - cz
           local l2 = qx*qx + qy*qy + qz*qz
@@ -386,8 +413,11 @@ local function instanced_sphere(o)
       end
     end
   end
-  o.bounding_sphere = { center = Vector3.new(cx, cy, cz), radius = r }
-  return o.bounding_sphere
+  local bs = o._bs_buf
+  if not bs then bs = { center = Vector3.new() }; o._bs_buf = bs end
+  bs.center:set(cx, cy, cz); bs.radius = r
+  o.bounding_sphere = bs
+  return bs
 end
 local function sphere_of(o)
   if o.is_instanced_mesh then return o.bounding_sphere or instanced_sphere(o) end
@@ -414,20 +444,23 @@ end
 
 -- ---------------------------------------------------------------------------- render lists
 local _frustum = {}
-local function project(scene, camera, proj_screen)
-  local F = frustum_of(proj_screen, _frustum)
-  local opaque, transmissive, transparent = {}, {}, {}
-  local counter = 0
-  local function push(object, geometry, material, group_order, z, group)
-    counter = counter + 1
-    local item = { id = object.id, object = object, geometry = geometry, material = material, group_order = group_order,
-      render_order = object.render_order, z = z, group = group, seq = counter }
-    if material.transmission and material.transmission > 0 then transmissive[#transmissive + 1] = item
-    elseif material.transparent then transparent[#transparent + 1] = item
-    else opaque[#opaque + 1] = item end
-  end
-  local e = proj_screen.elements
-  local function walk(o, group_order)
+-- (round 64: the items are kept between renders and the walk and the orders are made once: they were new tables and
+-- closures every render; the same items in the same order)
+local _items, _counter, _F, _e = {}, 0, nil, nil
+local _opaque, _transmissive, _transparent = {}, {}, {}
+local function push(object, geometry, material, group_order, z, group)
+  _counter = _counter + 1
+  local item = _items[_counter]
+  if not item then item = {}; _items[_counter] = item end
+  item.id, item.object, item.geometry, item.material, item.group_order = object.id, object, geometry, material, group_order
+  item.render_order, item.z, item.group, item.seq = object.render_order, z, group, _counter
+  if material.transmission and material.transmission > 0 then _transmissive[#_transmissive + 1] = item
+  elseif material.transparent then _transparent[#_transparent + 1] = item
+  else _opaque[#_opaque + 1] = item end
+end
+local walk
+walk = function(o, group_order)
+  local F, e = _F, _e
     if not o.visible then return end
     if o.is_group then group_order = o.render_order
     elseif (o.is_mesh or o.is_points) and (o.frustum_culled == false or in_frustum(F, o)) then
@@ -450,25 +483,33 @@ local function project(scene, camera, proj_screen)
       elseif mat and mat.visible then push(o, g, mat, group_order, cz, nil) end
     end
     for _, c in ipairs(o.children) do walk(c, group_order) end
-  end
-  walk(scene, 0)
-  local function painter(a, b)
+end
+local function painter(a, b)
     if a.group_order ~= b.group_order then return a.group_order < b.group_order end
     if a.render_order ~= b.render_order then return a.render_order < b.render_order end
     if a.material.id ~= b.material.id then return a.material.id < b.material.id end
     if a.z ~= b.z then return a.z < b.z end
     if a.id ~= b.id then return a.id < b.id end
     return a.seq < b.seq
-  end
-  local function reverse_painter(a, b)
+end
+local function reverse_painter(a, b)
     if a.group_order ~= b.group_order then return a.group_order < b.group_order end
     if a.render_order ~= b.render_order then return a.render_order < b.render_order end
     if a.z ~= b.z then return a.z > b.z end
     if a.id ~= b.id then return a.id < b.id end
     return a.seq < b.seq
-  end
-  table.sort(opaque, painter); table.sort(transmissive, reverse_painter); table.sort(transparent, reverse_painter)
-  return opaque, transmissive, transparent
+end
+local function clear(t) for i = #t, 1, -1 do t[i] = nil end end
+local function project(scene, camera, proj_screen)
+  _F = frustum_of(proj_screen, _frustum)
+  _e = proj_screen.elements
+  _counter = 0
+  clear(_opaque); clear(_transmissive); clear(_transparent)
+  walk(scene, 0)
+  -- (an item left over from a bigger render keeps nothing alive)
+  for i = _counter + 1, #_items do local it = _items[i]; it.object, it.geometry, it.material, it.group = nil, nil, nil, nil end
+  table.sort(_opaque, painter); table.sort(_transmissive, reverse_painter); table.sort(_transparent, reverse_painter)
+  return _opaque, _transmissive, _transparent
 end
 
 -- ---------------------------------------------------------------------------- shadows
@@ -529,7 +570,8 @@ function Renderer:render(scene, camera)
   local lights, casters = collect(scene)
   local opaque, transmissive, transparent = project(scene, camera, _psm)
   self:shadow_pass(scene, camera, casters)
-  local L = light_state(lights, camera)
+  self._L = light_state(lights, camera, self._L)
+  local L = self._L
   local tag = scene.program_scene or 'world'
   local target = self.target
   self.current_transmission = nil
