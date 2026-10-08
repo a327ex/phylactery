@@ -55,7 +55,7 @@ local function petal_geometry()
 end
 
 function PE.create(R, cave)
-  local rng = U.make_rng(5311)
+  local rng = U.run_rng(5311)
   local mat = MAT.MeshBasicMaterial.new({ name = 'leak.flakes', color = 0xffffff, side = MAT.DoubleSide, transparent = true,
     blending = MAT.AdditiveBlending, depth_write = false })
   mat.force_single_pass = true

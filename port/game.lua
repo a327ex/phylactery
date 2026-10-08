@@ -46,6 +46,8 @@ local DT = 1/60
 local GM = {}
 
 function GM.create(R, hud_layer)
+  -- round 65: each run its own (the engine's seed); LICH_ROOM keeps the fixed seeds (the digests)
+  U.RUN = (not os.getenv('LICH_ROOM')) and (random_get_seed() & 0xFFFFFFFF) or nil
   local cave = CAVE.build(R)
   local lich = LICH.create(R, { GU = cave.GU })
   -- round 45: the lich's own mask, flat white (port/lichmask.lua; F5 cycles it for comparison)
@@ -86,10 +88,10 @@ function GM.create(R, hud_layer)
   G.mover = mover; G.snakes = snakes; G.fire = fire
 
   local fx = FXM.create(R, cave)
-  local gore = GORE.create(R, cave, snakes, fx, U.make_rng(41))
+  local gore = GORE.create(R, cave, snakes, fx, U.run_rng(41))
   local warp = WARP.create(R)
   local powers = PW.create({ R = R, cave = cave, snakes = snakes, fx = fx, gore = gore, warp = warp, fire = fire, lich = lich, mover = mover, egg = EGG,
-    get_L = function() return L end, rng = U.make_rng(29), varied = VARIED })
+    get_L = function() return L end, rng = U.run_rng(29), varied = VARIED })
   G.powers = powers; G.fx = fx; G.gore = gore; G.warp = warp
   -- round 57: the ending's silhouettes (the egg with the snakes coiled on it; the lich with his mask)
   local sil = SL.create(R)
@@ -224,7 +226,7 @@ function GM.create(R, hud_layer)
   local function intro_on() return INTRO.state == 'wait' or INTRO.state == 'walk' end
   local function begin() if INTRO.state == 'wait' then INTRO.state = 'walk' end end
   local function over_black() return END.won and END.over >= OVER.hold + OVER.fade end
-  local end_rng = U.make_rng(77)
+  local end_rng = U.run_rng(77)
   local function remove_all()
     END.queue = {}
     for i, a in ipairs(powers.ALL) do if powers.is_on(a) then END.queue[#END.queue + 1] = i - 1 end end
@@ -928,6 +930,7 @@ function GM.create(R, hud_layer)
   end
   -- round 56: the ending's sequence (on, its progress, the silhouettes' strength, his distance to his spot, the covering)
   function GAME.egg() return ep.state() end
+  function GAME.seed() return U.RUN end
   function GAME.begin() begin(); return INTRO.state end
   function GAME.snake_count() local n = 0; for _, s in ipairs(snakes.S) do if not s.pooled and s.dying < 0 then n = n + 1 end end; return n end
   function GAME.intro() return { state = INTRO.state, x = r3(L.x), z = r3(L.z), speed = r3(mover.speed()) } end

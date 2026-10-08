@@ -87,7 +87,7 @@ function PW.create(ctx)
 
   -- ------------------------------------------------------------------ round 50: the bouts
   local varied = ctx.varied or false
-  local prng = U.make_rng(4111)                 -- the bouts' own draws (the old rotation's untouched)
+  local prng = U.run_rng(4111)                 -- the bouts' own draws (the old rotation's untouched)
   local fire_fx, cave = ctx.fire, ctx.cave
   local CHOOSE = { FIRE, lift, beam, rock, lens }
   local plan, force_plan, used_at, plans_log = nil, 0, {}, {}

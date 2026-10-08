@@ -18,7 +18,7 @@ W.K = 24
 local K = W.K
 
 function W.create(R)
-  local rnd = U.make_rng(23)
+  local rnd = U.run_rng(23)
   local UN = { uRes = { value = Vector2.new(R.W, R.H) }, uProj = { value = 400 }, uTime = { value = 0 }, tDepth = { value = R.targets.rt_world.depth_texture }, uNoDepth = { value = 0 } }
   local function blend(name)
     return MAT.ShaderMaterial.new({ name = name, uniforms = UN, transparent = true, depth_write = false, depth_test = false, side = MAT.DoubleSide,

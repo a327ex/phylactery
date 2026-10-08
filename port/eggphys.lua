@@ -117,7 +117,7 @@ end
 -- opts: R, egg (the cave's egg group), shell (its mesh), floor_geo, rock_geo, ground_y(x, z), rng
 function EP.create(opts)
   local egg, shell = opts.egg, opts.shell
-  local rng = opts.rng or U.make_rng(61)
+  local rng = opts.rng or U.run_rng(61)
   local api = { started = false, pieces = {}, roots = {}, knocks_done = 0 }
   local body                                        -- the whole egg, until it breaks
   local tm = timer_new()

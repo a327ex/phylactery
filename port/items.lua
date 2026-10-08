@@ -84,7 +84,7 @@ function IT.create(ctx)
   local R, cave, fx, warp, nav, lich, mover, get_L, glance = ctx.R, ctx.cave, ctx.fx, ctx.warp, ctx.nav, ctx.lich, ctx.mover, ctx.get_L, ctx.glance
   local AA = A()
   local X = AA.manifest.items
-  local rng = U.make_rng(71)
+  local rng = U.run_rng(71)
   local opts = { size = 0, hand_mat = 1 }                     -- round 31 (owner): the hand in BONE
   local function kf(w) return w.it.fixed_k or SIZES[opts.size + 1].k*(w.it.floor_mul or 1) end
   local S = CAVE.LAYOUT.sun_dir
@@ -233,7 +233,7 @@ function IT.create(ctx)
   -- other. THROW pushes each the way he faces (a little spread) and they fly, fall and roll as
   -- bodies; taken back, they rise to him again.
   local varied = ctx.varied or false
-  local orng = U.make_rng(733)
+  local orng = U.run_rng(733)
   local HOV_R, HOV_Y = 0.62, 0.1
   -- round 52 (owner, 2026-10-06: "the orbs could rotate around the lich more, like electrons around atoms,
   -- except with a bit more varied patterns"): each circles his chest on an orbit of its own, a tilted

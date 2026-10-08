@@ -174,7 +174,7 @@ function L.create(R, opts)
   local AQ = { e = Quaternion.new(), c = Quaternion.new(), r = Quaternion.new(), i = Quaternion.new(), t = Quaternion.new() }
   local AV = { b = Vector3.new(), t = Vector3.new(), f = Vector3.new(), d = Vector3.new(), ax = Vector3.new(), up = Vector3.new(0, 1, 0) }
   local NO_MOTION = { a = { 0, 0, 0 }, v = { 0, 0, 0 }, push = { 0, 0 }, yaw_a = 0, yaw_v = 0, look = 0, gaze = 0, gaze_p = 0, gaze_w = 0 }
-  local hit_rng = U.make_rng(97)
+  local hit_rng = U.run_rng(97)
 
   local lich = {
     root = root, body = body, mat = mat, light = light, MODES = MODES, tris = tris,

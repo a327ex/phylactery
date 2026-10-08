@@ -32,6 +32,15 @@ function U.hash_str(str)
   return h & M32
 end
 
+-- round 65 (owner, 2026-10-08: "The game is playing the same at all times, likely the same seed"): the run's own
+-- seed (game.lua: the engine's, entropy each run, ANCHOR_SEED when set), mixed into every rng that decides what happens
+-- (U.run_rng: the waves, the attacks, the gore, ...); nil keeps the fixed seeds (LICH_ROOM: the three.js build's numbers)
+U.RUN = nil
+function U.run_rng(seed)
+  if U.RUN then seed = ((seed*2654435761) ~ U.RUN) & M32 end
+  return U.make_rng(seed)
+end
+
 -- sfc32 seeded through splitmix32; rng.next() in [0, 1)
 function U.make_rng(seed)
   seed = seed or 1
