@@ -140,15 +140,21 @@ function RG.create(lich, opts)
         q.x, q.y, q.z = q.x + vx, q.y + vy - RG.G*h*h, q.z + vz
       end
       if R then
-        -- drawn toward the egg: the wrist and fingertip toward where a straight arm would reach
+        -- drawn toward the egg: the wrist and fingertip toward where a straight arm would reach, the shoulder back by as
+        -- much (a muscle, not a hand from outside: round 59b found the old one-sided pull dragging his whole body across
+        -- the floor to the egg); strong as he falls, holding after
         local s = p('sh' .. R)
         local tx, ty, tz = opts.reach_to[1] - s.x, opts.reach_to[2] - s.y, opts.reach_to[3] - s.z
         local l = sqrt(tx*tx + ty*ty + tz*tz)
+        local fk = 1 - 0.7*min(1, max(0, (rag.t - 1.0)/1.0))
         if l > 1e-6 then
           tx, ty, tz = tx/l, ty/l, tz/l
           for _, e in ipairs({ { 'tip' .. R, reach_len, 0.05 }, { 'wr' .. R, reach_len*0.86, 0.03 } }) do
             local q = p(e[1])
-            q.x = q.x + (s.x + tx*e[2] - q.x)*e[3]; q.y = q.y + (s.y + ty*e[2] - q.y)*e[3]; q.z = q.z + (s.z + tz*e[2] - q.z)*e[3]
+            local k = e[3]*fk
+            local dx, dy, dz = (s.x + tx*e[2] - q.x)*k, (s.y + ty*e[2] - q.y)*k, (s.z + tz*e[2] - q.z)*k
+            q.x, q.y, q.z = q.x + dx*0.5, q.y + dy*0.5, q.z + dz*0.5
+            s.x, s.y, s.z = s.x - dx*0.5, s.y - dy*0.5, s.z - dz*0.5
           end
         end
       end

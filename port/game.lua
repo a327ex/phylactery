@@ -168,7 +168,7 @@ function GM.create(R, hud_layer)
   -- round 56c (owner: "Let's see 8m, 9m, 10m back and slightly different angles too"), settled in round 57 ("10m,
   -- lower"): the camera looks at the point `mid` of the way from the egg to him, look_y over the floor, from `back` m
   -- along the room camera's heading, `pitch` degrees down onto it
-  local SHOT = { edge = 2.2, edge_h = 1.4, mid = 0.5, back = 10.0, pitch = 3, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
+  local SHOT = { edge = 2.2, back_deg = 30, edge_h = 1.4, mid = 0.5, back = 10.0, pitch = 3, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
   -- round 57 (owner, 2026-10-07: "we get close to this final shot, we need some kind of shader or effect where the
   -- only the egg and lich are visible but they become not textured, like flat colors, so the final shot is darkness
   -- + two sillouettes ... The visual effect should start slowly in the middle of the movement towards the final shot,
@@ -181,12 +181,14 @@ function GM.create(R, hud_layer)
   -- His body should lie on the floor limp as though he died. At the same time as he drops, all snakes should explode
   -- as they do from the lift power and the egg should then be visible twitching, like a pokeball when its trying to
   -- capture a pokemon. The camera focuses and zooms on the egg hatching and once it's close enough it hatches"):
-  -- `hold` s after the silhouettes are whole he dies (round 59: as a rag doll, port/ragdoll.lua, pushed `push` m/s
-  -- toward the egg and `turn` m/s toward the camera, the arm that pointed reaching for the egg) and every snake bursts; from `wobble_at` s the egg rocks in bursts (a pokeball's: three rocks, a
+  -- `hold` s after the silhouettes are whole he dies (round 59: as a rag doll, port/ragdoll.lua, the arm that pointed
+  -- reaching for the egg; round 59b, owner: "Lich is falling too close to the egg, should fall more to the side ...
+  -- such that it's kind of (not totally) on the background": pushed `back` m/s away from the camera and `out` m/s
+  -- away from the egg) and every snake bursts; from `wobble_at` s the egg rocks in bursts (a pokeball's: three rocks, a
   -- rest, a little harder each time); from `zoom_at` s the camera goes in on it over `zoom` s (eased), to `close` m
   -- from a point `close_y` m up it; at `hatch_k` of the way it hatches (silhouette.lua); the burst's pieces fade into
   -- the dark between `gore_fade` s after it
-  local DIE = { hold = 4.0, push = 0.7, turn = 0.25, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 } }
+  local DIE = { hold = 4.0, back = 0.5, out = 0.0, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 } }
   SEQ.label_n = 0
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
@@ -657,7 +659,7 @@ function GM.create(R, hud_layer)
     local fx, fz = -ROOM_H.x, -ROOM_H.y
     SEQ.rag = RG.create(lich, { ground_y = cave.ground_y, egg = { x = EGG.x, y = EGG.y + 0.38, z = EGG.z, r = 0.36 },
       reach = 2, reach_to = { EGG.x, EGG.y + 0.15, EGG.z },
-      push = { hx*DIE.push + fx*DIE.turn, 0, hz*DIE.push + fz*DIE.turn } })
+      push = { -fx*DIE.back - hx*DIE.out, 0, -fz*DIE.back - hz*DIE.out } })
     lmask.drop(cave.ground_y)
     snakes.burst_all(gore.burst)
     cave.egg.user_data.wobble_axis = { ROOM_H.x, ROOM_H.y }
@@ -705,9 +707,13 @@ function GM.create(R, hud_layer)
       SEQ.c = v(EGG.x + S.x/S.y*SHOT.edge_h, 0, EGG.z + S.z/S.y*SHOT.edge_h)
       local sd = ((L.x - SEQ.c.x)*SIDE_DIR.x + (L.z - SEQ.c.z)*SIDE_DIR.z >= 0) and 1 or -1
       SEQ.side = sd
+      -- (round 59b: turned SHOT.back_deg round the edge away from the camera, so that where he falls is behind and
+      -- to the side of the egg: in the close-up he lies in its background)
+      local ba = SHOT.back_deg*pi/180
+      local ox, oz = sd*SIDE_DIR.x*cos(ba) + ROOM_H.x*sin(ba), sd*SIDE_DIR.z*cos(ba) + ROOM_H.y*sin(ba)
       local side = SHOT.edge
-      local x, z = SEQ.c.x + sd*SIDE_DIR.x*side, SEQ.c.z + sd*SIDE_DIR.z*side
-      while side < SHOT.edge + 0.6 and nav.is_blocked(x, z) do side = side + 0.05; x, z = SEQ.c.x + sd*SIDE_DIR.x*side, SEQ.c.z + sd*SIDE_DIR.z*side end
+      local x, z = SEQ.c.x + ox*side, SEQ.c.z + oz*side
+      while side < SHOT.edge + 0.6 and nav.is_blocked(x, z) do side = side + 0.05; x, z = SEQ.c.x + ox*side, SEQ.c.z + oz*side end
       SEQ.spot = v(x, cave.ground_y(x, z), z)
       SEQ.R = side
       SEQ.th1 = atan2(z - SEQ.c.z, x - SEQ.c.x)
