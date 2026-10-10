@@ -49,7 +49,8 @@ end
 -- site's own pacing then, or the site's garbage would pile up with nothing collecting it.
 function game_hosted_visible(on)
   if on then require('port.gcpace').resume() else require('port.gcpace').pause() end
+  require('port.audio').mute(not on)      -- (its sounds go quiet with it, loops kept)
 end
-function game_hosted_stop() require('port.gcpace').pause() end
+function game_hosted_stop() require('port.gcpace').pause(); require('port.audio').stop_all() end
 
 require('boot')   -- LAST line: one-time work, after every definition exists

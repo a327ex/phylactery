@@ -7,6 +7,7 @@
 local T = require('port.three.core')
 local U = require('port.util')
 local FX = require('port.fx')
+local AU = require('port.audio')     -- 2026-10-10: the sounds
 local clamp, smoothstep, lerp = U.clamp, U.smoothstep, U.lerp
 local abs, sin, cos, floor, min, max = math.abs, math.sin, math.cos, math.floor, math.min, math.max
 
@@ -106,6 +107,8 @@ function F.create(R, cave, seed)
     if free.burn then free.burn.light = nil end
     free.burn = b; b.light = free
     local p0 = spine[ignite_at + 1]
+    AU.play('fire_ignite', { pos = p0, gap = 0.06 })
+    b.snd = AU.loop('fire_burn', { pos = p0, max = 4, volume = 0.3 })   -- (at most 4 burning at once are heard)
     for _ = 1, 10 do emit_flame(b, ignite_at, 1.3) end
     for _ = 1, 14 do emit_spark(p0, 1.3) end
     burns[#burns + 1] = b
@@ -187,6 +190,7 @@ function F.create(R, cave, seed)
       local lit = 0
       for i = 0, b.rings - 1 do lit = lit + flame_at(b, i) end
       local frac = lit/b.rings
+      if b.snd then b.snd.set_volume(0.15 + 0.85*frac); b.snd.set_pos(b.spine[b.at + 1]) end
       b.acc = b.acc + 170*frac*dt
       while b.acc >= 1 do
         b.acc = b.acc - 1
@@ -221,6 +225,7 @@ function F.create(R, cave, seed)
       if b.t > BURN['end'] then
         if b.light then b.light.l.intensity = 0; b.light.burn = nil; b.light = nil end
         b.done = true
+        if b.snd then b.snd.stop(); b.snd = nil end
         table.remove(burns, bi)
       end
     end

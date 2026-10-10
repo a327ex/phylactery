@@ -22,6 +22,13 @@ path identical: `tools/digest_run.lua` runs with it). The walk of round 39 is se
 powers.lua `ctx.varied`, the group versions in beam/lift/rock/lens/fire) are on only without
 LICH_ROOM; with it, the old respawn timers and fair rotation run exactly as before.
 
+**Sounds (2026-10-10, RECORD.md round 67)**: every sound is a SLOT (`AU.play(name, {pos, volume, gap})`, `AU.loop`)
+in port/audio.lua + port/soundui.lua, PORTED from megablock's mb/audio.lua + mb/soundui.lua by
+`tools/port_soundui.py` (Lich's differences live in that script; re-run it after megablock changes the originals,
+never hand-edit the ported files without saying so). His picks: `sound_picks.lua` (the in-game editor writes it:
+TAB / ESC, not on the site); mine came from `tools/sfx_spec.py` -> `tools/sfx_bake.py` (his edits win). Red =
+`unsure` on purpose. Sound code never draws from the game's rngs.
+
 **three.js first (owner, 2026-09-27)**, like Brutal Behavior: the game lives in `web/`
 (`index.html` + `src/*.js`, three.js 0.170 from jsdelivr, local modules import each other only
 as `game/<file>.js`), reusing the Sun Court renderer (`web/src/render.js`, from

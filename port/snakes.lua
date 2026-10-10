@@ -23,6 +23,7 @@ local MAT = require('port.three.materials')
 local U = require('port.util')
 local FX = require('port.fx')
 local CL = require('port.coil')
+local AU = require('port.audio')     -- 2026-10-10: the sounds
 local Vector3, Color = TM.Vector3, TM.Color
 local clamp, smoothstep, lerp = U.clamp, U.smoothstep, U.lerp
 local sqrt, abs, sin, cos, atan2, exp, floor, ceil, min, max, huge, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.ceil, math.min, math.max, math.huge, math.pi
@@ -816,7 +817,10 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     while k <= #S do
       local s = S[k]
       local skip = false
-      if s.delay > 0 then s.delay = s.delay - dt; set_vis(s, false); skip = true end
+      if s.delay > 0 then
+        s.delay = s.delay - dt; set_vis(s, false); skip = true
+        if s.delay <= 0 then AU.play('snake_hiss', { pos = { s.x, 0.25, s.z }, gap = 0.3 }) end   -- it comes into the room
+      end
       if not skip then
         local hide = not not (s.fx and s.fx.hide)
         set_vis(s, not hide)
@@ -828,7 +832,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
           if s.sink > SINK_T then respawn(s); skip = true end
         elseif s.burn then
           s.sag = min(1, s.sag + dt/1.6)
-          if s.burn.done then s.burn = nil; s.burnt = true; s.sink = 0; build(s); fire.ash(s.spine, RINGS) end
+          if s.burn.done then s.burn = nil; s.burnt = true; s.sink = 0; build(s); fire.ash(s.spine, RINGS); AU.play('snake_ash', { pos = s.spine[RINGS//2], gap = 0.2 }) end
         elseif s.dying >= 0 then
           s.dying = s.dying + dt
           s.scale = clamp(1 - s.dying/0.5, 0, 1)
@@ -884,6 +888,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
             respawn(s); skip = true
           elseif js_hypot(s.x - egg.x, s.z - egg.z) < 1.1 then
             api.reached = api.reached + 1
+            AU.play('snake_strike', { pos = { s.x, 0.35, s.z } })
             api.reach_log[#api.reach_log + 1] = { t = t, claim = s.claim, ['until'] = s.claim_until, leak = s.leak, speed = s.speed }
             start_coil(s)
             skip = true
@@ -894,6 +899,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
         if s.leak >= 1.12 and not s.burn and s.sink < 0 then
           api.dissolved = api.dissolved + 1
           if api.on_dissolve then api.on_dissolve(s) end
+          AU.play('snake_dissolve', { pos = s.spine[5] })
           respawn(s)
         else
           build(s)

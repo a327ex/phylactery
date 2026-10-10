@@ -13,6 +13,15 @@ local LD = require('port.three.loader')
 local OB = require('port.objects')
 local BO = require('port.body')
 local CAVE = require('port.cave')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (never draw from rng here)
+-- each object lands as what it is made of (0 the burned mask .. 5 the lens)
+local LAND = { [0] = 'item_land_mask', 'item_land_hand', 'item_land_lodestone', 'item_land_orbs', 'item_land_gem', 'item_land_lens' }
+local function land_snd(b, slot, v, min_v)
+  if v <= min_v then return end
+  if b.snd_t and AU.now - b.snd_t < 0.12 then return end      -- (contacts come per substep: one sound per bounce)
+  b.snd_t = AU.now
+  AU.play(slot, { pos = b.x, volume = math.min(1, 0.25 + v/4) })
+end
 local Vector2, Vector3, Quaternion, Euler, Matrix4 = TM.Vector2, TM.Vector3, TM.Quaternion, TM.Euler, TM.Matrix4
 local smoothstep = U.smoothstep
 local sqrt, abs, sin, cos, atan2, floor, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.floor, math.min, math.max, math.pi
@@ -143,7 +152,7 @@ function IT.create(ctx)
     local sz = c.sz
     local b = BO.create({ points = pts, mass = w.it.mass, inertia = BO.box_inertia(w.it.mass, sz[1], sz[2], sz[3]), restitution = w.it.rest, friction = w.it.fric,
       rolling = w.it.rolling or 0.8, floor = floor_y, egg = egg })
-    b.on_hit = function(v) dust(b.x, v) end
+    b.on_hit = function(v) dust(b.x, v); land_snd(b, LAND[w.i], v, 0.4) end
     return b
   end
 
@@ -220,7 +229,7 @@ function IT.create(ctx)
       b.x:copy(from):add(Vector3.new(ox, j*0.03, oz))
       local tx, tz = to.x + cos(a)*spread, to.y + sin(a)*spread
       b.v:copy(toss(b.x, tx, floor_y(tx, tz) + r, tz, 0.72 + j*0.04))
-      b.on_hit = function(v) if v > 1.2 then dust(b.x, v*0.5) end end
+      b.on_hit = function(v) if v > 1.2 then dust(b.x, v*0.5) end; land_snd(b, LAND[w.i], v, 0.6) end
       w.bodies[j0] = b
     end
     w.body = w.bodies[1]
@@ -253,11 +262,12 @@ function IT.create(ctx)
   local function ball_body(w, j, r)
     local b = BO.create({ sphere = r, mass = w.it.mass, inertia = Vector3.new(1, 1, 1):multiply_scalar(0.4*w.it.mass*r*r), restitution = 0.22, friction = w.it.fric,
       rolling = 2.5, rr = 0.26, floor = floor_y, egg = egg })
-    b.on_hit = function(v) if v > 1.2 then dust(b.x, v*0.5) end end
+    b.on_hit = function(v) if v > 1.2 then dust(b.x, v*0.5) end; land_snd(b, LAND[w.i], v, 0.6) end
     return b
   end
   local function hold_orbs(w)
     local L = get_L()
+    w.snd = w.snd or AU.loop('orb_hover', { pos = L })
     w.hov = w.hov or {}
     local n = #w.orbs
     for j, m in ipairs(w.orbs) do
@@ -288,6 +298,7 @@ function IT.create(ctx)
   end
   local function update_held(w, dt, t)
     local L = get_L()
+    if w.snd then w.snd.set_pos(L) end
     local k = kf(w)
     w.scale = min(1, (w.scale or 0) + dt/0.4)
     local O, Hh = w.orbs, w.hov
@@ -357,6 +368,7 @@ function IT.create(ctx)
   -- from where they hover, as bodies: each pushed the way he faces (THROW), or tossed down beside him (a drop)
   local function release_orbs(w, push_yaw, to)
     local k = kf(w)
+    if w.snd then w.snd.stop(); w.snd = nil end
     w.bodies = {}
     for j, m in ipairs(w.orbs) do
       local h = w.hov[j]
@@ -393,7 +405,10 @@ function IT.create(ctx)
         local n = Vector3.new():sub_vectors(b.x, a.x):multiply_scalar(1/d)
         a.x:add_scaled_vector(n, -(mn - d)*0.5); b.x:add_scaled_vector(n, (mn - d)*0.5)
         local vn = Vector3.new():sub_vectors(b.v, a.v):dot(n)
-        if vn < 0 then local j2 = -(1 + 0.4)*vn*0.5; a.v:add_scaled_vector(n, -j2); b.v:add_scaled_vector(n, j2); a.wake(); b.wake() end
+        if vn < 0 then
+          local j2 = -(1 + 0.4)*vn*0.5; a.v:add_scaled_vector(n, -j2); b.v:add_scaled_vector(n, j2); a.wake(); b.wake()
+          if vn < -0.3 then AU.play('orb_clack', { pos = a.x, volume = math.min(1, -vn/2), gap = 0.06 }) end
+        end
       end
     end end
   end
@@ -401,6 +416,7 @@ function IT.create(ctx)
   local function drop(i)
     local w = W[i + 1]
     if not w then return false end
+    AU.play('item_throw', { pos = get_L(), volume = 0.6 })
     local r = lying_r(w)
     local to = spot(w, r)
     local h = from_hand(to)
@@ -457,6 +473,7 @@ function IT.create(ctx)
   local function throw(i, yaw)
     local w = W[i + 1]
     if not w then return false end
+    AU.play('item_throw', { pos = get_L() })
     if w.it.balls and w.state == 'held' then
       local L = get_L()
       local h = from_hand(Vector2.new(L.x + sin(yaw), L.z + cos(yaw)))
@@ -536,6 +553,7 @@ function IT.create(ctx)
   local function take(i)
     local w = W[i + 1]
     if not w or w.state == 'away' then return end
+    AU.play('item_pickup', { pos = get_L() })
     if varied and w.it.balls then
       for _, b in ipairs(w.bodies or {}) do
         warp.puff({ x = b.x.x, y = b.x.y + 0.05, z = b.x.z, vy = 0.6, drag = 1.5, life = 0.5, s0 = 0.12, s1 = 0.35, amp = 3, spin = orng.spread(3) })

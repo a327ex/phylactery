@@ -10,6 +10,7 @@
   what the pose gives them. The reaching arm is kept straight and drawn toward the egg.
 ]]
 local TM = require('port.three.math')
+local AU = require('port.audio')     -- 2026-10-10: the sounds
 local Vector3, Quaternion, Matrix4 = TM.Vector3, TM.Quaternion, TM.Matrix4
 local sqrt, max, min = math.sqrt, math.max, math.min
 
@@ -100,6 +101,8 @@ function RG.create(lich, opts)
   local function collide(q)
     local g = ground(q.x, q.z) + q.r
     if q.y < g then
+      -- (2026-10-10: each part of him sounds the first time it meets the floor, as hard as it came down)
+      if not q.landed then q.landed = true; AU.play('lich_thud', { pos = { q.x, g, q.z }, volume = math.max(0.15, math.min(1, (q.oy - q.y)*40)), gap = 0.07 }) end
       q.y = g
       local f = RG.FRICTION
       q.ox = q.x - (q.x - q.ox)*f; q.oz = q.z - (q.z - q.oz)*f

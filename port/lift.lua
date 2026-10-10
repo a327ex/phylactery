@@ -8,6 +8,7 @@
 ]]
 local TM = require('port.three.math')
 local U = require('port.util')
+local AU = require('port.audio')     -- 2026-10-10: the sounds
 local Vector2, Vector3, Quaternion, Euler = TM.Vector2, TM.Vector3, TM.Quaternion, TM.Euler
 local smoothstep = U.smoothstep
 local abs, sin, cos, floor, ceil, min, max = math.abs, math.sin, math.cos, math.floor, math.ceil, math.min, math.max
@@ -111,6 +112,11 @@ function LI.create(ctx)
         if grp.t >= grp.at and not f.hide then
           local L = get_L()
           TOWARD:set(L.x, L.y + 0.4, L.z)
+          if not grp.burst_snd then      -- (the group bursts on one tick: one sound for all of them)
+            grp.burst_snd = true
+            AU.play('lift_burst', { pos = grp.snd_p or s.spine[mid + 1], volume = math.min(1, 0.6 + 0.12*(grp.snd_n or 1)) })
+            if grp.snd then grp.snd.stop(); grp.snd = nil end
+          end
           gore.burst(s, mid, TOWARD)
           f.hide = true
         end
@@ -198,6 +204,12 @@ function LI.create(ctx)
     if knot then knots = knots + 1 end
     local g = group(#all, arm, knot)
     for k, s in ipairs(all) do lift(s, (k - 1)*STAGGER, g, k) end
+    -- (2026-10-10, the sounds: the grip, the hold while they hang, the knot balling up)
+    g.snd_n = #all
+    g.snd_p = knot and knot.c:clone() or all[1].spine[mid + 1]:clone()
+    AU.play('lift_cast', { pos = from })
+    g.snd = AU.loop('lift_hold', { pos = g.snd_p })
+    if knot then AU.play('lift_knot', { pos = g.snd_p, delay = 0.4 }) end
   end
   function P.update(dt)
     dt = dt or 1/60
@@ -206,7 +218,8 @@ function LI.create(ctx)
       local g = groups[i]
       g.t = g.t + dt
       if not g.curled and g.t >= g.at - CURL_LEAD then g.curled = true; lich.curl(g.arm) end
-      if g.t > g.at + 0.5 then table.remove(groups, i) end
+      if not g.swelled and g.snd_p and g.t >= g.at - 0.25 then g.swelled = true; AU.play('lift_swell', { pos = g.snd_p }) end
+      if g.t > g.at + 0.5 then if g.snd then g.snd.stop(); g.snd = nil end; table.remove(groups, i) end
     end
   end
   function P.let_go() hand_free = true; for _, g in ipairs(groups) do g.curled = true end end

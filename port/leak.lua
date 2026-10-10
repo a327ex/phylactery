@@ -10,6 +10,7 @@ local MAT = require('port.three.materials')
 local U = require('port.util')
 local FX = require('port.fx')
 local W = require('port.warp')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (never draw from rng here)
 local Vector3, Quaternion, Euler, Matrix4 = TM.Vector3, TM.Quaternion, TM.Euler, TM.Matrix4
 local smoothstep = U.smoothstep
 local sqrt, abs, sin, cos, floor, min, max = math.sqrt, math.abs, math.sin, math.cos, math.floor, math.min, math.max
@@ -183,6 +184,16 @@ function LK.create(ctx)
   -- urgent: nil or a set { [snake] = true }
   function P.update(t, dt, on, urgent)
     local L = get_L()
+    -- (2026-10-10, the sounds: the leak round his skull while it is his; ONE loop at the snake coming apart most)
+    if on and not P.snd then P.snd = AU.loop('leak_whisper', { pos = L }) elseif not on and P.snd then P.snd.stop(); P.snd = nil end
+    local most, most_k = nil, 0
+    for _, s in ipairs(snakes.S) do
+      if s.leak > most_k and s.leak_at and not s.pooled then most, most_k = s, s.leak end
+    end
+    if most then
+      P.snd_s = P.snd_s or AU.loop('leak_snake', { pos = most.spine[most.leak_at + 1] })
+      P.snd_s.set_pos(most.spine[most.leak_at + 1]); P.snd_s.set_volume(math.min(1, 0.3 + most_k))
+    elseif P.snd_s then P.snd_s.stop(); P.snd_s = nil end
     for _, s in ipairs(snakes.S) do
       if not (s.delay > 0 or s.dying >= 0 or s.burn or s.sink >= 0 or s.fx or s.coil) and not (snakes.held_by_other and snakes.held_by_other(s)) then
         local d = 1e9
@@ -217,6 +228,7 @@ function LK.create(ctx)
     update_streaks(dt); update_rings(dt); update_flakes(t, dt)
     if not on then return end
     lich.head_pos(H)
+    if P.snd then P.snd.set_pos(H) end
     emit = emit + dt*(5 + reach*1.2)
     while emit >= 1 do
       emit = emit - 1
@@ -226,7 +238,7 @@ function LK.create(ctx)
       streak_from(H:clone():add(Vector3.new(x, y, z)))
     end
     ring_t = ring_t - dt
-    if ring_t <= 0 then ring_t = rng.float(1.6, 2.6); ring_from(L) end
+    if ring_t <= 0 then ring_t = rng.float(1.6, 2.6); ring_from(L); AU.play('leak_ripple', { pos = L }) end
   end
   return P
 end

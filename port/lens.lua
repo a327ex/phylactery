@@ -11,6 +11,7 @@ local T = require('port.three.core')
 local MAT = require('port.three.materials')
 local U = require('port.util')
 local CAVE = require('port.cave')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (never draw from rng here)
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
 local smoothstep = U.smoothstep
 local sqrt, abs, sin, cos, exp, floor, ceil, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.exp, math.floor, math.ceil, math.min, math.max, math.pi
@@ -190,6 +191,7 @@ function LE.create(ctx)
     if q.light then q.light.lens = q end
     beside(q, q.spot)
     L.on = true
+    AU.play('lens_form', { pos = pos })
     L.m.position:copy(pos); L.m.scale:set_scalar(0.001); L.m.visible = true; L.sh.visible = true
     active[#active + 1] = q
     return pos
@@ -312,6 +314,7 @@ function LE.create(ctx)
       m:look_at(q.spot); m:rotate_x(pi/2)
       local conv = t_conv < 0 and 0 or (t_conv >= 1 and 1 or t_conv)
       local on_c = t_conv >= 0 and sweep_t < LIGHTS_OFF
+      if t_conv >= 0 and not q.focus_snd then q.focus_snd = true; AU.play('lens_focus', { pos = q.spot }) end
       L.cone.visible = on_c; L.patch.visible = on_c
       if on_c then
         local rf = 0.03 + 0.9*((1 - conv)^1.6)
@@ -356,7 +359,9 @@ function LE.create(ctx)
         local k_off = sweep_t <= q.dur and 1 or 1 - (sweep_t - q.dur)/OFF
         local pop = 1 + 0.6*exp(-sweep_t*18)
         local flick = 1 + 0.12*sin(t*57 + i) + 0.07*sin(t*83 + i*3)
+        if q.snd then q.snd.set_pos(q.spot) end
         if not q.core then
+          q.snd = AU.loop('lens_fire', { pos = q.spot, max = 2 })
           q.core = fx.ribbon(lp, q.spot, { held = true, style = look == 0 and 2 or 3, w = 2, w0 = 0.1, w1 = 0.1 })
           fired[#fired + 1] = { lp = lp:to_array(), spot = q.spot:to_array(), quick = q.t0q, size = m.scale.x }
           q.flare = 1
@@ -413,6 +418,7 @@ function LE.create(ctx)
               for j = 2, N - 3 do local d = hyp(s.spine[j + 1].x - sp.x, s.spine[j + 1].z - sp.z); if d < best then best = d; bi = j end end
               if best < CUT_R and snakes.arc(bi) <= CUT_MAX and snakes.arc(bi) >= CUT_MIN then
                 s.claim = nil; snakes.take(s, cut_fx(s, max(3, bi))); cuts[#cuts + 1] = { arc = snakes.arc(bi), target = s == q.s }
+                AU.play('lens_cut', { pos = s.spine[bi + 1], gap = 0.05 })
                 q.ncut = (q.ncut or 0) + 1
               end
             end
@@ -427,6 +433,8 @@ function LE.create(ctx)
         q.light.l.position:set(q.spot.x, q.spot.y + 0.3, q.spot.z)
         q.light.l.intensity = 2.2*lit*(0.85 + 0.15*sin(t*37))
       end
+      if q.snd and sweep_t > q.dur + OFF then q.snd.stop(); q.snd = nil end
+      if gone > 0 and not q.gone_snd then q.gone_snd = true; AU.play('lens_dissolve', { pos = lp }) end
       if gone > 0 and gone < 1 and rng.next() < 0.5 then
         local x = lp.x + rng.spread(0.3)
         local y = lp.y + rng.spread(0.05)
@@ -452,6 +460,7 @@ function LE.create(ctx)
           end
         end
         if q.core then fx.release(q.core) end
+        if q.snd then q.snd.stop(); q.snd = nil end
         if q.light then q.light.l.intensity = 0; q.light.lens = nil end
         table.remove(active, ii)
       end

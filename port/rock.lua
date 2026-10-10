@@ -12,6 +12,7 @@ local T = require('port.three.core')
 local MAT = require('port.three.materials')
 local U = require('port.util')
 local FX = require('port.fx')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (never draw from rng here)
 local Vector3, Quaternion, Euler = TM.Vector3, TM.Quaternion, TM.Euler
 local smoothstep = U.smoothstep
 local sqrt, abs, sin, exp, floor, ceil, min, max = math.sqrt, math.abs, math.sin, math.exp, math.floor, math.ceil, math.min, math.max
@@ -293,7 +294,12 @@ function RO.create(ctx)
           if q.w:length() < to then q.w:add_scaled_vector(V:set(q.ph[1] - 3, q.ph[2] - 3, q.ph[3] - 3):normalize(), to*rate*dt) end
         end
         if q.phase == 'rip' then
-          if not q.torn then q.torn = true; tear(q); q.v:set(q.dir.x*0.6, q.quick and 5 or 3.4, q.dir.z*0.6); q.ramp = 0.3 end
+          if not q.torn then
+            q.torn = true; tear(q); q.v:set(q.dir.x*0.6, q.quick and 5 or 3.4, q.dir.z*0.6); q.ramp = 0.3
+            AU.play('rock_rip', { pos = q.from, gap = 0.05 })
+            q.snd = AU.loop('rock_hold', { pos = m.position, max = 2 })
+          end
+          if q.snd then q.snd.set_pos(m.position) end
           hold_on(q.hold, q.quick and 2.4 or (q.orbit and 2.2 or 1.5), 0.5, q.quick and 90 or (q.orbit and 60 or 40), 2.5)
           spin(2, 3)
           if rng.next() < 0.5 then aura(m.position, 0.9) end
@@ -305,6 +311,7 @@ function RO.create(ctx)
           TG:copy(q.hold):add_scaled_vector(q.dir, -0.18*back)
           TG.y = TG.y + (0.05*back + sin(t*2.2 + q.ph[1])*0.03)
           hold_on(TG, q.orbit and 2.4 or 1.3, 0.42, q.orbit and 60 or 25, 2.0)
+          if q.snd then q.snd.set_pos(m.position) end
           spin(0.8, 2)
           if rng.next() < 0.7 then aura(m.position, 1) end
           if q.pt >= q.hold_t then
@@ -319,7 +326,8 @@ function RO.create(ctx)
             if not waiting then
               q.phase = 'fly'; q.ft = 0; q.ramp = 0.35; q.s_cmd = q.v:length(); q.l0 = m.position:clone()
               q.h0 = q.target and max(1, hyp(q.target.spine[mid + 1].x - m.position.x, q.target.spine[mid + 1].z - m.position.z)) or 4
-              if not q.set_down then stats.thrown = stats.thrown + 1; for _ = 1, 4 do aura(m.position, 1.3) end end
+              if not q.set_down then stats.thrown = stats.thrown + 1; for _ = 1, 4 do aura(m.position, 1.3) end; AU.play('rock_throw', { pos = m.position, gap = 0.04 }) end
+              if q.snd then q.snd.stop(); q.snd = nil end
             end
           end
         elseif q.phase == 'fly' then
@@ -366,6 +374,7 @@ function RO.create(ctx)
             snakes.take(s, crush_fx(s, max(3, j), dir, q.v))
             s.claim = nil
             q.hit[#q.hit + 1] = s
+            AU.play('rock_hit', { pos = s.spine[j + 1] })
             gore.crush(s.spine[j + 1], dir, s.radii[j + 1])
             q.v:multiply_scalar(0.78)
             q.ctrl = false
@@ -375,6 +384,7 @@ function RO.create(ctx)
           if m.position.y < gy then
             m.position.y = gy
             if q.v.y < 0 then
+              if abs(q.v.y) > 0.6 then AU.play('rock_land', { pos = m.position, volume = math.min(1, abs(q.v.y)/4), gap = 0.05 }) end
               for _ = 1, 8 do
                 local x = m.position.x + rng.spread(0.15)
                 local z = m.position.z + rng.spread(0.15)

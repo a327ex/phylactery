@@ -38,6 +38,8 @@ local EP = require('port.eggphys')
 local GCP = require('port.gcpace')
 local MAT = require('port.three.materials')
 local UI = require('port.ui_style')
+local AU = require('port.audio')         -- 2026-10-10: the sounds (slots; tools/sfx_spec.py has the picks and why)
+local SU = require('port.soundui')       -- and their names on screen
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
 local clamp, smoothstep = U.clamp, U.smoothstep
 local sqrt, abs, sin, cos, atan2, exp, floor, ceil, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.ceil, math.min, math.max, math.pi
@@ -47,6 +49,11 @@ local HOSTED = GAME_HOSTED == true     -- inside the site's game host (a327ex.co
 local GM = {}
 
 function GM.create(R, hud_layer)
+  -- 2026-10-10: the sounds' picks (sound_picks.lua) and the cave's own sound under everything
+  AU.load_picks()
+  AU.hooks.zone = function() return 'cave' end          -- (one cave: its reverb; no walls to hear through)
+  AU.loop('cave_amb')
+  AU.loop('shaft_hum', { pos = { 0.33, 3.0, 0.15 } })     -- (in the sun shaft over the egg, cave.lua)
   -- round 65: each run its own (the engine's seed); LICH_ROOM keeps the fixed seeds (the digests). LICH_SEED in the
   -- environment: a number = that run's seed; 'fixed' = the fixed seeds (the game as it played before round 65)
   local ls = os.getenv('LICH_SEED')
@@ -136,6 +143,7 @@ function GM.create(R, hud_layer)
   local function inspect_active() return inspect and inspect.S.active end
   local function toggle_power(i)
     local on = powers.toggle(i)
+    if on == false then AU.play('power_lost') end
     if items then
       if on == false then items.drop(i) elseif on == true then items.take(i) end
     end
@@ -151,6 +159,7 @@ function GM.create(R, hud_layer)
   local function throw_power(i)
     if not powers.is_on(powers.ALL[i + 1]) then return end
     powers.toggle(i)
+    AU.play('power_lost')
     if items then items.throw(i, mover.yaw()) end
   end
 
@@ -160,8 +169,15 @@ function GM.create(R, hud_layer)
   local held = {}
   local mouse = { down = false, px = 0, py = 0 }
   local goal, best, stall, script_keys = nil, math.huge, 0, nil
-  snakes.on_grip = function() END.grips = END.grips + 1; lich.hit(0.5 + 0.1*min(END.grips, 6) + (END.grips == 1 and 0.5 or 0)) end
-  snakes.on_won = function() END.won = true; END.over = 0; held = {}; mouse.down = false; goal = nil; lich.hit(1.7) end
+  snakes.on_grip = function()
+    END.grips = END.grips + 1; lich.hit(0.5 + 0.1*min(END.grips, 6) + (END.grips == 1 and 0.5 or 0))
+    AU.play('coil_grip', { pos = { EGG.x, EGG.y + 0.4, EGG.z } })
+    if END.grips == 1 then AU.play('ending_begin') end      -- (his control ends here: the ending's sequence starts)
+  end
+  snakes.on_won = function()
+    END.won = true; END.over = 0; held = {}; mouse.down = false; goal = nil; lich.hit(1.7)
+    AU.play('coil_win', { pos = { EGG.x, EGG.y + 0.4, EGG.z } })
+  end
   -- round 37 (owner: "The cut to black should be instant, the text can fade in")
   local OVER = { hold = 1.8, fade = 0, text_at = 0.8, text_in = 1.4 }
   -- round 47 (owner: "we should only zoom in on the liches face at the end ... when the game ends"):
@@ -572,14 +588,21 @@ function GM.create(R, hud_layer)
     end
   end
   local drag = nil
+  local hover_slot = nil
   local function mouse_input()
     local mx, my = mouse_position()
     local moved = mx ~= mouse.px or my ~= mouse.py
     mouse.px, mouse.py = mx, my
+    if not (inspect_active() or END.won or SEQ.on) then
+      local hs = slot_at(mx, my)
+      if hs and not powers.is_on(powers.ALL[hs + 1]) then hs = nil end    -- (only an object he still has lights up)
+      if hs and hs ~= hover_slot then AU.play('ui_hover') end
+      hover_slot = hs
+    else hover_slot = nil end
     if mouse_is_pressed(1) and not (inspect_active() or END.won or SEQ.on or intro_on()) then
       local sl = slot_at(mx, my)
       if sl then
-        if powers.is_on(powers.ALL[sl + 1]) then held = {}; mouse.down = false; ask_remove(sl); return end
+        if powers.is_on(powers.ALL[sl + 1]) then held = {}; mouse.down = false; AU.play('ui_click'); ask_remove(sl); return end
       else mouse.down = true; pick_goal() end
     end
     if mouse_is_pressed(2) and not (inspect_active() or END.won or SEQ.on) and (G.cam == CAM_FREE or G.cam == CAM_EGG) then drag = { mx, my } end
@@ -607,6 +630,21 @@ function GM.create(R, hud_layer)
     end
   end
   local function input_update()
+    -- the sound tool (2026-10-10, megablock's: port/soundui.lua): TAB lists what is sounding now and every red slot,
+    -- ESC (with no viewer up) every slot; the game stands still while it is up; a click outside it plays again.
+    -- His tool only: never on the site.
+    if not HOSTED then
+      local m = SU.mode()
+      if m == 'play' then
+        if key_is_pressed('tab') then SU.open_list(); return end
+        if key_is_pressed('escape') and not inspect_active() then SU.pause(); return end
+      else
+        if (m == 'pause' or m == 'list') and mouse_is_pressed(1) and not SU.click_consumed() then SU.resume() end
+        if m == 'pause' and key_is_pressed('escape') then SU.resume() end
+        SU.take_resume()
+        return
+      end
+    end
     -- on the site the walk in starts with the visitor's first click inside the game (the host passes mouse
     -- presses only while the cursor is over it)
     if HOSTED and INTRO.state == 'wait' and mouse_is_pressed(1) then begin() end
@@ -652,6 +690,7 @@ function GM.create(R, hud_layer)
       end
     end
     if not G.hud then return end
+    if SU.mode() ~= 'play' and SU.mode() ~= 'pause' then return end     -- (the sound tool's panels need the room)
     -- (the testing text keeps the old font: it is not the game's UI)
     HUD.plain = true
     local c = CAMS[G.cam + 1]
@@ -731,8 +770,10 @@ function GM.create(R, hud_layer)
     SEQ.rag = RG.create(lich, { ground_y = cave.ground_y, egg = { x = EGG.x, y = EGG.y + 0.38, z = EGG.z, r = 0.36 },
       reach = 2, reach_to = { EGG.x, EGG.y + 0.15, EGG.z },
       push = { -fx*DIE.back - hx*DIE.out, 0, -fz*DIE.back - hz*DIE.out } })
+    AU.play('lich_die', { pos = L })
     lmask.drop(cave.ground_y)
-    snakes.burst_all(gore.burst)
+    local nb = snakes.burst_all(gore.burst)
+    if nb > 0 then AU.play('mass_burst', { pos = { EGG.x, EGG.y + 0.4, EGG.z }, volume = min(1, 0.55 + 0.08*nb) }) end
     ep.start()                -- (round 61: from here the egg is a physics object)
   end
   -- round 59: the real egg cracks: its shell cut along the crack (its program patched, silhouette.lua) and the cap a
@@ -740,6 +781,7 @@ function GM.create(R, hud_layer)
   -- it from the side facing the camera (crack_t s), then it opens (open_egg). Round 61: it breaks as physics
   -- (port/eggphys.lua): the bottom, the cap and the band round the crack as shards, each its own body
   local function crack_egg()
+    AU.play('egg_crack', { pos = { EGG.x, EGG.y + 0.4, EGG.z } })
     local em = cave.M.egg
     local C = SL.CRACK
     em.custom = em.custom or {}
@@ -759,6 +801,7 @@ function GM.create(R, hud_layer)
     SEQ.cap = cap
   end
   local function open_egg()
+    AU.play('egg_open', { pos = { EGG.x, EGG.y + 0.4, EGG.z } })
     local em = cave.M.egg
     em.custom.uClip.value = 1
     em.custom.uCrackGap.value = SL.CRACK.gap
@@ -890,15 +933,53 @@ function GM.create(R, hud_layer)
       if back and not powers.is_on(powers.ALL[back + 1]) then powers.toggle(back); items.take(back) end
     end
   end
+  -- 2026-10-10, the sounds that follow the room each drawn frame: the snakes crawling (ONE loop, at the crawling snake
+  -- nearest the egg, louder the more there are, not one per snake) and the coils squeezing the egg (louder as they
+  -- cover it, until he dies)
+  local snd = {}
+  local function snd_frame()
+    local near, nd, n = nil, math.huge, 0
+    for _, s in ipairs(snakes.S) do
+      if not s.pooled and snakes.free(s) then
+        n = n + 1
+        local d = (s.x - EGG.x)*(s.x - EGG.x) + (s.z - EGG.z)*(s.z - EGG.z)
+        if d < nd then nd, near = d, s end
+      end
+    end
+    if near then
+      snd.slither = snd.slither or AU.loop('snake_slither', { pos = { near.x, 0.2, near.z } })
+      snd.slither.set_pos({ x = near.x, y = 0.2, z = near.z })
+      snd.slither.set_volume(min(1, 0.45 + 0.18*n))
+    elseif snd.slither then snd.slither.stop(); snd.slither = nil end
+    if #snakes.coiled > 0 and not SEQ.dead then
+      snd.squeeze = snd.squeeze or AU.loop('coil_squeeze', { pos = { EGG.x, EGG.y + 0.4, EGG.z } })
+      snd.squeeze.set_volume(0.35 + 0.65*(snakes.coverage or 0))
+    elseif snd.squeeze then snd.squeeze.stop(); snd.squeeze = nil end
+    -- him: floating (louder as he moves), and the strain while he is hurt; both end as he dies
+    if INTRO.state ~= 'wait' and not SEQ.dead then
+      snd.hover = snd.hover or AU.loop('lich_hover', { pos = L })
+      snd.hover.set_pos(L); snd.hover.set_volume(0.5 + 0.5*min(1, mover.speed()/2))
+    elseif snd.hover then snd.hover.stop(); snd.hover = nil end
+    if END.w > 0 and not SEQ.dead then
+      snd.hurt = snd.hurt or AU.loop('lich_hurt_pose', { pos = L })
+      snd.hurt.set_pos(L); snd.hurt.set_volume(END.w)
+    elseif snd.hurt then snd.hurt.stop(); snd.hurt = nil end
+  end
+
   local function render(dt)
     if not (inspect and inspect.render_setup()) then R.params.world_override = nil end
     place_camera(0)
+    if SU.mode() == 'play' then
+      AU.update(dt, R.world_camera)     -- the listener is the room's camera (the voices' ears, loops, delays, the cave's reverb)
+      snd_frame()
+    end
     fire.set_camera(R.world_camera, R.H)
     fx.set_camera(R.world_camera, R.H)
     gore.set_camera(R.world_camera, R.H)
     warp.set_camera(R.world_camera, R.H)
     draw_hud()
     draw_over()
+    if not HOSTED then SU.draw(HUD, R.world_camera) end   -- every sound as its name where it happens (his tool: not on the site)
     HUD.flush(hud_layer)                -- the HUD into its layer, which the final pass composites
     layer_render(hud_layer)
     R.render(dt)
@@ -918,6 +999,7 @@ function GM.create(R, hud_layer)
   function game.frame(dt)
     -- one tick per 1/60 s (main.js: at most 8 a frame)
     if G.manual then return end
+    if SU.mode() ~= 'play' then SU.update(dt); return end     -- (the sound tool is up: the game stands still)
     G.acc = (G.acc or 0) + dt
     local n = 0
     while G.acc >= DT and n < 8 do tick(); place_camera(DT); G.acc = G.acc - DT; n = n + 1 end

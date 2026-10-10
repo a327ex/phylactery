@@ -15,6 +15,7 @@ local T = require('port.three.core')
 local MAT = require('port.three.materials')
 local U = require('port.util')
 local FX = require('port.fx')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (never draw from rng here: gore's own sequence)
 local Vector2, Vector3, Quaternion, Matrix4, Euler = TM.Vector2, TM.Vector3, TM.Quaternion, TM.Matrix4, TM.Euler
 local smoothstep = U.smoothstep
 local sqrt, abs, sin, cos, atan2, exp, floor, min, max = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.min, math.max
@@ -286,7 +287,7 @@ function GO.create(R, cave, snakes, fx, rng)
           end
           if pen > 0 then
             m.position.y = m.position.y + pen
-            if not P.landed then P.landed = true; splash(hx, hz, rng.float(0.25, 0.45), 0.25) end
+            if not P.landed then P.landed = true; splash(hx, hz, rng.float(0.25, 0.45), 0.25); AU.play('gore_land', { pos = { hx, m.position.y, hz }, gap = 0.08 }) end
             if P.v.y < 0 then
               if abs(P.v.y) < 1.4 then P.rest = 1e-3; P.v:set(0, 0, 0); P.w:set(0, 0, 0)
               else P.v.y = P.v.y*-0.25; P.v.x = P.v.x*0.5; P.v.z = P.v.z*0.5; P.w:multiply_scalar(0.45) end
@@ -381,6 +382,7 @@ function GO.create(R, cave, snakes, fx, rng)
               d.y = g
               if not d.landed then
                 d.landed = true
+                AU.play('gore_land', { pos = { d.x, d.y, d.z }, volume = 0.5, gap = 0.08 })
                 if d.bleed ~= 0 and rng.next() < 0.7 then splash(d.x, d.z, d.s*rng.float(4, 7), 0.15, atan2(-d.vz, d.vx), 1.4) end
               end
               if abs(d.vy) < 1.0 then d.rest = 1e-3; d.vx = 0; d.vy = 0; d.vz = 0
@@ -679,6 +681,7 @@ function GO.create(R, cave, snakes, fx, rng)
   -- a snake crushed by a thrown rock at p
   local function crush(p, dir, r)
     r = r or 0.08
+    AU.play('gore_crush', { pos = p, gap = 0.05 })
     for _ = 1, 60 do
       local sp = rng.float(1.5, 5.0)
       local dx = dir.x + rng.spread(0.9)
