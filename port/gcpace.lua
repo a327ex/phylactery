@@ -17,6 +17,22 @@ function GP.start()
   live_kb = collectgarbage('count')
 end
 
+-- On the site (2026-10-09) the game shares the site's Lua: the collector is the site's too. While the game is off
+-- screen or gone its ticks stop, so the automatic collector comes back, as the site runs it (Lua 5.4's defaults);
+-- back on screen, the game paces it again. (main.lua: game_hosted_visible / game_hosted_stop.)
+function GP.pause()
+  if not live_kb then return end
+  live_kb = nil
+  collectgarbage('incremental', 200, 100, 13)
+  collectgarbage('restart')
+end
+function GP.resume()
+  if live_kb then return end
+  collectgarbage('incremental', 100, 100, 10)
+  collectgarbage('stop')
+  live_kb = collectgarbage('count')
+end
+
 function GP.tick()
   if not live_kb then return end
   local t0 = perf_time()

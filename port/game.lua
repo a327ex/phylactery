@@ -42,6 +42,7 @@ local Vector2, Vector3 = TM.Vector2, TM.Vector3
 local clamp, smoothstep = U.clamp, U.smoothstep
 local sqrt, abs, sin, cos, atan2, exp, floor, ceil, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.ceil, math.min, math.max, math.pi
 local DT = 1/60
+local HOSTED = GAME_HOSTED == true     -- inside the site's game host (a327ex.com): no test keys, the site's unlock
 
 local GM = {}
 
@@ -57,7 +58,7 @@ function GM.create(R, hud_layer)
   -- round 45: the lich's own mask, flat white (port/lichmask.lua; F5 cycles it for comparison)
   local lmask = require('port.lichmask').create(lich, cave.GU, R)
   local EGG = cave.egg.position
-  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = true, dark = 1, surface = 2,
+  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = not HOSTED, dark = 1, surface = 2,
     static = { eye = { -3.6, 9.8, -10.4 }, tgt = { 0.4, 0.1, 2.4 } },
     free = { yaw = 200, pitch = 18, dist = 4.5 }, egg_view = { yaw = 195, pitch = 32, dist = 3.4 } }
   G.R = R; G.cave = cave; G.lich = lich; G.lmask = lmask
@@ -122,7 +123,8 @@ function GM.create(R, hud_layer)
   local POWER_KEYS = { '5', '6', '7', '8', '9', '0' }
 
   -- the powers' objects (round 28) and the inspect view
-  local ITEMS_M = package.searchpath('port.items', package.path) and require('port.items') or nil
+  -- (hosted, the site's require finds the game's own files: package.path is the site's, so it is not asked)
+  local ITEMS_M = (HOSTED or package.searchpath('port.items', package.path)) and require('port.items') or nil
   local items, inspect
   if ITEMS_M then
     items = ITEMS_M.create({ R = R, cave = cave, fx = fx, warp = warp, nav = nav, lich = lich, mover = mover, get_L = function() return L end,
@@ -228,10 +230,17 @@ function GM.create(R, hud_layer)
   -- (owner: "it should move there as though it was clicked to move near the egg"): his walk in is a click there,
   -- the goal's own way (full pace, the same braking, the body's whole motion), aimed `short` m before his spot: a
   -- click's floaty stop carries him on that far (measured 0.57 m), so he settles where the game starts him
-  local INTRO = { from = { x = START.x, z = -8.6 }, auto = true, state = nil, go = false, short = 0.57 }
+  -- (2026-10-09, the site: on a327ex.com the game runs inside the site's game host, GAME_HOSTED; there the walk in waits
+  -- for the visitor's first click inside the game, and the run's start and the egg's opening are reported to the site's
+  -- unlock (renderer/unlock.lua: the server checks the ending, the powers left and the run's length))
+  local INTRO = { from = { x = START.x, z = -8.6 }, auto = not HOSTED, state = nil, go = false, short = 0.57 }
   if VARIED and START_AT == 'GAME' then INTRO.state = 'wait' end
   local function intro_on() return INTRO.state == 'wait' or INTRO.state == 'walk' end
-  local function begin() if INTRO.state == 'wait' then INTRO.state = 'walk'; INTRO.go = true end end
+  local function begin()
+    if INTRO.state ~= 'wait' then return end
+    INTRO.state = 'walk'; INTRO.go = true
+    if HOSTED and site_unlock_begin then site_unlock_begin('lich-survivors') end
+  end
   local function over_black() return END.won and END.over >= OVER.hold + OVER.fade end
   local end_rng = U.run_rng(77)
   local function remove_all()
@@ -465,6 +474,25 @@ function GM.create(R, hud_layer)
   local function hit(k) return key_is_pressed(k) or key_is_repeated(k) end
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
+    if HOSTED then
+      -- on the site: moving, and the viewer's own keys; every testing key stays home
+      if SEQ.on or END.won then return end
+      if inspect_active() then
+        if inspect.S.accept then
+          if hit('return') or hit('enter') or hit('kpenter') or hit('space') then inspect.accept() end
+        elseif inspect.S.remove then
+          if hit('return') or hit('enter') or hit('kpenter') or hit('space') then inspect.answer(true) end
+          if hit('escape') or hit('backspace') or hit('n') then inspect.answer(false) end
+        else
+          if hit('escape') then inspect.close() end
+          if hit('a') or hit('left') then inspect.next(-1) end
+          if hit('d') or hit('right') then inspect.next(1) end
+        end
+        return
+      end
+      for _, mk in ipairs(MOVE_KEYS) do if hit(mk[1]) then held[mk[2]] = true end end
+      return
+    end
     if SEQ.on then
       -- round 59: the background (dim / blurred), in the game
       if hit('up') or hit('down') then
@@ -579,6 +607,9 @@ function GM.create(R, hud_layer)
     end
   end
   local function input_update()
+    -- on the site the walk in starts with the visitor's first click inside the game (the host passes mouse
+    -- presses only while the cursor is over it)
+    if HOSTED and INTRO.state == 'wait' and mouse_is_pressed(1) then begin() end
     keys_input()
     for _, mk in ipairs(MOVE_KEYS) do if key_is_released(mk[1]) then
       -- keyup: this direction is let go (if its other key is not still down it stays off, as main.js)
@@ -802,7 +833,14 @@ function GM.create(R, hud_layer)
       if ht then
         sil.hatch_t = ht
         cave.M.egg.custom.uCrackGrow.value = clamp(ht/H.crack_t + 0.05*sin(ht*23), 0, 1)
-        if ht >= H.crack_t and not SEQ.opened then SEQ.opened = true; open_egg() end
+        if ht >= H.crack_t and not SEQ.opened then
+          SEQ.opened = true; open_egg()
+          if HOSTED and site_unlock_posts then
+            local left = 0
+            for _, a in ipairs(powers.ALL) do if powers.is_on(a) then left = left + 1 end end
+            site_unlock_posts('lich-survivors', { ending = 'egg', powers = left })
+          end
+        end
       end
       ep.tick(dt)
       sil.gore_fade = 1 - smoothstep(DIE.gore_fade[1], DIE.gore_fade[2], d)
@@ -924,6 +962,14 @@ function GM.create(R, hud_layer)
   function GAME.drop(i) if powers.is_on(powers.ALL[i + 1]) then toggle_power(i) end; return items and items.state()[i + 1] end
   function GAME.restore(i) if not powers.is_on(powers.ALL[i + 1]) then toggle_power(i) end; return items and items.state()[i + 1] end
   function GAME.items() return items and items.state() end
+  -- the model viewer's state (2026-10-09, the site checks): open, which object, the question's mode, its answer
+  function GAME.viewer()
+    if not inspect then return nil end
+    local S = inspect.S
+    return { active = inspect_active() and true or false, idx = S.idx, remove = S.remove and true or false,
+             accept = S.accept and true or false, result = S.result,
+             on = (function() local n = 0; for _, a in ipairs(powers.ALL) do if powers.is_on(a) then n = n + 1 end end; return n end)() }
+  end
   GAME['until'] = function(src, maxn)
     maxn = maxn or 3600
     local f = load('local G = ...; return (' .. src .. ')')

@@ -44,4 +44,12 @@ function draw()
   layer_draw(G.ui_layer)
 end
 
+-- On a327ex.com (the site's game host, GAME_HOSTED): the host stops ticking the game while it is off screen and
+-- drops it when another game takes the slot; the garbage collector (paced by the game, round 64) goes back to the
+-- site's own pacing then, or the site's garbage would pile up with nothing collecting it.
+function game_hosted_visible(on)
+  if on then require('port.gcpace').resume() else require('port.gcpace').pause() end
+end
+function game_hosted_stop() require('port.gcpace').pause() end
+
 require('boot')   -- LAST line: one-time work, after every definition exists
