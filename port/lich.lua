@@ -10,6 +10,8 @@ local T = require('port.three.core')
 local MAT = require('port.three.materials')
 local LD = require('port.three.loader')
 local U = require('port.util')
+local AU = require('port.audio')     -- 2026-10-10: the sounds
+local SND_P = TM.Vector3.new()
 local Vector3, Quaternion, Matrix4 = TM.Vector3, TM.Quaternion, TM.Matrix4
 local sin, cos, abs, exp, min, max, asin, acos, atan2, sqrt = math.sin, math.cos, math.abs, math.exp, math.min, math.max, math.asin, math.acos, math.atan, math.sqrt
 
@@ -374,6 +376,7 @@ function L.create(R, opts)
     S.cy.v = S.cy.v + hit_rng.sign()*1.2*a
     HURT.drop.v = HURT.drop.v - 1.1*a; HURT.clench.v = HURT.clench.v + 9*a; HURT.legs.v = HURT.legs.v - 2.4*a; S.jw.v = S.jw.v + 3.5*a
     RC[2].kick = RC[2].kick + 0.55*a*lich.recoil_gain
+    AU.play('lich_hurt', { pos = lich.head_pos(SND_P), volume = math.min(1, 0.35 + 0.35*a), gap = 0.12 })
   end
   function lich.kick(k, amount) RC[k + 1].kick = RC[k + 1].kick + (amount or 1)*lich.recoil_gain*RECOILS[recoil + 1].gain end
   function lich.curl(k)
@@ -381,6 +384,7 @@ function L.create(R, opts)
     if rc.curl_t < CURL.hold then return end
     rc.curl_t = 0
     S.cy.v = S.cy.v + arms[k + 1].s*0.9; S.cp.v = S.cp.v - 0.5; S.hp.v = S.hp.v - 0.6
+    AU.play('lift_fist', { pos = lich.fingertip(k, SND_P) })
   end
   function lich.press(k, w) RC[k + 1].press = w*lich.recoil_gain*RECOILS[recoil + 1].gain end
   function lich.update(t) GU.uGemTime.value = t end

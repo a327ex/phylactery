@@ -11,6 +11,7 @@
 local T = require('port.three.core')
 local OB = require('port.objects')
 local ITM = require('port.items')
+local AU = require('port.audio')     -- 2026-10-10: the sounds
 local sqrt, exp, abs, cos, sin, max, min, pi = math.sqrt, math.exp, math.abs, math.cos, math.sin, math.max, math.min, math.pi
 
 local LM = {}
@@ -190,7 +191,7 @@ function LM.create(lich, GU, R)
     local near = P.y - fl < 0.06
     if P.y < fl then
       P.y = fl
-      if V.y < -0.7 then V.y = -V.y*0.3 else V.y = 0 end
+      if V.y < -0.7 then AU.play('mask_drop', { pos = P, volume = math.min(1, -V.y/3) }); V.y = -V.y*0.3 else V.y = 0 end
       V.x = V.x*0.6; V.z = V.z*0.6
     end
     m.position:copy(P)

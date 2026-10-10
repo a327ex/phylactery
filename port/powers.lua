@@ -23,6 +23,7 @@ local ROCK = require('port.rock')
 local BEAM = require('port.beam')
 local LENS = require('port.lens')
 local LEAK = require('port.leak')
+local AU = require('port.audio')     -- 2026-10-10: the sounds
 local Vector3 = TM.Vector3
 local sqrt, abs, sin, cos, atan2, floor, ceil, min, max, huge, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.floor, math.ceil, math.min, math.max, math.huge, math.pi
 
@@ -59,6 +60,7 @@ function PW.create(ctx)
   function FIRE.capacity(p) return ceil(p/2) end
   function FIRE.aim_ring() return jround(N*rng.float(0.15, 0.75)) end
   function FIRE.cast(targets, from, ring)
+    AU.play('fire_cast', { pos = from })
     for k, s in ipairs(targets) do
       if k == 1 then snakes.ignite(s, ring) else later[#later + 1] = { at = clock + (k - 1)*0.12, s = s } end
     end
@@ -295,6 +297,7 @@ function PW.create(ctx)
 
   local function tick(t, dt)
     clock = clock + dt
+    if G.snd then if G.phase == 'sweep' then G.snd.set_pos(G.point) else G.snd.stop(); G.snd = nil end end
     local actives = {}
     for _, a in ipairs(ALL) do if on[a] then actives[#actives + 1] = a end end
     power = #actives > 0 and 6/#actives or 1
@@ -483,6 +486,8 @@ function PW.create(ctx)
               G.vi = 1; G.tail = nil
               G.sw_a = atan2(G.point.x - L.x, G.point.z - L.z); G.sw_d = hyp(G.point.x - L.x, G.point.z - L.z); G.sw_y = G.point.y; G.sf = 0
               G.phase = 'sweep'
+              AU.play('fire_cast', { pos = TIP })
+              G.snd = AU.loop('fire_sweep', { pos = G.point })      -- (follows the point; stops when the sweep does)
             end
           else
             G.ab.cast(targets, TIP, G.ring, G.arm, G.quick)

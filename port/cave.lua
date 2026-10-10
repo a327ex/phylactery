@@ -10,6 +10,7 @@ local T = require('port.three.core')
 local MAT = require('port.three.materials')
 local LD = require('port.three.loader')
 local U = require('port.util')
+local AU = require('port.audio')     -- 2026-10-10: the sounds
 local Vector2, Vector3, Color = TM.Vector2, TM.Vector3, TM.Color
 local smoothstep, fbm3, noise3 = U.smoothstep, U.fbm3, U.noise3
 
@@ -332,6 +333,8 @@ function C.build(R)
       return
     end
     local k = math.max(0, math.sin(t*0.9)*math.sin(t*2.3) - 0.55)*1.6*(1 - (egg.user_data.still or 0))
+    if k > 0 and not cave.shivering then AU.play('egg_shiver', { pos = { egg.position.x, egg.position.y + 0.4, egg.position.z } }) end
+    cave.shivering = k > 0
     shell.rotation.z = math.sin(t*38)*0.035*k
     shell.rotation.x = math.cos(t*31)*0.025*k
   end

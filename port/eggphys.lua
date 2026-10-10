@@ -26,6 +26,7 @@ local MAT = require('port.three.materials')
 local TM = require('port.three.math')
 local SL = require('port.silhouette')
 local U = require('port.util')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (never draw from rng here)
 local Vector3, Quaternion = TM.Vector3, TM.Quaternion
 local sin, cos, sqrt, abs, acos, atan2, floor, ceil, min, max, pi = math.sin, math.cos, math.sqrt, math.abs, math.acos, math.atan, math.floor, math.ceil, math.min, math.max, math.pi
 local clamp, smoothstep = U.clamp, U.smoothstep
@@ -144,6 +145,8 @@ function EP.create(opts)
   local function build_ground(cx, cz, base)
     physics3_register_tag('ground'); physics3_register_tag('shell')
     physics3_enable_collision('shell', 'ground'); physics3_enable_collision('shell', 'shell')
+    -- (2026-10-10: the pieces' landings are heard: hit events report, they don't change the simulation)
+    physics3_enable_hit('shell', 'ground'); physics3_enable_hit('shell', 'shell')
     local gb = physics3_create_body('static', 0, 0, 0)
     local GR = EP.GROUND
     local R2, F2, D = GR.r^2, GR.fine^2, GR.depth
@@ -330,6 +333,7 @@ function EP.create(opts)
     -- the juice: the squash spring and a jitter, on the drawn egg about its base
     spring_pull(spr, 'main', K.squash*(0.35 + 0.65*sj), 8, 0.5)
     shake_shake(shk, K.jitter*(0.35 + 0.65*sj), 0.15 + 0.2*sj, 40)
+    AU.play('egg_knock', { pos = { px, py, pz }, volume = 0.45 + 0.55*p })
     api.knocks_done = knock_i
   end
   -- one knock now, then `n` more whose delays shrink from KN.first to KN.last (quad_out), as many as fit in `duration`
@@ -566,6 +570,14 @@ function EP.create(opts)
   function api.tick(dt)
     if not api.started then return end
     timer_update(tm, dt)
+    -- (2026-10-10) the shell's pieces landing and knocking together, once it is open (not the whole egg in its nest)
+    for _, pair in ipairs(api.opened and { { 'shell', 'ground' }, { 'shell', 'shell' } } or {}) do
+      for _, h in ipairs(physics3_get_hit(pair[1], pair[2]) or {}) do
+        if (h.approach_speed or 0) > 0.5 and h.body_a ~= body and h.body_b ~= body then
+          AU.play('egg_piece_land', { pos = { h.point_x, h.point_y, h.point_z }, volume = math.min(1, 0.2 + h.approach_speed/3), gap = 0.05 })
+        end
+      end
+    end
     if kt and body then
       kt = kt + dt
       physics3_set_angular_damping(body, EP.EGG.damping + EP.KN.damp_late*api.late())

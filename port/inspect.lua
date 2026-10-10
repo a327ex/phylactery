@@ -13,6 +13,7 @@ local U = require('port.util')
 local OB = require('port.objects')
 local ITM = require('port.items')
 local HUD = require('port.hud')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (the viewer's are not in the world: no position)
 local Vector2, Vector3, Quaternion, Euler, Color = TM.Vector2, TM.Vector3, TM.Quaternion, TM.Euler, TM.Color
 local clamp, smoothstep, damp = U.clamp, U.smoothstep, U.damp
 local sin, cos, tan, exp, max, floor, pi = math.sin, math.cos, math.tan, math.exp, math.max, math.floor, math.pi
@@ -136,14 +137,16 @@ function IN.create(ctx)
     gpu_end()                 -- (rendered outside the frame's draw: hand the 2D pipeline its state back)
     S.saved = { bloom = R.params.bloom.strength }
     build(i)
+    AU.play('viewer_open')
   end
-  function insp.close() if S.active and S.closing < 0 then S.closing = 0 end end
+  function insp.close() if S.active and S.closing < 0 then S.closing = 0; AU.play('viewer_close') end end
   function insp.next(d)
     if S.remove or S.accept then return end
     local i = S.idx
     local n = #ITEMS
     for _ = 1, n do i = (i + d + n) % n; if ITEMS[i + 1].build then break end end
     build(i); S.t = 0.12; S.idle = 0; S.zoom_t = 1
+    AU.play('viewer_next')
   end
   local qa, ax = Quaternion.new(), Vector3.new()
   local function turn(yaw, pitch)
@@ -159,6 +162,7 @@ function IN.create(ctx)
   function insp.answer(yes)
     if not (S.active and S.remove) or S.closing >= 0 then return end
     S.result = yes and 'throw' or 'keep'
+    if yes then AU.play('viewer_throw') end
     insp.close()
   end
   function insp.accept()
@@ -176,7 +180,11 @@ function IN.create(ctx)
   end
   function insp.pointer_up() S.drag = nil end
   function insp.pointer_move(x, y)
-    if S.active then S.hot = button_at(x, y) end
+    if S.active then
+      local was = S.hot
+      S.hot = button_at(x, y)
+      if S.hot and S.hot ~= was then AU.play('ui_hover') end
+    end
     if not S.active or not S.drag then return end
     local dx, dy = x - S.drag[1], y - S.drag[2]
     S.drag = { x, y }

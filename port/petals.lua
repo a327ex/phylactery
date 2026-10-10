@@ -13,6 +13,7 @@ local MAT = require('port.three.materials')
 local U = require('port.util')
 local FX = require('port.fx')
 local CAVE = require('port.cave')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (never draw from rng here)
 local Vector3, Quaternion, Matrix4 = TM.Vector3, TM.Quaternion, TM.Matrix4
 local smoothstep = U.smoothstep
 local sin, cos, sqrt, abs, max, min, floor, pi = math.sin, math.cos, math.sqrt, math.abs, math.max, math.min, math.floor, math.pi
@@ -101,6 +102,7 @@ function PE.create(R, cave)
   -- a body's petals: along its spine, from the rings it still has (count by how much of it there is)
   local function burst(spine, rings, n)
     n = n or 22
+    AU.play('beam_petals', { pos = spine[rings//2 + 1], gap = 0.1 })
     for _ = 1, n do
       local i = rng.int(2, rings - 3)
       local a, b = spine[i], spine[i + 2]

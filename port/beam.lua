@@ -10,6 +10,7 @@ local TM = require('port.three.math')
 local T = require('port.three.core')
 local U = require('port.util')
 local FX = require('port.fx')
+local AU = require('port.audio')     -- 2026-10-10: the sounds (never draw from rng here)
 local Vector3 = TM.Vector3
 local smoothstep = U.smoothstep
 local abs, sin, cos, atan2, exp, floor, min, max = math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.min, math.max
@@ -60,6 +61,7 @@ function BE.create(ctx)
 
   local DIR, AX = Vector3.new(), Vector3.new()
   local function shatter(s)
+    AU.play('beam_shatter', { pos = s.spine[N//2 + 1], gap = 0.05 })
     local pts = {}
     for i = 2, N - 3, 3 do pts[#pts + 1] = s.spine[i + 1]:clone() end
     for _ = 1, 20 do
@@ -118,6 +120,7 @@ function BE.create(ctx)
   local function hit_ring() return rng.int(jround(N*0.12), jround(N*0.55)) end
 
   local function bite(p, first)
+    AU.play('beam_bite', { pos = p, gap = 0.04 })
     fx.mote({ x = p.x, y = p.y, z = p.z, life = 0.08, s0 = 0.16, s1 = 0.06, r = 5, g = 5, b = 5, fin = 0.01 })
     local x = p:distance_to(TIP)
     for _ = 1, 14 do
@@ -235,9 +238,11 @@ function BE.create(ctx)
     local c = tint(b0.head, b0.head:distance_to(TIP))
     light.color:set_rgb(0.55 + 0.45*c[1]/2, 0.55 + 0.45*c[2]/2, 0.55 + 0.45*c[3]/2)
     light.position:copy(b0.head); light.position.y = light.position.y + 0.2
+    if ch.snd then ch.snd.set_pos(b0.head); ch.snd.set_volume(kmax*ch.k_on) end
     light.intensity = 1.6*kmax*ch.k_on*fl
     if live == 0 then
       lich.press(ch.arm, 0)
+      if ch.snd then ch.snd.stop() end
       ch = nil; light.intensity = 0; hand.intensity = 0
     end
   end
@@ -312,7 +317,10 @@ function BE.create(ctx)
     for _, s in ipairs(fan) do if snakes.free(s) then snakes.take(s, { placeholder = true, tick = function() end }) end end
     lich.fingertip(arm, TIP)
     local beams = {}
+    AU.play('beam_cast', { pos = TIP })
+    local snd = ch and ch.snd                -- (a beam still held: its ring goes on)
     ch = { t = 0, arm = arm, a0 = a0, pop = 0, k_on = 0, bit = false, kmax = 1, beams = beams }
+    ch.snd = snd or AU.loop('beam_channel', { pos = TIP })
     for k, s in ipairs(fan) do beams[k] = beam_of(s, k == 1 and ring or hit_ring(), (k - 1)*STAGGER_B) end
     ch.beams[1].seg = new_seg(TIP)
     if old then for _, b in ipairs(old) do beams[#beams + 1] = b end end
@@ -333,7 +341,9 @@ function BE.create(ctx)
     lich.fingertip(arm, TIP)
     lich.finger_dir(arm, FD)
     TIP:add_scaled_vector(FD, 0.004)
+    AU.play('beam_shot', { pos = TIP })
     if not ch then ch = { t = 0, arm = arm, a0 = yaw_to(s.spine[20 + 1]), pop = 0, k_on = 0, bit = false, kmax = 1, beams = {}, volley = true } end
+    ch.snd = ch.snd or AU.loop('beam_channel', { pos = TIP })
     ch.volley = true
     if snakes.free(s) then snakes.take(s, { placeholder = true, tick = function() end }) end
     local b = beam_of(s, ring, 0)
