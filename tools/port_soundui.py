@@ -144,7 +144,7 @@ end""")
             "    { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 1000, map = 'sq', q = 5, fmt = '%dHZ' },\n"
             "    { key = 'ear', label = 'EAR', lo = 0, hi = 1, map = 'lin', q = 0.01, fmt = '%d%% IN', mul = 100 },   -- (Lich)\n"
             "  },\n}")
-    s = lich_per_file_ui(s)
+    s = lich_layers_ui(lich_per_file_ui(s))
     open(os.path.join(GAME, 'port', 'soundui.lua'), 'w', encoding='utf-8', newline='\n').write(s)
 
     # ---------------------------------------------------------------- audio
@@ -236,6 +236,130 @@ def lich_per_file_ui(s):
             "  table.remove(s.files, i)\n")
     s = rep(s, "    s.files = { out }; s.src = { rel }\n",
             "    s.files = { out }; s.src = { rel }; s.per = nil     -- (Lich: the old files' own settings go with them)\n")
+    return s
+
+
+def lich_layers(a):
+    """(Lich, 2026-10-11) a slot's files all at once: his "For lens fire I have two sounds but only one plays at a time,
+    I believe because one is looping and the other shouldn't loop". layer (the slot's) = every file plays on every play,
+    each with its own settings (its own delay too); once (a file's own) = in a loop, that file plays once as the loop
+    starts instead of looping. A layered loop keeps its first looping voice as L.h and the others in L.extra."""
+    a = rep(a, "sound_ix = {} }", "sound_ix = {}, loop_slot = {}, preview_hs = {} }")
+    a = rep(a, "  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false,\n",
+            "  -- (Lich) layer = every file at once, each with its own settings (not one at random); once = a file's own: in a\n"
+            "  -- loop, it plays once as the loop starts instead of looping\n"
+            "  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false, layer = false, once = false,\n")
+    # a play: one file at random, or (layered) every file, each its own play
+    a = rep(a, "  if not o.fi then local _, fi = pick(name); o.fi = fi end   -- (Lich) its file, chosen now\n",
+            "  local layered = not o.fi and A.get(name, 'layer')\n"
+            "  if not o.fi and not layered then local _, fi = pick(name); o.fi = fi end   -- (Lich) its file, chosen now\n")
+    a = rep(a, """  local w = wait_for(name, o)
+  if w > 0 then
+    A.pending[#A.pending + 1] = { name = name, o = o, at = A.now + w }
+    return nil
+  end
+  return voice(name, o)
+end""", """  if layered then      -- (Lich) every file at once, each its own play (its own delay and settings)
+    local s, h1 = A.slots[name], nil
+    for fi = 1, (s and s.files and #s.files or 0) do
+      local oc = {}
+      for k, x in pairs(o) do oc[k] = x end
+      oc.fi, oc.pos = fi, o.pos and o.pos:clone() or nil
+      local w = wait_for(name, oc)
+      if w > 0 then A.pending[#A.pending + 1] = { name = name, o = oc, at = A.now + w }
+      else local h = voice(name, oc); h1 = h1 or h end
+    end
+    return h1
+  end
+  local w = wait_for(name, o)
+  if w > 0 then
+    A.pending[#A.pending + 1] = { name = name, o = o, at = A.now + w }
+    return nil
+  end
+  return voice(name, o)
+end""")
+    # the editor's preview of a layered slot: every file (a file clicked: that one alone)
+    a = rep(a, "  if A.preview_h then sound_handle_stop(A.preview_h); A.preview_h = nil end\n  A.pending_rt = {}\n",
+            "  if A.preview_h then sound_handle_stop(A.preview_h); A.preview_h = nil end\n"
+            "  for _, h in ipairs(A.preview_hs) do sound_handle_stop(h) end\n"
+            "  A.preview_hs = {}     -- (Lich) a layered preview's voices\n"
+            "  A.pending_rt = {}\n")
+    a = rep(a, "  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, fi = only }\n",
+            """  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, fi = only }
+  local s = A.slots[name]
+  if not only and A.get(name, 'layer') and s and s.files and #s.files > 1 then   -- (Lich) layered: every file
+    local any = false
+    for fi = 1, #s.files do
+      local oc = { pos = o.pos and o.pos:clone() or nil, volume = o.volume, pitch = o.pitch, reverb = o.reverb, fi = fi }
+      local w = max(0, A.get(name, 'delay', fi))
+      if w > 0 then A.pending_rt[#A.pending_rt + 1] = { name = name, o = oc, at = A.rt + w }; any = true
+      else local h = voice(name, oc); if h then A.preview_hs[#A.preview_hs + 1] = h; any = true end end
+    end
+    return any
+  end
+""")
+    a = rep(a, "    if A.rt >= p.at then A.preview_h = voice(p.name, p.o) else keep[#keep + 1] = p end",
+            "    if A.rt >= p.at then\n"
+            "      local h = voice(p.name, p.o); A.preview_h = A.preview_h or h\n"
+            "      if h then A.preview_hs[#A.preview_hs + 1] = h end      -- (Lich: a layered preview's later voices)\n"
+            "    else keep[#keep + 1] = p end")
+    # loops: all their voices stop together
+    a = rep(a, "function A.loop(name, o)\n",
+            "-- (Lich) a loop's voices stop: its main one and a layered loop's others\n"
+            "local function loop_off(L)\n"
+            "  if L.h then sound_handle_stop(L.h); L.h = nil end\n"
+            "  if L.extra then for _, h in ipairs(L.extra) do sound_handle_stop(h) end; L.extra = nil end\n"
+            "end\n"
+            "function A.loop(name, o)\n")
+    a = rep(a, "A.loop_set[L] = nil; if L.h then sound_handle_stop(L.h); L.h = nil end end", "A.loop_set[L] = nil; loop_off(L) end")
+    a = rep(a, "  A.loop_set[L] = true\n  A.seen[name] = true\n",
+            "  A.loop_set[L] = true\n  A.seen[name] = true\n  A.loop_slot[name] = true     -- (Lich: the editor offers PLAYS ONCE for its files)\n")
+    a = rep(a, "function A.start_loop(L)\n  if L.h then sound_handle_stop(L.h); L.h = nil end\n", "function A.start_loop(L)\n  loop_off(L)\n")
+    a = rep(a, """  local h = voice(L.name, L.opts, L)
+  if h then sound_handle_set_looping(h, true); L.h = h end
+end""", """  -- (Lich) layered: every file, each its own voice and settings; a file marked ONCE plays once (a plain one-shot,
+  -- let finish), the others loop
+  local s = A.slots[L.name]
+  if A.get(L.name, 'layer') and s and s.files and #s.files > 1 then
+    for fi = 1, #s.files do
+      local once = A.get(L.name, 'once', fi)
+      local oc = setmetatable({ fi = fi }, { __index = L.opts })   -- (its position and volume follow the loop's)
+      local h = voice(L.name, oc, (not once) and L or nil)
+      if h and not once then
+        sound_handle_set_looping(h, true)
+        if L.h then L.extra = L.extra or {}; L.extra[#L.extra + 1] = h else L.h = h end
+      end
+    end
+    return
+  end
+  L.opts.fi = nil      -- (Lich) a loop (re)started picks its file again (the one it had may be gone)
+  local h = voice(L.name, L.opts, L)
+  if h and A.get(L.name, 'once', L.opts.fi) then return end    -- (Lich) a ONCE file picked: it plays once
+  if h then sound_handle_set_looping(h, true); L.h = h end
+end""")
+    a = rep(a, "    if on then if L.h then sound_handle_stop(L.h); L.h = nil end\n", "    if on then loop_off(L)\n")
+    a = rep(a, "        if s and s.mute then sound_handle_stop(v.h); v.loop.h = nil end", "        if s and s.mute then loop_off(v.loop) end")
+    return a
+
+
+def lich_layers_ui(s):
+    """(Lich) the editor's switches for lich_layers, on the SOUND line: ONE FILE AT RANDOM / ALL FILES AT ONCE (the
+    slot's, with two files or more), and with a file clicked in a loop's slot, FILE n LOOPS / PLAYS ONCE (that file's)."""
+    s = rep(s, "  HUD.text('SOUND', lx, sp_y, YELLOW)\n", """  HUD.text('SOUND', lx, sp_y, YELLOW)
+  -- (Lich) the whole sound: one file at random each play, or every file at once; a loop's file: loops or plays once
+  if #files > 1 then
+    local lay = AU.get(name, 'layer')
+    local bx2 = button(lay and 'ALL FILES AT ONCE' or 'ONE FILE AT RANDOM', lx + 40, sp_y - 2, function()
+      AU.set(name, 'layer', (not lay) or nil); ui.dirty = true; flush_saves(); changed(name)
+    end, lay and GREEN or GREY, lay)
+    if fi and AU.loop_slot[name] then
+      local once = AU.get(name, 'once', fi)
+      button('FILE ' .. fi .. (once and ' PLAYS ONCE' or ' LOOPS'), bx2, sp_y - 2, function()
+        AU.set_file(name, fi, 'once', (not once) or nil); ui.dirty = true; flush_saves(); changed(name)
+      end, once and YELLOW or GREY, once)
+    end
+  end
+""")
     return s
 
 
@@ -481,7 +605,7 @@ end
 
 -- the picker's audition: a raw clip, no slot, in your head
 """)
-    return lich_per_file(a)
+    return lich_layers(lich_per_file(a))
 
 
 if __name__ == '__main__':

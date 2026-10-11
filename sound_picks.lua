@@ -408,6 +408,16 @@ return {
       "assets/sfx/lens_fire_6.ogg",
       "assets/sfx/lens_fire_7.ogg",
     },
+    ["layer"] = true,
+    ["per"] = {
+      ["assets/sfx/lens_fire_6.ogg"] = {
+        ["vol"] = 1,
+      },
+      ["assets/sfx/lens_fire_7.ogg"] = {
+        ["once"] = true,
+        ["vol"] = 1,
+      },
+    },
     ["reverb"] = 0,
     ["sr"] = 4,
     ["src"] = {
