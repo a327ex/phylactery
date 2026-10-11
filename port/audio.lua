@@ -54,7 +54,8 @@ local OCC_EVERY = 0.12                 -- seconds between a voice's wall checks
 
 -- a slot's settings when it names none (pitch 1..1: the game's calls already jitter their pitch)
 A.DEFAULTS = {
-  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 16, sr = 1, mute = false,
+  -- (Lich, his ruling 2026-10-11: every sound 8 bits and 3x sample-rate crush unless its slot says otherwise)
+  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false,
   -- (Lich: the ear hangs on the room camera's line of sight, `ear` of the way in (A.ROOM_DEFAULTS, port/game.lua):
   -- ~6.5 m from the egg, ~4 m from him, ~20 m from the far wall. near = the fight round the egg at full
   -- loudness, the far wall ~10 dB down; the air a little duller with distance than a head's)
@@ -554,12 +555,13 @@ end
 
 -- the picker's audition: a raw clip, no slot, in your head
 local auditioned = {}       -- path -> sound (a picking session keeps its clips, as Horse Game's picker)
-function A.audition(path, volume)
+function A.audition(path, volume, slot)     -- (Lich: slot = whose bits / crush)
   if A.aud then sound_handle_stop(A.aud); A.aud = nil end
   local s = auditioned[path]
   if s == nil then local ok, snd = pcall(sound_load, path); s = ok and snd or false; auditioned[path] = s end
   if not s then return false end
-  local h = sound_play_handle(s, volume or 0.5, 1)
+  local h = sound_play_handle(s, volume or 0.5, 1, slot and A.get(slot, 'bits') or A.DEFAULTS.bits,
+    slot and A.get(slot, 'sr') or A.DEFAULTS.sr)
   A.aud = h and h >= 0 and h or nil
   return true
 end

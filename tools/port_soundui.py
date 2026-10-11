@@ -127,6 +127,9 @@ end""")
       x = x + fw + 8""")
     s = rep(s, "        if ui.sel == ri and ui.heard == ri then save_pick(name, r.rel, false) else listen(ri) end",
             "        if ui.sel == ri and ui.heard == ri then save_pick(name, r.rel, key_is_down('lshift') or key_is_down('rshift')) else listen(ri) end")
+    # (Lich) auditions in the picker and of a red slot's suggestions: crushed as that slot (port/audio.lua A.audition)
+    s = rep(s, "pcall(AU.audition, ROOT .. '/' .. r.rel, 0.5)", "pcall(AU.audition, ROOT .. '/' .. r.rel, 0.5, ui.slot)")
+    s = rep(s, "pcall(AU.audition, ROOT .. '/' .. rel, 0.5)", "pcall(AU.audition, ROOT .. '/' .. rel, 0.5, name)")
     # TAB and the ESC panel also count a loop that ended a moment ago (the lens's cut lasts about a second)
     s = rep(s, """  for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n end end
 """, """  for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n end end
@@ -190,6 +193,16 @@ end
                "  cave = { size = 0.85, damp = 0.4, predelay = 0.04, gain = 0.80, width = 1, lowcut = 140, ear = 0.5 },\n"
                "}\n", a, count=1, flags=re.S)
     a = rep(a, "  local i = math.random(1, #v)", "  local i = 1 + floor(rnd()*#v)")
+    # (Lich, his ruling 2026-10-11: "By default apply 8 bits and 3x crush to every sound") -- a slot's own BITS / SR CRUSH
+    # still win; right-click on those sliders comes back here
+    a = rep(a, "  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 16, sr = 1, mute = false,\n",
+            "  -- (Lich, his ruling 2026-10-11: every sound 8 bits and 3x sample-rate crush unless its slot says otherwise)\n"
+            "  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false,\n")
+    # the picker's auditions crushed as the slot being picked for will be (else he picks by a sound the game never plays)
+    a = rep(a, "function A.audition(path, volume)\n", "function A.audition(path, volume, slot)     -- (Lich: slot = whose bits / crush)\n")
+    a = rep(a, "  local h = sound_play_handle(s, volume or 0.5, 1)\n",
+            "  local h = sound_play_handle(s, volume or 0.5, 1, slot and A.get(slot, 'bits') or A.DEFAULTS.bits,\n"
+            "    slot and A.get(slot, 'sr') or A.DEFAULTS.sr)\n")
     # (Lich) the editor playing one file of a slot alone (soundui's click on a file)
     a = rep(a, "local function pick(name)\n  local v = A.sounds[name]\n  if not v or #v == 0 then return nil end\n",
             "local function pick(name, only)\n  local v = A.sounds[name]\n  if not v or #v == 0 then return nil end\n"
