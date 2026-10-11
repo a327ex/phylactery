@@ -44,7 +44,8 @@ end
 
 local A = { slots = {}, sounds = {}, last = {}, loops = {}, pending = {}, events = {}, loop_set = {}, seen = {}, now = 0,
   voices = {}, last_play = {}, master = 0.8, ready = true, hooks = {}, on3d = true, reverb_on = true, zone = nil,
-  last_t = {}, quiet = false }      -- (Lich: a call's gap; the site's off-screen silence)
+  last_t = {}, quiet = false, loop_end = {} }   -- (Lich: a call's gap; the site's off-screen silence; when
+  -- each loop last stopped, for the TAB list)
 local PICKS, ROOMS = 'sound_picks.lua', 'sound_rooms.lua'
 local SPEED = 343                      -- m/s
 local HEAD = 0.0875 / SPEED            -- Woodworth's r / c: the ITD is HEAD * (azimuth + sin azimuth), 0.66 ms at the side
@@ -414,7 +415,8 @@ function A.loop(name, o)
   o = o or {}
   o.pos = v3(o.pos)
   local L = { name = name, opts = o, h = nil, stopped = false }
-  function L.stop() L.stopped = true; A.loop_set[L] = nil; if L.h then sound_handle_stop(L.h); L.h = nil end end
+  -- (Lich: loop_end = when it stopped, so TAB still lists a loop that ended a moment ago)
+  function L.stop() L.stopped = true; A.loop_end[name] = A.now; A.loop_set[L] = nil; if L.h then sound_handle_stop(L.h); L.h = nil end end
   -- (Lich) a loop that moves with what makes it, and gets louder or softer (its voice reads opts every frame)
   function L.set_pos(p) if p then if o.pos then o.pos:set(p.x or p[1] or 0, p.y or p[2] or 0, p.z or p[3] or 0) else o.pos = v3(p) end end end
   function L.set_volume(v) o.volume = v end
