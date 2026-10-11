@@ -263,7 +263,7 @@ local function save_pick(name, rel, add)
   if add then
     s.files[#s.files + 1] = out; s.src[#s.src + 1] = rel
   else
-    s.files = { out }; s.src = { rel }
+    s.files = { out }; s.src = { rel }; s.per = nil     -- (Lich: the old files' own settings go with them)
   end
   s.unsure = nil            -- a pick he made: no longer waiting for him
   AU.slots[name] = s
@@ -275,6 +275,7 @@ end
 local function remove_pick(name, i)
   local s = AU.slots[name]
   if not s or not s.files then return end
+  if s.per and s.files[i] then s.per[s.files[i]] = nil; if not next(s.per) then s.per = nil end end   -- (Lich)
   table.remove(s.files, i)
   if s.src and s.src[i] then table.remove(s.src, i) end
   AU.save_picks()
@@ -338,9 +339,10 @@ local function fmt(sp, v)
 end
 
 -- the reverb send of a slot as the editor shows it: its own, else what the game's call asks for
-local function send_of(name)
+local function send_of(name, fi)
+  if fi and AU.own_file(name, fi, 'reverb') then return AU.get(name, 'reverb', fi), true end   -- (Lich) the file's own
   local s = AU.slots[name]
-  if s and s.reverb then return s.reverb, true end
+  if s and s.reverb then return s.reverb, not fi end
   local lp = AU.last_play[name]
   return (lp and lp.reverb) or 0.25, false
 end
@@ -363,8 +365,13 @@ end
 local function reset_slot(name)
   local s = AU.slots[name]
   if not s then return end
+  if ui.solo_slot == name and ui.solo and s.files and s.files[ui.solo] then   -- (Lich) a file clicked: its own only
+    if s.per then s.per[s.files[ui.solo]] = nil; if not next(s.per) then s.per = nil end end
+    ui.dirty = true; flush_saves(); preview(name); return
+  end
   for k in pairs(AU.DEFAULTS) do if k ~= 'vol' then s[k] = nil end end
   s.reverb = nil
+  s.per = nil      -- (Lich) and every file's own
   ui.dirty = true
   flush_saves()
   preview(name)
@@ -775,11 +782,17 @@ function draw_edit()
   local name = ui.slot
   local s = AU.slots[name] or { files = {}, src = {} }
   local files, src = s.files or {}, s.src or {}
+  -- (Lich) a file clicked: the sliders are that file's own (over the slot's); else the slot's
+  local fi = ui.solo_slot == name and ui.solo or nil
+  if fi and not files[fi] then ui.solo, fi = nil, nil end
+  local function get(k) return AU.get(name, k, fi) end
+  local function set(k, v) if fi then AU.set_file(name, fi, k, v) else AU.set(name, k, v) end end
+  local function is_own(k) if fi then return AU.own_file(name, fi, k) end return s[k] ~= nil end
   HUD.rect(6, 6, 628, 348, 'rgba(10,10,13,0.95)')
   local col = status_color(name)
   HUD.text(name, 12, 11, col, 2)
   local state = AU.muted(name) and 'MUTED' or (#files > 0 and 'PICKED' or (AU.unsure(name) and 'UNSURE: NOT PICKED ON PURPOSE' or 'NO FILE YET'))
-  if ui.solo_slot == name and ui.solo then state = state .. '  ONLY FILE ' .. ui.solo end   -- (Lich)
+  if fi then state = state .. '  FILE ' .. fi .. ': ITS OWN SETTINGS' end   -- (Lich)
   HUD.text(state .. (is_loop(name) and '  (A LOOP)' or ''), 12 + tw(name, 2) + 10, 15, col)
   -- the buttons, top right
   local bx = 628 - (tw('PLAY (SPACE)') + tw('FIND (F)') + tw('UNMUTE') + tw('RESET') + tw('BACK (ESC)') + 30 + 16)
@@ -809,13 +822,14 @@ function draw_edit()
       end
       x = button('X', x, y - 2, function() remove_pick(name, i); if ui.solo_slot == name then ui.solo = nil end end, ORANGE)
       -- (Lich) a click on a file: only it plays in the editor until clicked again (highlighted while it is the one)
-      local fi, fw = i, tw(short)
+      local mine = s.per and s.per[files[i]] and '*' or ''     -- (* = settings of its own)
+      local fk, fw = i, tw(short .. mine)
       local solo = ui.solo_slot == name and ui.solo == i
       local hot = ui.mx >= x - 2 and ui.mx < x + fw + 2 and ui.my >= y - 2 and ui.my < y + 8
       if hot or solo then HUD.rect(x - 2, y - 2, fw + 4, 10, solo and 'rgba(80,72,40,0.95)' or 'rgba(50,50,60,0.9)') end
-      HUD.text(short, x, y, GREEN)
+      HUD.text(short .. mine, x, y, GREEN)
       hits[#hits + 1] = { id = 'file_' .. i, x = x - 2, y = y - 2, w = fw + 4, h = 10, act = function()
-        if solo then ui.solo = nil else ui.solo_slot, ui.solo = name, fi end
+        if solo then ui.solo = nil else ui.solo_slot, ui.solo = name, fk end
         preview(name)
       end }
       x = x + fw + 8
@@ -854,39 +868,39 @@ function draw_edit()
   HUD.text('SOUND', lx, sp_y, YELLOW)
   HUD.text('3D', rx, sp_y, YELLOW)
   for i, sp in ipairs(M.SLIDERS.sound) do
-    local v = AU.get(name, sp.key)
-    local own = s[sp.key] ~= nil
+    local v = get(sp.key)
+    local own = is_own(sp.key)
     slider('s_' .. sp.key, sp, lx, sp_y + 4 + i * 11, cw, v, not own,
       function(nv)
-        if sp.key == 'pitch_lo' and nv > AU.get(name, 'pitch_hi') then AU.set(name, 'pitch_hi', nv) end
-        if sp.key == 'pitch_hi' and nv < AU.get(name, 'pitch_lo') then AU.set(name, 'pitch_lo', nv) end
-        if nv ~= v then AU.set(name, sp.key, nv); changed(name) end
+        if sp.key == 'pitch_lo' and nv > get('pitch_hi') then set('pitch_hi', nv) end
+        if sp.key == 'pitch_hi' and nv < get('pitch_lo') then set('pitch_lo', nv) end
+        if nv ~= v then set(sp.key, nv); changed(name) end
       end,
-      function() AU.set(name, sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)
+      function() set(sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)
   end
   -- the 3D toggles
   local ty = sp_y + 15
   local tx = rx
   local function toggle(txt, key)
-    local on = AU.get(name, key)
+    local on = get(key)
     tx = button(txt .. (on and ' ON' or ' OFF'), tx, ty - 2, function()
-      AU.set(name, key, not on); ui.dirty = true; flush_saves(); changed(name)
+      set(key, not on); ui.dirty = true; flush_saves(); changed(name)
     end, on and GREEN or GREY, on)
   end
   toggle('SPATIAL', 'spatial')
   toggle('BINAURAL', 'binaural')
-  local curve = AU.get(name, 'curve')
+  local curve = get('curve')
   tx = button('CURVE ' .. curve:upper(), tx, ty - 2, function()
     local i = 1
     for k, c in ipairs(AU.CURVES) do if c == curve then i = k end end
-    AU.set(name, 'curve', AU.CURVES[i % #AU.CURVES + 1]); ui.dirty = true; flush_saves(); changed(name)
+    set('curve', AU.CURVES[i % #AU.CURVES + 1]); ui.dirty = true; flush_saves(); changed(name)
   end)
   for i, sp in ipairs(M.SLIDERS.space) do
     local v, own
-    if sp.key == 'reverb' then v, own = send_of(name) else v = AU.get(name, sp.key); own = s[sp.key] ~= nil end
+    if sp.key == 'reverb' then v, own = send_of(name, fi) else v = get(sp.key); own = is_own(sp.key) end
     slider('3_' .. sp.key, sp, rx, ty + 2 + i * 11, cw, v, not own,
-      function(nv) if nv ~= v or not own then AU.set(name, sp.key, nv); changed(name) end end,
-      function() AU.set(name, sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)
+      function(nv) if nv ~= v or not own then set(sp.key, nv); changed(name) end end,
+      function() set(sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)
   end
   -- the room you stand in (every sound's reverb)
   local zy = ty + 2 + (#M.SLIDERS.space + 1) * 11 + 6
@@ -909,7 +923,7 @@ function draw_edit()
   end
   -- what each ear gets, heard from where you stand
   local lp = AU.last_play[name]
-  local fx, info = AU.spatial(name, lp and lp.pos, lp, nil, nil, _fx, _inf)
+  local fx, info = AU.spatial(name, lp and lp.pos, lp and { reverb = lp.reverb, fi = fi }, nil, nil, _fx, _inf)
   local ry = 318
   HUD.rect(12, ry - 4, 616, 1, 'rgba(236,230,216,0.18)')
   local function db(g) return g <= 0.0001 and '-INF' or ('%+.1f'):format(20 * math.log(g, 10)) end
@@ -926,7 +940,8 @@ function draw_edit()
     (info.itd or 0) * 1000, round(min(fx.lp_l, 20000)), round(min(fx.lp_r, 20000)), fx.wet or 0, info.pf or 1)
   HUD.text(line1, 12, ry, CREAM)
   HUD.text(line2, 12, ry + 10, CREAM)
-  HUD.text('DRAG A SLIDER (RIGHT-CLICK = DEFAULT). EVERY CHANGE REPLAYS IT FROM WHERE IT LAST PLAYED. SAVES ITSELF.', 12, 342, DIM)
+  if fi then HUD.text("FILE " .. fi .. " CLICKED: THE SLIDERS ARE ITS OWN (RIGHT-CLICK = THE WHOLE SOUND'S). CLICK IT AGAIN: ALL.", 12, 342, YELLOW)
+  else HUD.text('DRAG A SLIDER (RIGHT-CLICK = DEFAULT). EVERY CHANGE REPLAYS IT FROM WHERE IT LAST PLAYED. SAVES ITSELF.', 12, 342, DIM) end
   if ui.msg_t > 0 then HUD.text(ui.msg, 628, 30, GREEN, 1, 'right') end
 end
 

@@ -144,6 +144,7 @@ end""")
             "    { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 1000, map = 'sq', q = 5, fmt = '%dHZ' },\n"
             "    { key = 'ear', label = 'EAR', lo = 0, hi = 1, map = 'lin', q = 0.01, fmt = '%d%% IN', mul = 100 },   -- (Lich)\n"
             "  },\n}")
+    s = lich_per_file_ui(s)
     open(os.path.join(GAME, 'port', 'soundui.lua'), 'w', encoding='utf-8', newline='\n').write(s)
 
     # ---------------------------------------------------------------- audio
@@ -153,6 +154,201 @@ end""")
     a = lich_audio(a)
     open(os.path.join(GAME, 'port', 'audio.lua'), 'w', encoding='utf-8', newline='\n').write(a)
     print(f'ported megablock {commit}: port/soundui.lua ({len(names)} slots known), port/audio.lua')
+
+
+def lich_per_file_ui(s):
+    """(Lich, 2026-10-11) the editor's side of lich_per_file: while a file is clicked (PLAYS row), every slider, toggle
+    and the curve are that file's own (shown as the slot's until it has its own; right-click = back to the slot's),
+    RESET clears that file's own only, and the readout is that file's. A file with settings of its own reads NAME*."""
+    s = rep(s, """function draw_edit()
+  local name = ui.slot
+  local s = AU.slots[name] or { files = {}, src = {} }
+  local files, src = s.files or {}, s.src or {}
+""", """function draw_edit()
+  local name = ui.slot
+  local s = AU.slots[name] or { files = {}, src = {} }
+  local files, src = s.files or {}, s.src or {}
+  -- (Lich) a file clicked: the sliders are that file's own (over the slot's); else the slot's
+  local fi = ui.solo_slot == name and ui.solo or nil
+  if fi and not files[fi] then ui.solo, fi = nil, nil end
+  local function get(k) return AU.get(name, k, fi) end
+  local function set(k, v) if fi then AU.set_file(name, fi, k, v) else AU.set(name, k, v) end end
+  local function is_own(k) if fi then return AU.own_file(name, fi, k) end return s[k] ~= nil end
+""")
+    s = rep(s, "  if ui.solo_slot == name and ui.solo then state = state .. '  ONLY FILE ' .. ui.solo end   -- (Lich)\n",
+            "  if fi then state = state .. '  FILE ' .. fi .. ': ITS OWN SETTINGS' end   -- (Lich)\n")
+    s = rep(s, "    local v = AU.get(name, sp.key)\n    local own = s[sp.key] ~= nil\n",
+            "    local v = get(sp.key)\n    local own = is_own(sp.key)\n")
+    s = rep(s, """        if sp.key == 'pitch_lo' and nv > AU.get(name, 'pitch_hi') then AU.set(name, 'pitch_hi', nv) end
+        if sp.key == 'pitch_hi' and nv < AU.get(name, 'pitch_lo') then AU.set(name, 'pitch_lo', nv) end
+        if nv ~= v then AU.set(name, sp.key, nv); changed(name) end
+""", """        if sp.key == 'pitch_lo' and nv > get('pitch_hi') then set('pitch_hi', nv) end
+        if sp.key == 'pitch_hi' and nv < get('pitch_lo') then set('pitch_lo', nv) end
+        if nv ~= v then set(sp.key, nv); changed(name) end
+""")
+    s = rep(s, "function() AU.set(name, sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)",
+            "function() set(sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)", count=2)
+    s = rep(s, "    local on = AU.get(name, key)\n", "    local on = get(key)\n")
+    s = rep(s, "      AU.set(name, key, not on); ui.dirty = true;", "      set(key, not on); ui.dirty = true;")
+    s = rep(s, "  local curve = AU.get(name, 'curve')\n", "  local curve = get('curve')\n")
+    s = rep(s, "    AU.set(name, 'curve', AU.CURVES[i % #AU.CURVES + 1]);", "    set('curve', AU.CURVES[i % #AU.CURVES + 1]);")
+    s = rep(s, "    if sp.key == 'reverb' then v, own = send_of(name) else v = AU.get(name, sp.key); own = s[sp.key] ~= nil end\n",
+            "    if sp.key == 'reverb' then v, own = send_of(name, fi) else v = get(sp.key); own = is_own(sp.key) end\n")
+    s = rep(s, "      function(nv) if nv ~= v or not own then AU.set(name, sp.key, nv); changed(name) end end,\n",
+            "      function(nv) if nv ~= v or not own then set(sp.key, nv); changed(name) end end,\n")
+    s = rep(s, """local function send_of(name)
+  local s = AU.slots[name]
+  if s and s.reverb then return s.reverb, true end
+""", """local function send_of(name, fi)
+  if fi and AU.own_file(name, fi, 'reverb') then return AU.get(name, 'reverb', fi), true end   -- (Lich) the file's own
+  local s = AU.slots[name]
+  if s and s.reverb then return s.reverb, not fi end
+""")
+    s = rep(s, "  local fx, info = AU.spatial(name, lp and lp.pos, lp, nil, nil, _fx, _inf)",
+            "  local fx, info = AU.spatial(name, lp and lp.pos, lp and { reverb = lp.reverb, fi = fi }, nil, nil, _fx, _inf)")
+    s = rep(s, "  HUD.text('DRAG A SLIDER (RIGHT-CLICK = DEFAULT). EVERY CHANGE REPLAYS IT FROM WHERE IT LAST PLAYED. SAVES ITSELF.', 12, 342, DIM)",
+            "  if fi then HUD.text(\"FILE \" .. fi .. \" CLICKED: THE SLIDERS ARE ITS OWN (RIGHT-CLICK = THE WHOLE SOUND'S). CLICK IT AGAIN: ALL.\", 12, 342, YELLOW)\n"
+            "  else HUD.text('DRAG A SLIDER (RIGHT-CLICK = DEFAULT). EVERY CHANGE REPLAYS IT FROM WHERE IT LAST PLAYED. SAVES ITSELF.', 12, 342, DIM) end")
+    # the PLAYS row: NAME* = a file with settings of its own
+    s = rep(s, "      local fi, fw = i, tw(short)\n",
+            "      local mine = s.per and s.per[files[i]] and '*' or ''     -- (* = settings of its own)\n"
+            "      local fk, fw = i, tw(short .. mine)\n")
+    s = rep(s, "      HUD.text(short, x, y, GREEN)\n      hits[#hits + 1] = { id = 'file_' .. i,",
+            "      HUD.text(short .. mine, x, y, GREEN)\n      hits[#hits + 1] = { id = 'file_' .. i,")
+    s = rep(s, "        if solo then ui.solo = nil else ui.solo_slot, ui.solo = name, fi end",
+            "        if solo then ui.solo = nil else ui.solo_slot, ui.solo = name, fk end")
+    # RESET with a file clicked clears only its own; without, the slot and every file's own
+    s = rep(s, """  if not s then return end
+  for k in pairs(AU.DEFAULTS) do if k ~= 'vol' then s[k] = nil end end
+  s.reverb = nil
+""", """  if not s then return end
+  if ui.solo_slot == name and ui.solo and s.files and s.files[ui.solo] then   -- (Lich) a file clicked: its own only
+    if s.per then s.per[s.files[ui.solo]] = nil; if not next(s.per) then s.per = nil end end
+    ui.dirty = true; flush_saves(); preview(name); return
+  end
+  for k in pairs(AU.DEFAULTS) do if k ~= 'vol' then s[k] = nil end end
+  s.reverb = nil
+  s.per = nil      -- (Lich) and every file's own
+""")
+    # a file's own settings go with it
+    s = rep(s, "  table.remove(s.files, i)\n",
+            "  if s.per and s.files[i] then s.per[s.files[i]] = nil; if not next(s.per) then s.per = nil end end   -- (Lich)\n"
+            "  table.remove(s.files, i)\n")
+    s = rep(s, "    s.files = { out }; s.src = { rel }\n",
+            "    s.files = { out }; s.src = { rel }; s.per = nil     -- (Lich: the old files' own settings go with them)\n")
+    return s
+
+
+def lich_per_file(a):
+    """(Lich, 2026-10-11) each FILE of a slot can have its own settings: his "it doesn't look like I can change the
+    settings for each individual sound in an event, only for both at the same time". A slot's files stay variants (one
+    per play, at random); s.per[file path] = that file's own values, over the slot's, over DEFAULTS. Every play picks
+    its file first (o.fi), so its own delay, pitch, volume, crush and 3D settings all apply, every frame. The editor
+    (soundui) edits a file's own while that file is clicked, and plays that file alone."""
+    a = rep(a, "quiet = false, loop_end = {} }", "quiet = false, loop_end = {}, sound_ix = {} }")
+    a = rep(a, """function A.get(name, key)
+  local s = A.slots[name]
+  local v = s and s[key]
+  if v == nil then v = A.DEFAULTS[key] end
+  return v
+end
+""", """-- (Lich) fi = one of the slot's files (its index): that file's own setting first (s.per[its path], set in the editor
+-- while that file is clicked), then the slot's, then the default
+function A.get(name, key, fi)
+  local s = A.slots[name]
+  local v
+  if fi and s and s.per and s.files then local p = s.per[s.files[fi] or false]; v = p and p[key] end
+  if v == nil then v = s and s[key] end
+  if v == nil then v = A.DEFAULTS[key] end
+  return v
+end
+-- (Lich) one file's own setting (v nil = back to the slot's); whether it has one
+function A.set_file(name, fi, key, v)
+  local s = A.slots[name]
+  local path = s and s.files and s.files[fi]
+  if not path then return end
+  s.per = s.per or {}
+  local p = s.per[path] or {}
+  p[key] = v
+  s.per[path] = next(p) and p or nil
+  if not next(s.per) then s.per = nil end
+end
+function A.own_file(name, fi, key)
+  local s = A.slots[name]
+  local path = s and s.files and s.files[fi]
+  local p = path and s.per and s.per[path]
+  return p ~= nil and p[key] ~= nil
+end
+""")
+    # the loaded sounds remember which file each is (one that fails to load is skipped)
+    a = rep(a, """  local list = {}
+  if s and s.files then
+    for _, f in ipairs(s.files) do
+      local ok, snd = pcall(sound_load, f)      -- a pick whose file went missing stays silent instead of stopping the game
+      if ok and snd then list[#list + 1] = snd end
+    end
+  end
+  A.sounds[name] = list
+""", """  local list, ix = {}, {}
+  if s and s.files then
+    for fi, f in ipairs(s.files) do
+      local ok, snd = pcall(sound_load, f)      -- a pick whose file went missing stays silent instead of stopping the game
+      if ok and snd then list[#list + 1] = snd; ix[#list] = fi end
+    end
+  end
+  A.sounds[name] = list
+  A.sound_ix[name] = ix     -- (Lich) list[k] is the slot's file ix[k]
+""")
+    a = rep(a, """local function pick(name)
+  local v = A.sounds[name]
+  if not v or #v == 0 then return nil end
+  local i = 1 + floor(rnd()*#v)
+  if #v > 1 and v[i] == A.last[name] then i = i % #v + 1 end
+  A.last[name] = v[i]
+  return v[i]
+end""", """local function pick(name, only)     -- (Lich) -> the sound and which of the slot's files it is; only = that file
+  local v = A.sounds[name]
+  if not v or #v == 0 then return nil end
+  local ix = A.sound_ix[name] or {}
+  if only then for k = 1, #v do if (ix[k] or k) == only then return v[k], only end end end
+  local i = 1 + floor(rnd()*#v)
+  if #v > 1 and v[i] == A.last[name] then i = i % #v + 1 end
+  A.last[name] = v[i]
+  return v[i], ix[i] or i
+end""")
+    a = rep(a, """  local snd = pick(name)
+  if not snd then return nil end
+  local lo, hi = A.get(name, 'pitch_lo'), A.get(name, 'pitch_hi')""", """  local snd, fi = pick(name, o.fi)
+  if not snd then return nil end
+  o.fi = fi       -- (Lich) the file this voice plays: its own settings, now and every frame after (refresh)
+  local lo, hi = A.get(name, 'pitch_lo', fi), A.get(name, 'pitch_hi', fi)""")
+    a = rep(a, """  local del = A.get(name, 'delay')
+  fx.bits, fx.sr_div, fx.start = A.get(name, 'bits'), A.get(name, 'sr'), del < 0 and -del or 0
+  local vol = (o.volume or 1) * A.get(name, 'vol') * A.master""", """  local del = A.get(name, 'delay', fi)
+  fx.bits, fx.sr_div, fx.start = A.get(name, 'bits', fi), A.get(name, 'sr', fi), del < 0 and -del or 0
+  local vol = (o.volume or 1) * A.get(name, 'vol', fi) * A.master""")
+    a = rep(a, """  local get = function(k) return A.get(name, k) end
+  local s = A.slots[name]
+  local send = (s and s.reverb) or (o and o.reverb) or SEND""", """  local fi = o and o.fi      -- (Lich) the file playing: its own settings
+  local get = function(k) return A.get(name, k, fi) end
+  local send = A.get(name, 'reverb', fi) or (o and o.reverb) or SEND""")
+    # the wait (a play's and the editor's preview): the chosen file's own delay and travel
+    a = rep(a, "  local w = (o.delay or 0) + max(0, A.get(name, 'delay'))\n", "  local w = (o.delay or 0) + max(0, A.get(name, 'delay', o.fi))\n")
+    a = rep(a, "  local w = max(0, A.get(name, 'delay'))\n", "  local w = max(0, A.get(name, 'delay', o.fi))\n")
+    a = rep(a, "  local tr = A.get(name, 'travel')\n", "  local tr = A.get(name, 'travel', o.fi)\n", count=2)
+    a = rep(a, "and A.get(name, 'spatial') and A.on3d then", "and A.get(name, 'spatial', o.fi) and A.on3d then", count=2)
+    # a play picks its file now (so that file's own delay counts); the editor's preview names it
+    a = rep(a, "  o.pos = v3(o.pos)\n  A.note(name, o.pos, o.delay)\n",
+            "  o.pos = v3(o.pos)\n  if not o.fi then local _, fi = pick(name); o.fi = fi end   -- (Lich) its file, chosen now\n"
+            "  A.note(name, o.pos, o.delay)\n")
+    a = rep(a, "function A.preview(name)\n", "function A.preview(name, only)     -- (Lich: only = that file of the slot alone)\n")
+    a = rep(a, "  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb }\n",
+            "  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, fi = only }\n")
+    # every frame: the live voice's own file
+    a = rep(a, "    fx.width = (pos and A.get(v.name, 'spatial')) and A.get(v.name, 'width') or 1\n",
+            "    fx.width = (pos and A.get(v.name, 'spatial', v.o.fi)) and A.get(v.name, 'width', v.o.fi) or 1\n")
+    a = rep(a, "A.get(v.name, 'vol') * A.master", "A.get(v.name, 'vol', v.o.fi) * A.master", count=2)
+    return a
 
 
 def lich_audio(a):
@@ -203,14 +399,6 @@ end
     a = rep(a, "  local h = sound_play_handle(s, volume or 0.5, 1)\n",
             "  local h = sound_play_handle(s, volume or 0.5, 1, slot and A.get(slot, 'bits') or A.DEFAULTS.bits,\n"
             "    slot and A.get(slot, 'sr') or A.DEFAULTS.sr)\n")
-    # (Lich) the editor playing one file of a slot alone (soundui's click on a file)
-    a = rep(a, "local function pick(name)\n  local v = A.sounds[name]\n  if not v or #v == 0 then return nil end\n",
-            "local function pick(name, only)\n  local v = A.sounds[name]\n  if not v or #v == 0 then return nil end\n"
-            "  if only and v[only] then return v[only] end      -- (Lich) the editor: that file alone\n")
-    a = rep(a, "  local snd = pick(name)\n", "  local snd = pick(name, o.only)\n")
-    a = rep(a, "function A.preview(name)\n", "function A.preview(name, only)     -- (Lich: only = that file of the slot alone)\n")
-    a = rep(a, "  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb }\n",
-            "  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, only = only }\n")
     a = rep(a, "  local base_pitch = (o.pitch or 1) * (lo + (hi - lo) * math.random())",
             "  local base_pitch = (o.pitch or 1) * (lo + (hi - lo) * rnd())")
     a = rep(a, """local function voice(name, o, loop)
@@ -293,7 +481,7 @@ end
 
 -- the picker's audition: a raw clip, no slot, in your head
 """)
-    return a
+    return lich_per_file(a)
 
 
 if __name__ == '__main__':

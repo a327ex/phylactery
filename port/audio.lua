@@ -44,7 +44,7 @@ end
 
 local A = { slots = {}, sounds = {}, last = {}, loops = {}, pending = {}, events = {}, loop_set = {}, seen = {}, now = 0,
   voices = {}, last_play = {}, master = 0.8, ready = true, hooks = {}, on3d = true, reverb_on = true, zone = nil,
-  last_t = {}, quiet = false, loop_end = {} }   -- (Lich: a call's gap; the site's off-screen silence; when
+  last_t = {}, quiet = false, loop_end = {}, sound_ix = {} }   -- (Lich: a call's gap; the site's off-screen silence; when
   -- each loop last stopped, for the TAB list)
 local PICKS, ROOMS = 'sound_picks.lua', 'sound_rooms.lua'
 local SPEED = 343                      -- m/s
@@ -147,11 +147,32 @@ function A.unsure(name) local s = A.slots[name]; return s and s.unsure and not (
 function A.muted(name) local s = A.slots[name]; return s and s.mute or false end
 
 -- a slot's setting: its own, else the default
-function A.get(name, key)
+-- (Lich) fi = one of the slot's files (its index): that file's own setting first (s.per[its path], set in the editor
+-- while that file is clicked), then the slot's, then the default
+function A.get(name, key, fi)
   local s = A.slots[name]
-  local v = s and s[key]
+  local v
+  if fi and s and s.per and s.files then local p = s.per[s.files[fi] or false]; v = p and p[key] end
+  if v == nil then v = s and s[key] end
   if v == nil then v = A.DEFAULTS[key] end
   return v
+end
+-- (Lich) one file's own setting (v nil = back to the slot's); whether it has one
+function A.set_file(name, fi, key, v)
+  local s = A.slots[name]
+  local path = s and s.files and s.files[fi]
+  if not path then return end
+  s.per = s.per or {}
+  local p = s.per[path] or {}
+  p[key] = v
+  s.per[path] = next(p) and p or nil
+  if not next(s.per) then s.per = nil end
+end
+function A.own_file(name, fi, key)
+  local s = A.slots[name]
+  local path = s and s.files and s.files[fi]
+  local p = path and s.per and s.per[path]
+  return p ~= nil and p[key] ~= nil
 end
 function A.set(name, key, v)
   local s = A.slots[name] or { files = {}, src = {} }
@@ -162,14 +183,15 @@ end
 -- (re)load a slot's files
 function A.reload(name)
   local s = A.slots[name]
-  local list = {}
+  local list, ix = {}, {}
   if s and s.files then
-    for _, f in ipairs(s.files) do
+    for fi, f in ipairs(s.files) do
       local ok, snd = pcall(sound_load, f)      -- a pick whose file went missing stays silent instead of stopping the game
-      if ok and snd then list[#list + 1] = snd end
+      if ok and snd then list[#list + 1] = snd; ix[#list] = fi end
     end
   end
   A.sounds[name] = list
+  A.sound_ix[name] = ix     -- (Lich) list[k] is the slot's file ix[k]
   for _, L in ipairs(A.loops) do if L.name == name and not L.stopped then A.start_loop(L) end end
 end
 
@@ -232,9 +254,9 @@ end
 function A.spatial(name, pos, o, walls, vel, fx, info)
   fx = fx or {}
   info = info or {}
-  local get = function(k) return A.get(name, k) end
-  local s = A.slots[name]
-  local send = (s and s.reverb) or (o and o.reverb) or SEND
+  local fi = o and o.fi      -- (Lich) the file playing: its own settings
+  local get = function(k) return A.get(name, k, fi) end
+  local send = A.get(name, 'reverb', fi) or (o and o.reverb) or SEND
   local room = A.reverb_on and 1 or 0
   local lowcut = get('lowcut')
   info.d, info.walls, info.x, info.z, info.itd, info.gain, info.pf = nil, 0, 0, 1, 0, 1, 1
@@ -326,14 +348,15 @@ function A.spatial(name, pos, o, walls, vel, fx, info)
 end
 
 -- ------------------------------------------------------------------------------------------------ playing
-local function pick(name, only)
+local function pick(name, only)     -- (Lich) -> the sound and which of the slot's files it is; only = that file
   local v = A.sounds[name]
   if not v or #v == 0 then return nil end
-  if only and v[only] then return v[only] end      -- (Lich) the editor: that file alone
+  local ix = A.sound_ix[name] or {}
+  if only then for k = 1, #v do if (ix[k] or k) == only then return v[k], only end end end
   local i = 1 + floor(rnd()*#v)
   if #v > 1 and v[i] == A.last[name] then i = i % #v + 1 end
   A.last[name] = v[i]
-  return v[i]
+  return v[i], ix[i] or i
 end
 
 local function source_pos(o)
@@ -348,16 +371,17 @@ end
 -- start one voice of slot `name`; nil when the slot is silent
 local function voice(name, o, loop)
   if A.muted(name) or A.quiet then return nil end
-  local snd = pick(name, o.only)
+  local snd, fi = pick(name, o.fi)
   if not snd then return nil end
-  local lo, hi = A.get(name, 'pitch_lo'), A.get(name, 'pitch_hi')
+  o.fi = fi       -- (Lich) the file this voice plays: its own settings, now and every frame after (refresh)
+  local lo, hi = A.get(name, 'pitch_lo', fi), A.get(name, 'pitch_hi', fi)
   local base_pitch = (o.pitch or 1) * (lo + (hi - lo) * rnd())
   local pos = source_pos(o)
   local walls = pos and walls_between(pos) or 0
   local fx, info, pf = A.spatial(name, pos, o, walls, o.vel)
-  local del = A.get(name, 'delay')
-  fx.bits, fx.sr_div, fx.start = A.get(name, 'bits'), A.get(name, 'sr'), del < 0 and -del or 0
-  local vol = (o.volume or 1) * A.get(name, 'vol') * A.master
+  local del = A.get(name, 'delay', fi)
+  fx.bits, fx.sr_div, fx.start = A.get(name, 'bits', fi), A.get(name, 'sr', fi), del < 0 and -del or 0
+  local vol = (o.volume or 1) * A.get(name, 'vol', fi) * A.master
   local h
   if sound_play_fx then h = sound_play_fx(snd, min(vol, 4), base_pitch * pf, fx)
   else   -- (Lich) an engine without FX voices (the site's, for now): loudness only, no ears, no room
@@ -372,9 +396,9 @@ end
 
 -- the delay a play waits: the call's, the slot's (when positive) and the sound's travel time
 local function wait_for(name, o)
-  local w = (o.delay or 0) + max(0, A.get(name, 'delay'))
-  local tr = A.get(name, 'travel')
-  if tr > 0 and o.pos and A.get(name, 'spatial') and A.on3d then w = w + tr * o.pos:distance_to(LIS.pos) / SPEED end
+  local w = (o.delay or 0) + max(0, A.get(name, 'delay', o.fi))
+  local tr = A.get(name, 'travel', o.fi)
+  if tr > 0 and o.pos and A.get(name, 'spatial', o.fi) and A.on3d then w = w + tr * o.pos:distance_to(LIS.pos) / SPEED end
   return w
 end
 
@@ -385,6 +409,7 @@ function A.play(name, o)
     A.last_t[name] = A.now
   end
   o.pos = v3(o.pos)
+  if not o.fi then local _, fi = pick(name); o.fi = fi end   -- (Lich) its file, chosen now
   A.note(name, o.pos, o.delay)
   A.last_play[name] = { pos = o.pos and o.pos:clone() or nil, volume = o.volume, pitch = o.pitch, reverb = o.reverb }
   local w = wait_for(name, o)
@@ -403,10 +428,10 @@ function A.preview(name, only)     -- (Lich: only = that file of the slot alone)
   if A.preview_h then sound_handle_stop(A.preview_h); A.preview_h = nil end
   A.pending_rt = {}
   local lp = A.last_play[name] or {}
-  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, only = only }
-  local w = max(0, A.get(name, 'delay'))
-  local tr = A.get(name, 'travel')
-  if tr > 0 and o.pos and A.get(name, 'spatial') and A.on3d then w = w + tr * o.pos:distance_to(LIS.pos) / SPEED end
+  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, fi = only }
+  local w = max(0, A.get(name, 'delay', o.fi))
+  local tr = A.get(name, 'travel', o.fi)
+  if tr > 0 and o.pos and A.get(name, 'spatial', o.fi) and A.on3d then w = w + tr * o.pos:distance_to(LIS.pos) / SPEED end
   if w > 0 then A.pending_rt[#A.pending_rt + 1] = { name = name, o = o, at = A.rt + w }; return true end
   A.preview_h = voice(name, o)
   return A.preview_h ~= nil
@@ -449,18 +474,18 @@ local function refresh(dt)
     v.occ_t = v.occ_t - (dt or 0)
     if pos and v.occ_t <= 0 then v.walls = walls_between(pos); v.occ_t = OCC_EVERY end
     local fx, info, pf = A.spatial(v.name, pos, v.o, v.walls, v.o.vel, v.fx, v.info)
-    fx.width = (pos and A.get(v.name, 'spatial')) and A.get(v.name, 'width') or 1
+    fx.width = (pos and A.get(v.name, 'spatial', v.o.fi)) and A.get(v.name, 'width', v.o.fi) or 1
     local alive
     if sound_handle_set_fx then alive = sound_handle_set_fx(v.h, fx)
     else   -- (Lich) no FX voices: a loop's loudness follows; a one-shot is let go after 10 s
       alive = v.loop ~= nil or A.now - v.t0 < 10
-      if v.loop then sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol') * A.master * fx.dry * 0.5 * (fx.gain_l + fx.gain_r)) end
+      if v.loop then sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master * fx.dry * 0.5 * (fx.gain_l + fx.gain_r)) end
     end
     if alive then
       if abs(pf - v.pf) > 0.002 then v.pf = pf; sound_handle_set_pitch(v.h, v.pitch * pf) end
       if v.loop and sound_handle_set_fx then
         local s = A.slots[v.name]
-        sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol') * A.master)
+        sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master)
         if s and s.mute then sound_handle_stop(v.h); v.loop.h = nil end
       end
       keep[#keep + 1] = v
