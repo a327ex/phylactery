@@ -23,6 +23,7 @@ PICKS_JSON = os.path.join(HERE, 'sfx_picks.json')
 PICKS_LUA = os.path.join(GAME, 'sound_picks.lua')
 BAKED = os.path.join(HERE, '.sfx_baked.json')
 LUA = os.path.join(GAME, '..', 'Anchor', 'workflow', 'tools', 'lua54.exe')
+CAVE_KEYS = ('reverb', 'width', 'rolloff', 'near', 'far', 'air', 'occlusion', 'doppler', 'travel', 'lowcut')
 
 # sound_picks.lua -> JSON on stdout, read by Lua itself (any fields: strings, numbers, booleans, lists, tables)
 DUMP_LUA = r'''
@@ -143,6 +144,9 @@ def main():
                 files.append(out_rel)
                 src.append(rel)
         e = {'files': files, 'src': src, 'vol': p.get('vol', 1.0)}
+        for k in CAVE_KEYS:              # the cave's levers (sfx_spec.py CAVE): the editor's own 3D fields
+            if k in p:
+                e[k] = p[k]
         if p.get('unsure'):
             e['unsure'] = True
             e['candidates'] = p.get('candidates', [])

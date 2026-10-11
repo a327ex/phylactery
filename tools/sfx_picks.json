@@ -4,7 +4,8 @@
   "why": "a designed cave loop: a low drone (half its energy under 200 Hz), seam 0.7 dB",
   "files": [
    "Gamemaster Audio - Pro Sound Collection/Animals_Nature_Ambiences/cave_ambience_loop_04.wav"
-  ]
+  ],
+  "reverb": 0
  },
  "shaft_hum": {
   "vol": 1.0,
@@ -17,7 +18,10 @@
    "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Ambiance/Magical Ambiance Loop 2.wav",
    "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Ambiance/Magical Ambiance Loop 3.wav",
    "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Ambiance/Magical Ambiance Loop 4.wav"
-  ]
+  ],
+  "reverb": 0.4,
+  "width": 0.6,
+  "rolloff": 0.6
  },
  "egg_shiver": {
   "vol": 1.0,
@@ -27,7 +31,8 @@
   "candidates": [
    "soundeffect-lab/various/egg-konkon1__tap-egg-crack.ogg",
    "Universal Sound FX/BREAKS_SNAPS/BREAK_Subtle_stereo.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "lich_hover": {
   "vol": 1.0,
@@ -37,7 +42,8 @@
   "candidates": [
    "Pixel Magic Sound Effects Pack/PM_ELEM_Dark04_Absorb_P3_Drone.wav",
    "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Low_Loop_loop_stereo.wav"
-  ]
+  ],
+  "reverb": 0.1
  },
  "lich_hurt": {
   "vol": 0.45,
@@ -46,7 +52,8 @@
    "Gamemaster Audio - Pro Sound Collection/Foley/bone_break_neck_snap_crack_01.wav",
    "Gamemaster Audio - Pro Sound Collection/Foley/bone_break_neck_snap_crack_03.wav",
    "Gamemaster Audio - Pro Sound Collection/Foley/bone_break_neck_snap_crack_04.wav"
-  ]
+  ],
+  "reverb": 0.3
  },
  "lich_hurt_pose": {
   "vol": 1.0,
@@ -55,14 +62,17 @@
   "files": [],
   "candidates": [
    "sounddictionary/battle/creaking-muscles-1__creaking-muscles-bone-break.ogg"
-  ]
+  ],
+  "reverb": 0.15
  },
  "lich_die": {
   "vol": 0.9,
   "why": "he collapses: a skeleton's bones rattling",
   "files": [
    "sounddictionary/battle/skeleton-warrior-bones-1__skeleton-bones-rattle.ogg"
-  ]
+  ],
+  "reverb": 0.5,
+  "width": 0.3
  },
  "lich_thud": {
   "vol": 1.0,
@@ -72,7 +82,8 @@
   "candidates": [
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_small_hit_01.wav",
    "soundeffect-lab/various/cup-put1__set-down-ceramic-bowl.ogg"
-  ]
+  ],
+  "reverb": 0.3
  },
  "mask_drop": {
   "vol": 0.8,
@@ -80,7 +91,8 @@
   "files": [
    "soundeffect-lab/various/cup-put1__set-down-ceramic-bowl.ogg",
    "SFX_Collection/WAV/Inventory_SFX/Ceramic_Barrel_Close.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "snake_hiss": {
   "vol": 0.55,
@@ -90,14 +102,18 @@
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Hiss/Snake Hiss 2.wav",
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Hiss/Snake Hiss 4.wav",
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Hiss/Snake Hiss 5.wav"
-  ]
+  ],
+  "reverb": 0.35,
+  "rolloff": 0.6
  },
  "snake_slither": {
   "vol": 0.6,
   "why": "scales over stone, one shared loop at the nearest crawling snake: real crawling, the seam is clean (-0.1 dB)",
   "files": [
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Crawling/Snake Crawling 2.wav"
-  ]
+  ],
+  "reverb": 0.1,
+  "width": 0.5
  },
  "snake_strike": {
   "vol": 0.75,
@@ -106,7 +122,8 @@
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Attacks/Snake Attacks 1.wav",
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Attacks/Snake Attacks 2.wav",
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Attacks/Snake Attacks 4.wav"
-  ]
+  ],
+  "reverb": 0.25
  },
  "coil_grip": {
   "vol": 1.0,
@@ -116,21 +133,26 @@
   "candidates": [
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Attacks/Snake Attacks 3.wav",
    "Universal Sound FX/BREAKS_SNAPS/BREAK_Squishy_stereo.wav"
-  ]
+  ],
+  "reverb": 0.25
  },
  "coil_squeeze": {
   "vol": 0.7,
   "why": "the coils turning round the egg, louder as they cover it: scales rubbing (crawling, seam -3 dB)",
   "files": [
    "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Crawling/Snake Crawling 4.wav"
-  ]
+  ],
+  "reverb": 0.1,
+  "width": 0.4
  },
  "coil_win": {
   "vol": 1.0,
   "why": "the egg is covered: the turn of the whole game; what it should sound like is his",
   "unsure": true,
   "files": [],
-  "candidates": []
+  "candidates": [],
+  "reverb": 0.6,
+  "width": 0.6
  },
  "snake_dissolve": {
   "vol": 1.0,
@@ -141,7 +163,8 @@
    "Pixel Magic Sound Effects Pack/PM_ELEM_Dark06_Gravity_P3_Disappear.wav",
    "Pixel Magic Sound Effects Pack/PM_ELEM_Dark10_P3_Disappear.wav",
    "Universal Sound FX/GLASS/GLASS_Rattle_Many_Fragments_01_stereo.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "snake_ash": {
   "vol": 1.0,
@@ -150,7 +173,8 @@
   "files": [],
   "candidates": [
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Fire put out 7.wav"
-  ]
+  ],
+  "reverb": 0.3
  },
  "fire_cast": {
   "vol": 0.9,
@@ -159,7 +183,8 @@
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Flame Whoosh.wav",
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Flame Whoosh 2.wav",
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Flame Whoosh 10.wav"
-  ]
+  ],
+  "reverb": 0.3
  },
  "fire_ignite": {
   "vol": 0.8,
@@ -168,28 +193,33 @@
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Fire Burst 2.wav",
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Fire Burst 3.wav",
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Fire Burst 4.wav"
-  ]
+  ],
+  "reverb": 0.3
  },
  "fire_burn": {
   "vol": 0.5,
   "why": "a snake burning, up to 4 at once: a seamless fire loop with crackle",
   "files": [
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/General Fire Loop 6.wav"
-  ]
+  ],
+  "reverb": 0.1
  },
  "fire_sweep": {
   "vol": 0.7,
   "why": "the group version: one arm sweep of fire along the floor, a flamethrower loop (seam 0.9 dB)",
   "files": [
    "Pixel Magic Sound Effects Pack/PM_ELEM_Fire08_Flamethrower_Loop.wav"
-  ]
+  ],
+  "reverb": 0.2,
+  "width": 0.5
  },
  "lift_cast": {
   "vol": 0.6,
   "why": "he takes hold of snakes from afar: named gravity magic, a pull on the air",
   "files": [
    "Pixel Magic Sound Effects Pack/PM_ELEM_Dark06_Gravity_P1_Cast.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "lift_hold": {
   "vol": 1.0,
@@ -199,7 +229,8 @@
   "candidates": [
    "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Low_Loop_loop_stereo.wav",
    "Pixel Magic Sound Effects Pack/PM_ELEM_Dark04_Absorb_P3_Drone.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "lift_knot": {
   "vol": 0.8,
@@ -207,7 +238,8 @@
   "files": [
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping guts out of body/Ripping guts out of body 2.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping guts out of body/Ripping guts out of body 3.wav"
-  ]
+  ],
+  "reverb": 0.25
  },
  "lift_swell": {
   "vol": 1.0,
@@ -216,7 +248,9 @@
   "files": [],
   "candidates": [
    "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_1000ms_stereo.wav"
-  ]
+  ],
+  "reverb": 0.45,
+  "width": 0.5
  },
  "lift_fist": {
   "vol": 0.5,
@@ -224,7 +258,8 @@
   "files": [
    "Gamemaster Audio - Pro Sound Collection/Foley/bone_break_neck_snap_crack_02.wav",
    "Gamemaster Audio - Pro Sound Collection/Foley/bone_break_neck_snap_crack_04.wav"
-  ]
+  ],
+  "reverb": 0.15
  },
  "lift_burst": {
   "vol": 1.2,
@@ -234,7 +269,9 @@
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 2.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 3.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 4.wav"
-  ]
+  ],
+  "reverb": 0.5,
+  "width": 0.5
  },
  "gore_crush": {
   "vol": 0.8,
@@ -244,7 +281,8 @@
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 3.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 5.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 8.wav"
-  ]
+  ],
+  "reverb": 0.3
  },
  "gore_land": {
   "vol": 0.45,
@@ -253,7 +291,8 @@
    "Universal Sound FX/GORE_SPLATS/GORE_Splat_L_Ground_01_mono.wav",
    "Universal Sound FX/GORE_SPLATS/GORE_Splat_L_Ground_02_mono.wav",
    "Universal Sound FX/GORE_SPLATS/GORE_Splat_Hit_Short_mono.wav"
-  ]
+  ],
+  "reverb": 0.15
  },
  "mass_burst": {
   "vol": 1.6,
@@ -261,7 +300,9 @@
   "files": [
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 1.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 2.wav"
-  ]
+  ],
+  "reverb": 0.6,
+  "width": 0.7
  },
  "rock_rip": {
   "vol": 0.65,
@@ -269,7 +310,9 @@
   "files": [
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_falling_debris_02.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_falling_debris_03.wav"
-  ]
+  ],
+  "reverb": 0.4,
+  "rolloff": 0.7
  },
  "rock_hold": {
   "vol": 1.0,
@@ -279,7 +322,8 @@
   "candidates": [
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_avalanche_landslide_debris_01.wav",
    "Pixel Magic Sound Effects Pack/PM_ELEM_Earth01_Boulder_Impact_Heavy.wav"
-  ]
+  ],
+  "reverb": 0.15
  },
  "rock_throw": {
   "vol": 0.8,
@@ -289,7 +333,8 @@
    "Gamemaster Audio - Pro Sound Collection/Whooshes/whoosh_slow_deep_02.wav",
    "Gamemaster Audio - Pro Sound Collection/Whooshes/whoosh_slow_deep_04.wav",
    "Gamemaster Audio - Pro Sound Collection/Whooshes/whoosh_slow_deep_08.wav"
-  ]
+  ],
+  "reverb": 0.3
  },
  "rock_hit": {
   "vol": 0.85,
@@ -299,7 +344,9 @@
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_heavy_slam_02.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_heavy_slam_03.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_heavy_slam_04.wav"
-  ]
+  ],
+  "reverb": 0.45,
+  "rolloff": 0.7
  },
  "rock_land": {
   "vol": 0.6,
@@ -308,7 +355,8 @@
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_hit_impact_01.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_hit_impact_02.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_hit_impact_03.wav"
-  ]
+  ],
+  "reverb": 0.4
  },
  "leak_whisper": {
   "vol": 1.0,
@@ -320,7 +368,8 @@
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_Dark02.wav",
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_Dark03_Loop.wav",
    "Pixel Magic Sound Effects Pack/PM_ELEM_Dark04_Absorb_P3_Drone.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "leak_ripple": {
   "vol": 1.0,
@@ -330,7 +379,9 @@
   "candidates": [
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_LowGust01.wav",
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_LowGust02.wav"
-  ]
+  ],
+  "reverb": 0.45,
+  "width": 0.6
  },
  "leak_snake": {
   "vol": 1.0,
@@ -340,7 +391,8 @@
   "candidates": [
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Sizzle 6.wav",
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Sizzle 2.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "beam_cast": {
   "vol": 0.75,
@@ -349,14 +401,16 @@
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_Projectile01.wav",
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_Projectile02.wav",
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_Projectile03.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "beam_channel": {
   "vol": 3.0,
   "why": "while the beam is held: a ringing crystal loop (seam -0.4 dB; quiet in the pack, -33 dBFS)",
   "files": [
    "SFX_Collection/WAV/Farm/Event_PreciousCrystalRinging_Loop.wav"
-  ]
+  ],
+  "reverb": 0.3
  },
  "beam_shot": {
   "vol": 0.8,
@@ -365,7 +419,8 @@
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_LightImpact01.wav",
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_LightImpact02.wav",
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_LightImpact03.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "beam_bite": {
   "vol": 0.55,
@@ -373,7 +428,8 @@
   "files": [
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Needle piercing flesh/Needle piercing flesh 1.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Needle piercing flesh/Needle piercing flesh 2.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "beam_shatter": {
   "vol": 0.75,
@@ -382,7 +438,8 @@
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/glass_smashable_small_break_01.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/glass_smashable_small_break_02.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/glass_smashable_small_break_03.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "beam_petals": {
   "vol": 0.3,
@@ -392,7 +449,8 @@
    "Universal Sound FX/GLASS/GLASS_Fragment_04_mono.wav",
    "Universal Sound FX/GLASS/GLASS_Fragment_10_mono.wav",
    "Universal Sound FX/GLASS/GLASS_Fragment_13_mono.wav"
-  ]
+  ],
+  "reverb": 0.4
  },
  "lens_form": {
   "vol": 0.7,
@@ -400,7 +458,8 @@
   "files": [
    "RPG Magic SFX 2/Se-uk_Jeong_Spells_SFX_[Video_Demo_3]/Ice_Crystal_Buff_Cast.wav",
    "Pixel Magic Sound Effects Pack/PM_ELEM_Ice05_Crystal_Buff.wav"
-  ]
+  ],
+  "reverb": 0.45
  },
  "lens_focus": {
   "vol": 1.0,
@@ -409,14 +468,16 @@
   "files": [],
   "candidates": [
    "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "lens_fire": {
   "vol": 2.0,
   "why": "the focused light cutting: a blowtorch loop (seam -0.5 dB)",
   "files": [
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Blow Torch Loop.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "lens_cut": {
   "vol": 0.65,
@@ -425,7 +486,8 @@
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping flesh/Ripping flesh 1.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping flesh/Ripping flesh 3.wav",
    "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping flesh/Ripping flesh 8.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "lens_dissolve": {
   "vol": 1.0,
@@ -434,7 +496,8 @@
   "files": [],
   "candidates": [
    "Universal Sound FX/GLASS/GLASS_Rattle_Many_Fragments_01_stereo.wav"
-  ]
+  ],
+  "reverb": 0.45
  },
  "item_throw": {
   "vol": 0.7,
@@ -443,7 +506,8 @@
    "Universal Sound FX/WHOOSHES/Air/WHOOSH_Air_Blade_RR1_mono.wav",
    "Universal Sound FX/WHOOSHES/Air/WHOOSH_Air_Blade_RR2_mono.wav",
    "Universal Sound FX/WHOOSHES/Air/WHOOSH_Air_Blade_RR3_mono.wav"
-  ]
+  ],
+  "reverb": 0.15
  },
  "item_land_mask": {
   "vol": 0.8,
@@ -451,14 +515,16 @@
   "files": [
    "soundeffect-lab/various/cup-put1__set-down-ceramic-bowl.ogg",
    "SFX_Collection/WAV/Inventory_SFX/Ceramic_Barrel_Close.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "item_land_hand": {
   "vol": 0.7,
   "why": "the bronze votive hand lands: metal dropped",
   "files": [
    "SFX_Collection/WAV/Inventory_SFX/Armour_Plate_Equipment_Drop.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "item_land_lodestone": {
   "vol": 0.8,
@@ -467,7 +533,8 @@
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_small_hit_01.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_small_hit_02.wav",
    "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_small_hit_03.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "item_land_orbs": {
   "vol": 0.6,
@@ -475,7 +542,8 @@
   "files": [
    "Universal Sound FX/GLASS/GLASS_Tap_mono.wav",
    "soundeffect-lab/various/glass1__clink-glasses-toast.ogg"
-  ]
+  ],
+  "reverb": 0.2
  },
  "item_land_gem": {
   "vol": 0.6,
@@ -484,21 +552,24 @@
    "SFX_Collection/WAV/Farm/Hit_CrystalMineral_01.wav",
    "SFX_Collection/WAV/Farm/Hit_CrystalMineral_02.wav",
    "SFX_Collection/WAV/Farm/Hit_CrystalMineral_03.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "item_land_lens": {
   "vol": 0.7,
   "why": "the lens lands: glass tapped",
   "files": [
    "Universal Sound FX/GLASS/GLASS_Tap_mono.wav"
-  ]
+  ],
+  "reverb": 0.2
  },
  "orb_clack": {
   "vol": 0.35,
   "why": "the orbs knock into each other: glasses clinking",
   "files": [
    "soundeffect-lab/various/glass1__clink-glasses-toast.ogg"
-  ]
+  ],
+  "reverb": 0.3
  },
  "item_pickup": {
   "vol": 0.7,
@@ -506,7 +577,8 @@
   "files": [
    "SFX_Collection/WAV/Inventory_SFX/Items_Random_Item_Grab_01.wav",
    "SFX_Collection/WAV/Inventory_SFX/Items_Random_Item_Grab_02.wav"
-  ]
+  ],
+  "reverb": 0.1
  },
  "orb_hover": {
   "vol": 1.0,
@@ -515,7 +587,8 @@
   "files": [],
   "candidates": [
    "Gamemaster Audio - Pro Sound Collection/Backgrounds/background_wind_chimes_loop.wav"
-  ]
+  ],
+  "reverb": 0.15
  },
  "ui_hover": {
   "vol": 0.35,
@@ -523,14 +596,16 @@
   "files": [
    "Ultimate SFX Bundle - HD Remaster/Modern UI Sounds - HD Remake/Clicks Sound (button hover) 1.wav",
    "Ultimate SFX Bundle - HD Remaster/Modern UI Sounds - HD Remake/Clicks Sound (button hover) 2.wav"
-  ]
+  ],
+  "reverb": 0
  },
  "ui_click": {
   "vol": 0.5,
   "why": "an object in the inventory clicked",
   "files": [
    "SFX_Collection/WAV/Inventory_SFX/UI_Magic_Click.wav"
-  ]
+  ],
+  "reverb": 0
  },
  "viewer_open": {
   "vol": 0.5,
@@ -538,7 +613,8 @@
   "files": [
    "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 1.wav",
    "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 10.wav"
-  ]
+  ],
+  "reverb": 0.05
  },
  "viewer_close": {
   "vol": 0.4,
@@ -546,14 +622,16 @@
   "files": [
    "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 11.wav",
    "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 12.wav"
-  ]
+  ],
+  "reverb": 0.05
  },
  "viewer_next": {
   "vol": 0.4,
   "why": "the next object in the viewer",
   "files": [
    "SFX_Collection/WAV/Inventory_SFX/UI_Magic_Click.wav"
-  ]
+  ],
+  "reverb": 0.05
  },
  "viewer_throw": {
   "vol": 1.0,
@@ -563,7 +641,8 @@
   "candidates": [
    "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 2.wav",
    "Pixel Magic Sound Effects Pack/PM_ELEM_Dark03_Dispel.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "power_lost": {
   "vol": 1.0,
@@ -576,7 +655,8 @@
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic_Debuff02.wav",
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic_Debuff03.wav",
    "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic_Debuff04.wav"
-  ]
+  ],
+  "reverb": 0.4
  },
  "ending_begin": {
   "vol": 1.0,
@@ -585,14 +665,16 @@
   "files": [],
   "candidates": [
    "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Down_8000ms_stereo.wav"
-  ]
+  ],
+  "reverb": 0.6
  },
  "egg_knock": {
   "vol": 0.9,
   "why": "knocks from inside the egg, faster and faster: an egg tapped (short, so the fast ones don't smear)",
   "files": [
    "soundeffect-lab/various/egg-konkon1__tap-egg-crack.ogg"
-  ]
+  ],
+  "reverb": 0.3
  },
  "egg_crack": {
   "vol": 0.9,
@@ -601,7 +683,8 @@
    "soundeffect-lab/various/egg-break1__crack-egg-open.ogg",
    "Universal Sound FX/BREAKS_SNAPS/CRACK_Bright_Crisp_01_mono.wav",
    "Universal Sound FX/BREAKS_SNAPS/CRACK_Bright_Crisp_02_mono.wav"
-  ]
+  ],
+  "reverb": 0.35
  },
  "egg_open": {
   "vol": 1.0,
@@ -609,7 +692,9 @@
   "files": [
    "Universal Sound FX/BREAKS_SNAPS/BREAK_Hollow_stereo.wav",
    "Universal Sound FX/BREAKS_SNAPS/BREAK_Crack_stereo.wav"
-  ]
+  ],
+  "reverb": 0.5,
+  "width": 0.4
  },
  "egg_piece_land": {
   "vol": 1.0,
@@ -619,6 +704,7 @@
   "candidates": [
    "soundeffect-lab/various/cup-put1__set-down-ceramic-bowl.ogg",
    "Universal Sound FX/GLASS/GLASS_Fragment_03_mono.wav"
-  ]
+  ],
+  "reverb": 0.15
  }
 }

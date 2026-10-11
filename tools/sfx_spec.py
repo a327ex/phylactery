@@ -207,6 +207,98 @@ SPEC = {
         why='shell pieces landing on stone: nothing recorded for eggshell falling'),
 }
 
+# The cave's levers per slot (2026-10-11, "Lich Survivors 14"; the editor's 3D fields, written into sound_picks.lua
+# with the pick). The ear sits half way down the room camera's line of sight (sound_rooms' cave.ear), ~6.5 m from the
+# egg and ~20 m from the far wall, in one stone cave with a long dark tail. What is set here, and why:
+#   reverb  how much of it the cave answers (0.25 when unset). Big and hard things ring out (rock, bursts, the egg
+#           opening, glass and crystal); loops that run for seconds keep little, or the tail turns to mud under the
+#           fight; the inventory and the viewer are not in the cave at all (0); the cave loop is a recording made in a
+#           cave, its room already in it (0).
+#   width   0 = a point (the default); a big or spread-out thing keeps some of the recording's stereo: every snake
+#           bursting at once, the ring of warped air rolling out, the one loop that stands for all crawling snakes.
+#   rolloff how fast it fades with distance (1 when unset): the hiss of a snake coming in, and stone slamming, carry
+#           across the room (a warning from the far wall must still be heard).
+CAVE = {
+    # the cave
+    'cave_amb': dict(reverb=0),
+    'shaft_hum': dict(reverb=0.4, width=0.6, rolloff=0.6),
+    'egg_shiver': dict(reverb=0.2),
+    # him
+    'lich_hover': dict(reverb=0.1),
+    'lich_hurt': dict(reverb=0.3),
+    'lich_hurt_pose': dict(reverb=0.15),
+    'lich_die': dict(reverb=0.5, width=0.3),
+    'lich_thud': dict(reverb=0.3),
+    'mask_drop': dict(reverb=0.35),
+    # the snakes
+    'snake_hiss': dict(reverb=0.35, rolloff=0.6),
+    'snake_slither': dict(reverb=0.1, width=0.5),
+    'snake_strike': dict(reverb=0.25),
+    'coil_grip': dict(reverb=0.25),
+    'coil_squeeze': dict(reverb=0.1, width=0.4),
+    'coil_win': dict(reverb=0.6, width=0.6),
+    'snake_ash': dict(reverb=0.3),
+    'snake_dissolve': dict(reverb=0.35),
+    # fire
+    'fire_cast': dict(reverb=0.3),
+    'fire_ignite': dict(reverb=0.3),
+    'fire_burn': dict(reverb=0.1),
+    'fire_sweep': dict(reverb=0.2, width=0.5),
+    # gore
+    'gore_crush': dict(reverb=0.3),
+    'gore_land': dict(reverb=0.15),
+    'mass_burst': dict(reverb=0.6, width=0.7),
+    # the beam
+    'beam_cast': dict(reverb=0.35),
+    'beam_channel': dict(reverb=0.3),
+    'beam_bite': dict(reverb=0.2),
+    'beam_shatter': dict(reverb=0.35),
+    'beam_shot': dict(reverb=0.35),
+    'beam_petals': dict(reverb=0.4),
+    # the objects
+    'item_land_gem': dict(reverb=0.2), 'item_land_hand': dict(reverb=0.2), 'item_land_lens': dict(reverb=0.2),
+    'item_land_lodestone': dict(reverb=0.2), 'item_land_mask': dict(reverb=0.2), 'item_land_orbs': dict(reverb=0.2),
+    'item_pickup': dict(reverb=0.1),
+    'item_throw': dict(reverb=0.15),
+    'orb_clack': dict(reverb=0.3),
+    'orb_hover': dict(reverb=0.15),
+    # the leak
+    'leak_whisper': dict(reverb=0.2),
+    'leak_ripple': dict(reverb=0.45, width=0.6),
+    'leak_snake': dict(reverb=0.2),
+    # the lens
+    'lens_form': dict(reverb=0.45),
+    'lens_focus': dict(reverb=0.35),
+    'lens_fire': dict(reverb=0.2),
+    'lens_cut': dict(reverb=0.2),
+    'lens_dissolve': dict(reverb=0.45),
+    # the lift
+    'lift_cast': dict(reverb=0.35),
+    'lift_hold': dict(reverb=0.2),
+    'lift_knot': dict(reverb=0.25),
+    'lift_swell': dict(reverb=0.45, width=0.5),
+    'lift_burst': dict(reverb=0.5, width=0.5),
+    'lift_fist': dict(reverb=0.15),
+    # the rock
+    'rock_rip': dict(reverb=0.4, rolloff=0.7),
+    'rock_hold': dict(reverb=0.15),
+    'rock_throw': dict(reverb=0.3),
+    'rock_hit': dict(reverb=0.45, rolloff=0.7),
+    'rock_land': dict(reverb=0.4),
+    # the inventory and the viewer (not in the cave)
+    'ui_hover': dict(reverb=0), 'ui_click': dict(reverb=0),
+    'viewer_open': dict(reverb=0.05), 'viewer_close': dict(reverb=0.05), 'viewer_next': dict(reverb=0.05),
+    'viewer_throw': dict(reverb=0.35),
+    'power_lost': dict(reverb=0.4),
+    # the ending
+    'ending_begin': dict(reverb=0.6),
+    'egg_knock': dict(reverb=0.3),
+    'egg_crack': dict(reverb=0.35),
+    'egg_open': dict(reverb=0.5, width=0.4),
+    'egg_piece_land': dict(reverb=0.15),
+}
+CAVE_KEYS = {'reverb', 'width', 'rolloff', 'near', 'far', 'air', 'occlusion', 'doppler', 'travel', 'lowcut'}
+
 
 def main():
     index = [l.rstrip('\n') for l in open(INDEX, encoding='utf-8')]
@@ -239,7 +331,12 @@ def main():
                 else:
                     files.append(hits[0])
             rec['files'] = files
+        for k, v in CAVE.get(slot, {}).items():
+            if k not in CAVE_KEYS:
+                bad.append(f'{slot}: {k!r} is not a 3D setting')
+            rec[k] = v
         out[slot] = rec
+    bad += [f'CAVE names {s!r}, which is no slot' for s in CAVE if s not in SPEC]
     if bad:
         print('\n'.join(bad))
         sys.exit(1)

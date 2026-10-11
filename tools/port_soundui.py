@@ -33,6 +33,8 @@ def main():
     s = rep(s, "local HUD                -- mb/hud.lua, handed in by draw", "local HUD                -- port/hud.lua, handed in by draw")
     # Lich's slots (tools/sfx_spec.py), in the order they were written there
     spec = open(os.path.join(HERE, 'sfx_spec.py'), encoding='utf-8').read()
+    spec = spec[spec.index('\nSPEC = {'):]
+    spec = spec[:spec.index('\n}\n')]           # (the SPEC table only: CAVE below it names the same slots)
     names = re.findall(r"^    '([a-z0-9_]+)': dict\(", spec, re.M)
     known = 'M.KNOWN = {\n' + ''.join(
         '  ' + ', '.join(f"'{n}'" for n in names[i:i + 8]) + ',\n' for i in range(0, len(names), 8)) + '}\n'
@@ -52,6 +54,11 @@ local function project(pos, lim, near)
   return (_v.x*0.5 + 0.5)*640, (0.5 - _v.y*0.5)*360
 end""")
     s = rep(s, "function M.draw(hud, camera)\n", "function M.draw(hud, camera)\n  CAM = camera\n")
+    # the cave's EAR row (Lich: where you hear from, placed by port/game.lua): kept with the room's reverb
+    s = rep(s, "    { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 1000, map = 'sq', q = 5, fmt = '%dHZ' },\n  },\n}",
+            "    { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 1000, map = 'sq', q = 5, fmt = '%dHZ' },\n"
+            "    { key = 'ear', label = 'EAR', lo = 0, hi = 1, map = 'lin', q = 0.01, fmt = '%d%% IN', mul = 100 },   -- (Lich)\n"
+            "  },\n}")
     open(os.path.join(GAME, 'port', 'soundui.lua'), 'w', encoding='utf-8', newline='\n').write(s)
 
     # ---------------------------------------------------------------- audio
@@ -87,12 +94,18 @@ end
             "  voices = {}, last_play = {}, master = 0.8, ready = true, hooks = {}, on3d = true, reverb_on = true, zone = nil,\n"
             "  last_t = {}, quiet = false }      -- (Lich: a call's gap; the site's off-screen silence)")
     a = rep(a, "  spatial = true, curve = 'inverse', near = 1.0, far = 60, rolloff = 1.0, air = 1.0, occlusion = 1.0,",
-            "  -- (Lich: the ear is the room's fixed camera, ~15 m from the egg and the fight, not a head in it: near is\n"
-            "  -- room-sized and the air gentle, or the whole room would come out 23 dB down and dull)\n"
-            "  spatial = true, curve = 'inverse', near = 12.0, far = 60, rolloff = 1.0, air = 0.3, occlusion = 1.0,")
+            "  -- (Lich: the ear hangs on the room camera's line of sight, `ear` of the way in (A.ROOM_DEFAULTS, port/game.lua):\n"
+            "  -- ~6.5 m from the egg, ~4 m from him, ~20 m from the far wall. near = the fight round the egg at full\n"
+            "  -- loudness, the far wall ~10 dB down; the air a little duller with distance than a head's)\n"
+            "  spatial = true, curve = 'inverse', near = 6.0, far = 60, rolloff = 1.0, air = 0.5, occlusion = 1.0,")
     a = re.sub(r"A\.ROOM_DEFAULTS = \{\n.*?\n\}\n",
-               "A.ROOM_DEFAULTS = {\n  cave = { size = 0.85, damp = 0.35, predelay = 0.035, gain = 0.80, width = 1, lowcut = 120 },   "
-               "-- (Lich) one cave, stone, high\n}\n", a, count=1, flags=re.S)
+               "A.ROOM_DEFAULTS = {\n"
+               "  -- (Lich) one cave, stone, 31 m across under a high dome: a long tail (size), the highs dying a little sooner\n"
+               "  -- than a bare hall's (rough rock, damp), the walls answering 13-20 m off (predelay 40 ms), nothing under\n"
+               "  -- 140 Hz sent in (the cave loop's drone and the rock slams would turn the tail to mud).\n"
+               "  -- ear = where you hear from: 0 = the room camera, 1 = what it looks at (port/game.lua places the listener)\n"
+               "  cave = { size = 0.85, damp = 0.4, predelay = 0.04, gain = 0.80, width = 1, lowcut = 140, ear = 0.5 },\n"
+               "}\n", a, count=1, flags=re.S)
     a = rep(a, "  local i = math.random(1, #v)", "  local i = 1 + floor(rnd()*#v)")
     a = rep(a, "  local base_pitch = (o.pitch or 1) * (lo + (hi - lo) * math.random())",
             "  local base_pitch = (o.pitch or 1) * (lo + (hi - lo) * rnd())")
@@ -175,17 +188,6 @@ end
 
 -- the picker's audition: a raw clip, no slot, in your head
 """)
-    a = rep(a, """  A.pending = keep
-  refresh(dt)
-  room_tick(dt)
-end""", """  A.pending = keep
-  refresh(dt)
-  room_tick(dt)
-  -- (Lich) stopped loops leave the list (a game of burns, beams and leaks made one each, and kept them all)
-  local live = {}
-  for _, L in ipairs(A.loops) do if not L.stopped then live[#live + 1] = L end end
-  A.loops = live
-end""")
     return a
 
 
