@@ -1,5 +1,5 @@
 --[[
-  PORTED from megablock's mb/soundui.lua (megablock 348c159) by tools/port_soundui.py: edit there, or here and say so.
+  PORTED from megablock's mb/soundui.lua (megablock 012a1f1) by tools/port_soundui.py: edit there, or here and say so.
   soundui.lua -- sounds as words, and the editor that tunes them (soundui.js + soundlib.js of the web
   build, native; round 5: the Tab list, the slot editor, 3D).
   While playing, every sound the game asks for shows up as its slot name: at its place in the world, or stacked
@@ -311,6 +311,7 @@ M.SLIDERS = {
     { key = 'gain', label = 'LEVEL', lo = 0, hi = 3, map = 'sq', q = 0.01, fmt = '%.2f' },
     { key = 'width', label = 'WIDTH', lo = 0, hi = 1, map = 'lin', q = 0.01, fmt = '%.2f' },
     { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 1000, map = 'sq', q = 5, fmt = '%dHZ' },
+    { key = 'ear', label = 'EAR', lo = 0, hi = 1, map = 'lin', q = 0.01, fmt = '%d%% IN', mul = 100 },   -- (Lich)
   },
 }
 

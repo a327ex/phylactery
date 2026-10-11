@@ -27,7 +27,9 @@ in port/audio.lua + port/soundui.lua, PORTED from megablock's mb/audio.lua + mb/
 `tools/port_soundui.py` (Lich's differences live in that script; re-run it after megablock changes the originals,
 never hand-edit the ported files without saying so). His picks: `sound_picks.lua` (the in-game editor writes it:
 TAB / ESC, not on the site); mine came from `tools/sfx_spec.py` -> `tools/sfx_bake.py` (his edits win). Red =
-`unsure` on purpose. Sound code never draws from the game's rngs.
+`unsure` on purpose. Sound code never draws from the game's rngs. Round 68 (2026-10-11): the ear is not the camera but
+half way down its line of sight (port/game.lua `ear_of`, the cave's EAR row in sound_rooms.lua); each slot's cave
+levers (reverb, width, rolloff) live in tools/sfx_spec.py `CAVE`.
 
 **three.js first (owner, 2026-09-27)**, like Brutal Behavior: the game lives in `web/`
 (`index.html` + `src/*.js`, three.js 0.170 from jsdelivr, local modules import each other only

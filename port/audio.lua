@@ -1,5 +1,5 @@
 --[[
-  PORTED from megablock's mb/audio.lua (megablock 348c159) by tools/port_soundui.py: edit there, or here and say so.
+  PORTED from megablock's mb/audio.lua (megablock 012a1f1) by tools/port_soundui.py: edit there, or here and say so.
   audio.lua -- sound slots, placed in 3D (audio.js + sfxlog.js of the web build, then round 5's 3D sound).
   The game names a SLOT for every sound; the slot plays the files picked for it (sound_picks.lua in the game
   folder, written by the editor in port/soundui.lua; the files are converted copies in assets/sfx/), and every
@@ -54,16 +54,21 @@ local OCC_EVERY = 0.12                 -- seconds between a voice's wall checks
 -- a slot's settings when it names none (pitch 1..1: the game's calls already jitter their pitch)
 A.DEFAULTS = {
   vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 16, sr = 1, mute = false,
-  -- (Lich: the ear is the room's fixed camera, ~15 m from the egg and the fight, not a head in it: near is
-  -- room-sized and the air gentle, or the whole room would come out 23 dB down and dull)
-  spatial = true, curve = 'inverse', near = 12.0, far = 60, rolloff = 1.0, air = 0.3, occlusion = 1.0,
+  -- (Lich: the ear hangs on the room camera's line of sight, `ear` of the way in (A.ROOM_DEFAULTS, port/game.lua):
+  -- ~6.5 m from the egg, ~4 m from him, ~20 m from the far wall. near = the fight round the egg at full
+  -- loudness, the far wall ~10 dB down; the air a little duller with distance than a head's)
+  spatial = true, curve = 'inverse', near = 6.0, far = 60, rolloff = 1.0, air = 0.5, occlusion = 1.0,
   width = 0, binaural = true, doppler = 1.0, travel = 0, lowcut = 0,
 }
 A.CURVES = { 'inverse', 'linear', 'exp', 'none' }
 
 -- the rooms: the reverb the listener's zone gets (size 0..1 tail, damp 0..1, predelay s, gain, width, lowcut Hz)
 A.ROOM_DEFAULTS = {
-  cave = { size = 0.85, damp = 0.35, predelay = 0.035, gain = 0.80, width = 1, lowcut = 120 },   -- (Lich) one cave, stone, high
+  -- (Lich) one cave, stone, 31 m across under a high dome: a long tail (size), the highs dying a little sooner
+  -- than a bare hall's (rough rock, damp), the walls answering 13-20 m off (predelay 40 ms), nothing under
+  -- 140 Hz sent in (the cave loop's drone and the rock slams would turn the tail to mud).
+  -- ear = where you hear from: 0 = the room camera, 1 = what it looks at (port/game.lua places the listener)
+  cave = { size = 0.85, damp = 0.4, predelay = 0.04, gain = 0.80, width = 1, lowcut = 140, ear = 0.5 },
 }
 A.rooms = {}
 
@@ -495,12 +500,12 @@ function A.update(dt, cam)
     if A.now >= p.at then local o = p.o; o.delay = 0; voice(p.name, o) else keep[#keep + 1] = p end
   end
   A.pending = keep
-  refresh(dt)
-  room_tick(dt)
-  -- (Lich) stopped loops leave the list (a game of burns, beams and leaks made one each, and kept them all)
+  -- stopped loops go (the hum and the TV make a new loop every time they switch on)
   local live = {}
   for _, L in ipairs(A.loops) do if not L.stopped then live[#live + 1] = L end end
   A.loops = live
+  refresh(dt)
+  room_tick(dt)
 end
 
 -- while the game is paused (the editor is open): game time stands still, the voices that are sounding
