@@ -54,6 +54,49 @@ local function project(pos, lim, near)
   return (_v.x*0.5 + 0.5)*640, (0.5 - _v.y*0.5)*360
 end""")
     s = rep(s, "function M.draw(hud, camera)\n", "function M.draw(hud, camera)\n  CAM = camera\n")
+    # (Lich, 2026-10-11) loops named while playing too: megablock's loops are a room's hum, a TV; Lich's are the game's
+    # actions (the lens cutting through the floor, the beam held, a snake burning, the sweep, a rock or snake held up),
+    # and they went unseen in play ("a sound that's not showing up anywhere ... the lens laser going through the ground")
+    s = rep(s, """    -- loops: shown while stopped, where they play from
+    if paused then
+      local loops = {}""", """    -- loops: where they play from; while stopped all of them, while playing those sounding now (Lich: its loops are
+    -- the game's actions, the lens cutting through the floor, the beam, a burning snake, and went unseen in play)
+    do
+      local loops = {}""")
+    s = rep(s, """        if p then
+          local x, y = project(p, 1, false)
+          if x then
+            local txt = '~' .. L.name
+            local w = tw(txt) + 4
+            local rr = { x = round(x - w / 2), y = round(y), w = w, h = 11 }
+            if fits(rr) then
+              placed[#placed + 1] = rr
+              local name = L.name
+              label(txt, x, y, status_color(name), clickable and function() M.open_edit(name) end or nil, 0.9)
+            end""", """        if p and (paused or L.h) then
+          local x, y = project(p, 1, false)
+          if x then
+            local txt = '~' .. L.name
+            local w = tw(txt) + 4
+            local rr
+            for k = 0, 7 do      -- (Lich: nudged up off the other names, as the one-shots' are)
+              local r = { x = round(x - w / 2), y = round(y - k * 12), w = w, h = 11 }
+              if fits(r) then rr = r; break end
+            end
+            if rr then
+              placed[#placed + 1] = rr
+              local name = L.name
+              label(txt, x, rr.y, status_color(name), clickable and function() M.open_edit(name) end or nil, paused and 0.9 or 0.75)
+            end""")
+    # TAB and the ESC panel also count a loop that ended a moment ago (the lens's cut lasts about a second)
+    s = rep(s, """  for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n end end
+""", """  for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n end end
+  for n, t in pairs(AU.loop_end) do if not seen[n] and not playing[n] and now - t <= 1.5 then loops[#loops + 1] = n end end   -- (Lich)
+""")
+    s = rep(s, """  for L in pairs(AU.loop_set) do looping[L.name] = true end
+  local names = M.all_slots()""", """  for L in pairs(AU.loop_set) do looping[L.name] = true end
+  for n, t in pairs(AU.loop_end) do if now - t < 4 then recent[n] = true end end   -- (Lich: a loop that just ended)
+  local names = M.all_slots()""")
     # the cave's EAR row (Lich: where you hear from, placed by port/game.lua): kept with the room's reverb
     s = rep(s, "    { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 1000, map = 'sq', q = 5, fmt = '%dHZ' },\n  },\n}",
             "    { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 1000, map = 'sq', q = 5, fmt = '%dHZ' },\n"
@@ -92,7 +135,8 @@ end
 """)
     a = rep(a, "  voices = {}, last_play = {}, master = 0.8, ready = true, hooks = {}, on3d = true, reverb_on = true, zone = nil }",
             "  voices = {}, last_play = {}, master = 0.8, ready = true, hooks = {}, on3d = true, reverb_on = true, zone = nil,\n"
-            "  last_t = {}, quiet = false }      -- (Lich: a call's gap; the site's off-screen silence)")
+            "  last_t = {}, quiet = false, loop_end = {} }   -- (Lich: a call's gap; the site's off-screen silence; when\n"
+            "  -- each loop last stopped, for the TAB list)")
     a = rep(a, "  spatial = true, curve = 'inverse', near = 1.0, far = 60, rolloff = 1.0, air = 1.0, occlusion = 1.0,",
             "  -- (Lich: the ear hangs on the room camera's line of sight, `ear` of the way in (A.ROOM_DEFAULTS, port/game.lua):\n"
             "  -- ~6.5 m from the egg, ~4 m from him, ~20 m from the far wall. near = the fight round the egg at full\n"
@@ -136,7 +180,8 @@ end
   o = o or {}
   o.pos = v3(o.pos)
   local L = { name = name, opts = o, h = nil, stopped = false }
-  function L.stop() L.stopped = true; A.loop_set[L] = nil; if L.h then sound_handle_stop(L.h); L.h = nil end end
+  -- (Lich: loop_end = when it stopped, so TAB still lists a loop that ended a moment ago)
+  function L.stop() L.stopped = true; A.loop_end[name] = A.now; A.loop_set[L] = nil; if L.h then sound_handle_stop(L.h); L.h = nil end end
   -- (Lich) a loop that moves with what makes it, and gets louder or softer (its voice reads opts every frame)
   function L.set_pos(p) if p then if o.pos then o.pos:set(p.x or p[1] or 0, p.y or p[2] or 0, p.z or p[3] or 0) else o.pos = v3(p) end end end
   function L.set_volume(v) o.volume = v end""")

@@ -385,6 +385,7 @@ function M.open_list()
   end
   local loops = {}
   for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n end end
+  for n, t in pairs(AU.loop_end) do if not seen[n] and not playing[n] and now - t <= 1.5 then loops[#loops + 1] = n end end   -- (Lich)
   table.sort(loops)
   for _, n in ipairs(loops) do seen[n] = true; rows[#rows + 1] = n end
   ui.list = rows
@@ -628,23 +629,28 @@ function M.draw(hud, camera)
         end
       end
     end
-    -- loops: shown while stopped, where they play from
-    if paused then
+    -- loops: where they play from; while stopped all of them, while playing those sounding now (Lich: its loops are
+    -- the game's actions, the lens cutting through the floor, the beam, a burning snake, and went unseen in play)
+    do
       local loops = {}
       for L in pairs(AU.loop_set) do loops[#loops + 1] = L end
       table.sort(loops, function(a, b) return a.name < b.name end)
       for _, L in ipairs(loops) do
         local p = L.opts and L.opts.pos
-        if p then
+        if p and (paused or L.h) then
           local x, y = project(p, 1, false)
           if x then
             local txt = '~' .. L.name
             local w = tw(txt) + 4
-            local rr = { x = round(x - w / 2), y = round(y), w = w, h = 11 }
-            if fits(rr) then
+            local rr
+            for k = 0, 7 do      -- (Lich: nudged up off the other names, as the one-shots' are)
+              local r = { x = round(x - w / 2), y = round(y - k * 12), w = w, h = 11 }
+              if fits(r) then rr = r; break end
+            end
+            if rr then
               placed[#placed + 1] = rr
               local name = L.name
-              label(txt, x, y, status_color(name), clickable and function() M.open_edit(name) end or nil, 0.9)
+              label(txt, x, rr.y, status_color(name), clickable and function() M.open_edit(name) end or nil, paused and 0.9 or 0.75)
             end
           end
         end
@@ -673,6 +679,7 @@ function draw_panel(now)
   local recent, looping = {}, {}
   for _, e in ipairs(AU.events) do if now - e.t < 4 then recent[e.name] = true end end
   for L in pairs(AU.loop_set) do looping[L.name] = true end
+  for n, t in pairs(AU.loop_end) do if now - t < 4 then recent[n] = true end end   -- (Lich: a loop that just ended)
   local names = M.all_slots()
   local x0, y0, w, row_h = 470, 6, 164, 9
   local fit_rows = floor((360 - 34) / row_h)
