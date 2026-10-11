@@ -432,7 +432,7 @@ local function listen(i)
   local r = ui.rows[i]
   if not r or not r.rel then return end
   ui.sel = i
-  local ok, played = pcall(AU.audition, ROOT .. '/' .. r.rel, 0.5)
+  local ok, played = pcall(AU.audition, ROOT .. '/' .. r.rel, 0.5, ui.slot)
   if ok and played then ui.heard = i else ui.heard = nil; say('CANNOT DECODE ' .. r.rel:sub(-60)) end
 end
 
@@ -839,7 +839,7 @@ function draw_edit()
         local add = key_is_down('lshift') or key_is_down('rshift')
         if add or ui.cand_heard == i then save_pick(name, rel, add); ui.cand_heard = nil
         else
-          local ok, played = pcall(AU.audition, ROOT .. '/' .. rel, 0.5)
+          local ok, played = pcall(AU.audition, ROOT .. '/' .. rel, 0.5, name)
           ui.cand_heard = (ok and played) and i or nil
           if not (ok and played) then say('CANNOT DECODE ' .. short) end
         end
