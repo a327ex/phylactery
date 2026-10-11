@@ -44,7 +44,7 @@ end
 
 local A = { slots = {}, sounds = {}, last = {}, loops = {}, pending = {}, events = {}, loop_set = {}, seen = {}, now = 0,
   voices = {}, last_play = {}, master = 0.8, ready = true, hooks = {}, on3d = true, reverb_on = true, zone = nil,
-  last_t = {}, quiet = false, loop_end = {}, sound_ix = {} }   -- (Lich: a call's gap; the site's off-screen silence; when
+  last_t = {}, quiet = false, loop_end = {}, sound_ix = {}, loop_slot = {}, preview_hs = {} }   -- (Lich: a call's gap; the site's off-screen silence; when
   -- each loop last stopped, for the TAB list)
 local PICKS, ROOMS = 'sound_picks.lua', 'sound_rooms.lua'
 local SPEED = 343                      -- m/s
@@ -55,7 +55,9 @@ local OCC_EVERY = 0.12                 -- seconds between a voice's wall checks
 -- a slot's settings when it names none (pitch 1..1: the game's calls already jitter their pitch)
 A.DEFAULTS = {
   -- (Lich, his ruling 2026-10-11: every sound 8 bits and 3x sample-rate crush unless its slot says otherwise)
-  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false,
+  -- (Lich) layer = every file at once, each with its own settings (not one at random); once = a file's own: in a
+  -- loop, it plays once as the loop starts instead of looping
+  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false, layer = false, once = false,
   -- (Lich: the ear hangs on the room camera's line of sight, `ear` of the way in (A.ROOM_DEFAULTS, port/game.lua):
   -- ~6.5 m from the egg, ~4 m from him, ~20 m from the far wall. near = the fight round the egg at full
   -- loudness, the far wall ~10 dB down; the air a little duller with distance than a head's)
@@ -409,9 +411,22 @@ function A.play(name, o)
     A.last_t[name] = A.now
   end
   o.pos = v3(o.pos)
-  if not o.fi then local _, fi = pick(name); o.fi = fi end   -- (Lich) its file, chosen now
+  local layered = not o.fi and A.get(name, 'layer')
+  if not o.fi and not layered then local _, fi = pick(name); o.fi = fi end   -- (Lich) its file, chosen now
   A.note(name, o.pos, o.delay)
   A.last_play[name] = { pos = o.pos and o.pos:clone() or nil, volume = o.volume, pitch = o.pitch, reverb = o.reverb }
+  if layered then      -- (Lich) every file at once, each its own play (its own delay and settings)
+    local s, h1 = A.slots[name], nil
+    for fi = 1, (s and s.files and #s.files or 0) do
+      local oc = {}
+      for k, x in pairs(o) do oc[k] = x end
+      oc.fi, oc.pos = fi, o.pos and o.pos:clone() or nil
+      local w = wait_for(name, oc)
+      if w > 0 then A.pending[#A.pending + 1] = { name = name, o = oc, at = A.now + w }
+      else local h = voice(name, oc); h1 = h1 or h end
+    end
+    return h1
+  end
   local w = wait_for(name, o)
   if w > 0 then
     A.pending[#A.pending + 1] = { name = name, o = o, at = A.now + w }
@@ -426,9 +441,22 @@ A.rt = 0
 A.pending_rt = {}
 function A.preview(name, only)     -- (Lich: only = that file of the slot alone)
   if A.preview_h then sound_handle_stop(A.preview_h); A.preview_h = nil end
+  for _, h in ipairs(A.preview_hs) do sound_handle_stop(h) end
+  A.preview_hs = {}     -- (Lich) a layered preview's voices
   A.pending_rt = {}
   local lp = A.last_play[name] or {}
   local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, fi = only }
+  local s = A.slots[name]
+  if not only and A.get(name, 'layer') and s and s.files and #s.files > 1 then   -- (Lich) layered: every file
+    local any = false
+    for fi = 1, #s.files do
+      local oc = { pos = o.pos and o.pos:clone() or nil, volume = o.volume, pitch = o.pitch, reverb = o.reverb, fi = fi }
+      local w = max(0, A.get(name, 'delay', fi))
+      if w > 0 then A.pending_rt[#A.pending_rt + 1] = { name = name, o = oc, at = A.rt + w }; any = true
+      else local h = voice(name, oc); if h then A.preview_hs[#A.preview_hs + 1] = h; any = true end end
+    end
+    return any
+  end
   local w = max(0, A.get(name, 'delay', o.fi))
   local tr = A.get(name, 'travel', o.fi)
   if tr > 0 and o.pos and A.get(name, 'spatial', o.fi) and A.on3d then w = w + tr * o.pos:distance_to(LIS.pos) / SPEED end
@@ -438,12 +466,17 @@ function A.preview(name, only)     -- (Lich: only = that file of the slot alone)
 end
 
 -- loops are registered even with nothing picked yet, so a pick made later starts them in place
+-- (Lich) a loop's voices stop: its main one and a layered loop's others
+local function loop_off(L)
+  if L.h then sound_handle_stop(L.h); L.h = nil end
+  if L.extra then for _, h in ipairs(L.extra) do sound_handle_stop(h) end; L.extra = nil end
+end
 function A.loop(name, o)
   o = o or {}
   o.pos = v3(o.pos)
   local L = { name = name, opts = o, h = nil, stopped = false }
   -- (Lich: loop_end = when it stopped, so TAB still lists a loop that ended a moment ago)
-  function L.stop() L.stopped = true; A.loop_end[name] = A.now; A.loop_set[L] = nil; if L.h then sound_handle_stop(L.h); L.h = nil end end
+  function L.stop() L.stopped = true; A.loop_end[name] = A.now; A.loop_set[L] = nil; loop_off(L) end
   -- (Lich) a loop that moves with what makes it, and gets louder or softer (its voice reads opts every frame)
   function L.set_pos(p) if p then if o.pos then o.pos:set(p.x or p[1] or 0, p.y or p[2] or 0, p.z or p[3] or 0) else o.pos = v3(p) end end end
   function L.set_volume(v) o.volume = v end
@@ -451,18 +484,36 @@ function A.loop(name, o)
   A.loops[#A.loops + 1] = L
   A.loop_set[L] = true
   A.seen[name] = true
+  A.loop_slot[name] = true     -- (Lich: the editor offers PLAYS ONCE for its files)
   A.last_play[name] = { pos = o.pos and o.pos:clone() or nil, volume = o.volume, pitch = o.pitch, reverb = o.reverb }
   A.start_loop(L)
   return L
 end
 function A.start_loop(L)
-  if L.h then sound_handle_stop(L.h); L.h = nil end
+  loop_off(L)
   if L.opts.max then   -- (Lich) at most `max` of this slot sounding at once; the rest stay registered, silent
     local n = 0
     for _, o in ipairs(A.loops) do if o ~= L and o.name == L.name and o.h and not o.stopped then n = n + 1 end end
     if n >= L.opts.max then return end
   end
+  -- (Lich) layered: every file, each its own voice and settings; a file marked ONCE plays once (a plain one-shot,
+  -- let finish), the others loop
+  local s = A.slots[L.name]
+  if A.get(L.name, 'layer') and s and s.files and #s.files > 1 then
+    for fi = 1, #s.files do
+      local once = A.get(L.name, 'once', fi)
+      local oc = setmetatable({ fi = fi }, { __index = L.opts })   -- (its position and volume follow the loop's)
+      local h = voice(L.name, oc, (not once) and L or nil)
+      if h and not once then
+        sound_handle_set_looping(h, true)
+        if L.h then L.extra = L.extra or {}; L.extra[#L.extra + 1] = h else L.h = h end
+      end
+    end
+    return
+  end
+  L.opts.fi = nil      -- (Lich) a loop (re)started picks its file again (the one it had may be gone)
   local h = voice(L.name, L.opts, L)
+  if h and A.get(L.name, 'once', L.opts.fi) then return end    -- (Lich) a ONCE file picked: it plays once
   if h then sound_handle_set_looping(h, true); L.h = h end
 end
 
@@ -486,7 +537,7 @@ local function refresh(dt)
       if v.loop and sound_handle_set_fx then
         local s = A.slots[v.name]
         sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master)
-        if s and s.mute then sound_handle_stop(v.h); v.loop.h = nil end
+        if s and s.mute then loop_off(v.loop) end
       end
       keep[#keep + 1] = v
     elseif v.loop and v.loop.h == v.h then
@@ -545,7 +596,10 @@ function A.paused_update(dt)
   LIS.prev = nil
   local keep = {}
   for _, p in ipairs(A.pending_rt) do
-    if A.rt >= p.at then A.preview_h = voice(p.name, p.o) else keep[#keep + 1] = p end
+    if A.rt >= p.at then
+      local h = voice(p.name, p.o); A.preview_h = A.preview_h or h
+      if h then A.preview_hs[#A.preview_hs + 1] = h end      -- (Lich: a layered preview's later voices)
+    else keep[#keep + 1] = p end
   end
   A.pending_rt = keep
   refresh(0)
@@ -566,7 +620,7 @@ function A.mute(on)
   if on == A.quiet then return end
   A.quiet = on
   for _, L in ipairs(A.loops) do
-    if on then if L.h then sound_handle_stop(L.h); L.h = nil end
+    if on then loop_off(L)
     elseif not L.stopped then A.start_loop(L) end
   end
   if on then A.pending = {} end

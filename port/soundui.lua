@@ -866,6 +866,19 @@ function draw_edit()
   local lx, rx, cw = 12, 326, 296
   local sp_y = top
   HUD.text('SOUND', lx, sp_y, YELLOW)
+  -- (Lich) the whole sound: one file at random each play, or every file at once; a loop's file: loops or plays once
+  if #files > 1 then
+    local lay = AU.get(name, 'layer')
+    local bx2 = button(lay and 'ALL FILES AT ONCE' or 'ONE FILE AT RANDOM', lx + 40, sp_y - 2, function()
+      AU.set(name, 'layer', (not lay) or nil); ui.dirty = true; flush_saves(); changed(name)
+    end, lay and GREEN or GREY, lay)
+    if fi and AU.loop_slot[name] then
+      local once = AU.get(name, 'once', fi)
+      button('FILE ' .. fi .. (once and ' PLAYS ONCE' or ' LOOPS'), bx2, sp_y - 2, function()
+        AU.set_file(name, fi, 'once', (not once) or nil); ui.dirty = true; flush_saves(); changed(name)
+      end, once and YELLOW or GREY, once)
+    end
+  end
   HUD.text('3D', rx, sp_y, YELLOW)
   for i, sp in ipairs(M.SLIDERS.sound) do
     local v = get(sp.key)
