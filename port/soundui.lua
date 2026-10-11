@@ -9,7 +9,8 @@
     TAB      the game stops and lists the sounds that were playing when you pressed it, then every red slot
              (always there, whatever was playing). Click one to edit it. TAB again or a click outside: play.
     ESC      the game stops and every slot is listed (the whole catalogue). Click one to edit it.
-    EDITOR   one slot: its files (X removes one; a red slot shows its suggestions: click to listen, again to
+    EDITOR   one slot: its files (X removes one; (Lich) a click on one: only it plays in the editor, every replay, until
+             clicked again; a red slot shows its suggestions: click to listen, again to
              use, shift+click to add as a variant), Horse Game's tuner (volume, a random pitch range, a delay
              whose negative side starts into the clip, bits, sample-rate crush, low cut) and the 3D settings
              (spatial, binaural, the distance curve, near / far / rolloff, air, walls, the reverb send, width,
@@ -18,7 +19,7 @@
              from where you stand, and the readout says what each ear got. SPACE plays, F finds a file, ESC
              goes back. Everything saves itself (sound_picks.lua, sound_rooms.lua).
     PICKER   (F) Horse Game's sound picker over Desktop/sound packs: type to search, arrows or a click to
-             listen, Enter (or a second click) to use, Shift+Enter to add a variant, Tab to listen again.
+             listen, Enter (or a second click) to use, Shift+Enter (Lich: or Shift + the second click) to add a variant, Tab to listen again.
 
   The game calls (port/game.lua):
     M.update(dt)          while stopped: keys, typing, clicks, drags, wheel
@@ -345,11 +346,13 @@ local function send_of(name)
 end
 
 -- a setting changed: keep it, hear it (the drag replays at most every 0.25 s, as Horse Game's tuner)
+-- (Lich) the editor's replays: the file he clicked alone, else the slot as the game plays it
+local function preview(name) return AU.preview(name, ui.solo_slot == name and ui.solo or nil) end
 local function changed(name, room)
   if room then ui.dirty_rooms = true else ui.dirty = true end
   if name and not is_loop(name) and ui.rt - ui.aud_t > 0.25 then
     ui.aud_t = ui.rt
-    AU.preview(name)
+    preview(name)
   end
 end
 local function flush_saves()
@@ -364,7 +367,7 @@ local function reset_slot(name)
   s.reverb = nil
   ui.dirty = true
   flush_saves()
-  AU.preview(name)
+  preview(name)
 end
 
 -- ================================================================================================ modes
@@ -507,7 +510,7 @@ function M.update(dt)
   if ui.mode == 'edit' then
     if key_is_pressed('escape') then close_edit(); return end
     if key_is_pressed('space') then
-      if is_loop(ui.slot) then say('IT IS A LOOP: IT IS PLAYING') else AU.preview(ui.slot) end
+      if is_loop(ui.slot) then say('IT IS A LOOP: IT IS PLAYING') else preview(ui.slot) end
     end
     if key_is_pressed('f') then M.open_picker(ui.slot) end
     return
@@ -776,10 +779,11 @@ function draw_edit()
   local col = status_color(name)
   HUD.text(name, 12, 11, col, 2)
   local state = AU.muted(name) and 'MUTED' or (#files > 0 and 'PICKED' or (AU.unsure(name) and 'UNSURE: NOT PICKED ON PURPOSE' or 'NO FILE YET'))
+  if ui.solo_slot == name and ui.solo then state = state .. '  ONLY FILE ' .. ui.solo end   -- (Lich)
   HUD.text(state .. (is_loop(name) and '  (A LOOP)' or ''), 12 + tw(name, 2) + 10, 15, col)
   -- the buttons, top right
   local bx = 628 - (tw('PLAY (SPACE)') + tw('FIND (F)') + tw('UNMUTE') + tw('RESET') + tw('BACK (ESC)') + 30 + 16)
-  bx = button('PLAY (SPACE)', bx, 10, function() if is_loop(name) then say('IT IS A LOOP: IT IS PLAYING') else AU.preview(name) end end, GREEN)
+  bx = button('PLAY (SPACE)', bx, 10, function() if is_loop(name) then say('IT IS A LOOP: IT IS PLAYING') else preview(name) end end, GREEN)
   bx = button('FIND (F)', bx, 10, function() M.open_picker(name) end)
   bx = button(AU.muted(name) and 'UNMUTE' or 'MUTE', bx, 10, function()
     local m = not AU.muted(name)
@@ -799,10 +803,22 @@ function draw_edit()
     for i = 1, #files do
       local short = (src[i] or files[i]):match('[^/]*$') or files[i]
       if #short > 34 then short = short:sub(1, 32) .. '..' end
-      if x + tw(short) + 20 > 628 then HUD.text('+' .. (#files - i + 1), x, y, DIM); break end
-      x = button('X', x, y - 2, function() remove_pick(name, i) end, ORANGE)
+      if x + tw(short) + 20 > 628 then   -- (Lich) another row, up to three (the settings start at 64), then +n
+        if y >= 52 then HUD.text('+' .. (#files - i + 1), x, y, DIM); break end
+        y, x = y + 11, 46
+      end
+      x = button('X', x, y - 2, function() remove_pick(name, i); if ui.solo_slot == name then ui.solo = nil end end, ORANGE)
+      -- (Lich) a click on a file: only it plays in the editor until clicked again (highlighted while it is the one)
+      local fi, fw = i, tw(short)
+      local solo = ui.solo_slot == name and ui.solo == i
+      local hot = ui.mx >= x - 2 and ui.mx < x + fw + 2 and ui.my >= y - 2 and ui.my < y + 8
+      if hot or solo then HUD.rect(x - 2, y - 2, fw + 4, 10, solo and 'rgba(80,72,40,0.95)' or 'rgba(50,50,60,0.9)') end
       HUD.text(short, x, y, GREEN)
-      x = x + tw(short) + 8
+      hits[#hits + 1] = { id = 'file_' .. i, x = x - 2, y = y - 2, w = fw + 4, h = 10, act = function()
+        if solo then ui.solo = nil else ui.solo_slot, ui.solo = name, fi end
+        preview(name)
+      end }
+      x = x + fw + 8
     end
   end
   -- a red slot: the suggestions nobody was sure of
@@ -978,7 +994,7 @@ function draw_picker()
       hits[#hits + 1] = { x = 10, y = ry - 2, w = 614, h = ROW_H, act = function()
         if r.folder then set_query(r.folder:lower() .. ' '); return end
         -- a second click on the row that's playing: use it
-        if ui.sel == ri and ui.heard == ri then save_pick(name, r.rel, false) else listen(ri) end
+        if ui.sel == ri and ui.heard == ri then save_pick(name, r.rel, key_is_down('lshift') or key_is_down('rshift')) else listen(ri) end
       end }
     end
     local n = #list
