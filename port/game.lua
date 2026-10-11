@@ -607,6 +607,12 @@ function GM.create(R, hud_layer)
         if powers.is_on(powers.ALL[sl + 1]) then held = {}; mouse.down = false; AU.play('ui_click'); ask_remove(sl); return end
       else mouse.down = true; pick_goal() end
     end
+    -- (2026-10-11, his testing key; not on the site) right-click on an object up there: thrown at once, as THROW in
+    -- the viewer does, without the viewer
+    if not HOSTED and mouse_is_pressed(2) and not (inspect_active() or END.won or SEQ.on or intro_on()) then
+      local sl = slot_at(mx, my)
+      if sl and powers.is_on(powers.ALL[sl + 1]) then held = {}; mouse.down = false; AU.play('ui_click'); throw_power(sl); return end
+    end
     if mouse_is_pressed(2) and not (inspect_active() or END.won or SEQ.on) and (G.cam == CAM_FREE or G.cam == CAM_EGG) then drag = { mx, my } end
     if mouse_is_released(1) then mouse.down = false end
     if mouse_is_released(2) then drag = nil end
@@ -734,7 +740,7 @@ function GM.create(R, hud_layer)
       HUD.text(string.format('COILED ROUND IT: %d   COVERED: %d%% OF %d', #snakes.coiled, floor(snakes.coverage*100 + 0.5), floor(snakes.WIN*100 + 0.5)), W - 8, y0 + 22, '#e0a070', 1, 'right', nil, INK)
     end
     if END.won then HUD.text('THE EGG IS COVERED: WON', W - 8, y0 + 33, '#f2e3c2', 1, 'right', nil, INK) end
-    HUD.text('T: REMOVE EVERY POWER AT ONCE (TESTING)', W - 8, H - 48, '#8a7c66', 1, 'right', nil, INK)
+    HUD.text('T: REMOVE ALL   RIGHT-CLICK AN OBJECT: THROW IT (TESTING)', W - 8, H - 48, '#8a7c66', 1, 'right', nil, INK)
     HUD.text('CLICK AN OBJECT, OR 5-0: REMOVE IT   I: LOOK AT THEM', W - 8, H - 37, '#f2e3c2', 1, 'right', nil, INK)
     HUD.text('WASD OR HOLD LEFT MOUSE: MOVE', W - 8, H - 26, '#8a7c66', 1, 'right', nil, INK)
     HUD.text('1-4 Y CAMERA   V C U N Z M O K X L F J R G P B   H HIDE', W - 8, H - 15, '#8a7c66', 1, 'right', nil, INK)

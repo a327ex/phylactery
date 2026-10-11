@@ -382,7 +382,6 @@ return {
     ["unsure"] = true,
   },
   ["lens_cut"] = {
-    ["bits"] = 8,
     ["files"] = {
       "assets/sfx/lens_cut_1.ogg",
       "assets/sfx/lens_cut_2.ogg",
@@ -405,16 +404,17 @@ return {
     ["unsure"] = true,
   },
   ["lens_fire"] = {
-    ["bits"] = 8,
     ["files"] = {
       "assets/sfx/lens_fire_6.ogg",
+      "assets/sfx/lens_fire_7.ogg",
     },
     ["reverb"] = 0,
     ["sr"] = 4,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Flamethrower Fire Loop 2.wav",
+      "SFX_Collection/WAV/Magic Spells/Buff_Power_Up_01.wav",
     },
-    ["vol"] = 0.9,
+    ["vol"] = 0.66,
   },
   ["lens_focus"] = {
     ["candidates"] = {
@@ -718,7 +718,6 @@ return {
     ["vol"] = 0.55,
   },
   ["snake_slither"] = {
-    ["bits"] = 8,
     ["files"] = {
       "assets/sfx/snake_slither_1.ogg",
     },
