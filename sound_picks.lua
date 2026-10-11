@@ -405,14 +405,16 @@ return {
     ["unsure"] = true,
   },
   ["lens_fire"] = {
+    ["bits"] = 8,
     ["files"] = {
-      "assets/sfx/lens_fire_1.ogg",
+      "assets/sfx/lens_fire_6.ogg",
     },
-    ["reverb"] = 0.2,
+    ["reverb"] = 0,
+    ["sr"] = 4,
     ["src"] = {
-      "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Blow Torch Loop.wav",
+      "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Flamethrower Fire Loop 2.wav",
     },
-    ["vol"] = 2,
+    ["vol"] = 0.9,
   },
   ["lens_focus"] = {
     ["candidates"] = {
@@ -716,10 +718,12 @@ return {
     ["vol"] = 0.55,
   },
   ["snake_slither"] = {
+    ["bits"] = 8,
     ["files"] = {
       "assets/sfx/snake_slither_1.ogg",
     },
     ["reverb"] = 0.1,
+    ["sr"] = 4,
     ["src"] = {
       "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Crawling/Snake Crawling 2.wav",
     },

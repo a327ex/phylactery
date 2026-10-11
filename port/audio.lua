@@ -325,9 +325,10 @@ function A.spatial(name, pos, o, walls, vel, fx, info)
 end
 
 -- ------------------------------------------------------------------------------------------------ playing
-local function pick(name)
+local function pick(name, only)
   local v = A.sounds[name]
   if not v or #v == 0 then return nil end
+  if only and v[only] then return v[only] end      -- (Lich) the editor: that file alone
   local i = 1 + floor(rnd()*#v)
   if #v > 1 and v[i] == A.last[name] then i = i % #v + 1 end
   A.last[name] = v[i]
@@ -346,7 +347,7 @@ end
 -- start one voice of slot `name`; nil when the slot is silent
 local function voice(name, o, loop)
   if A.muted(name) or A.quiet then return nil end
-  local snd = pick(name)
+  local snd = pick(name, o.only)
   if not snd then return nil end
   local lo, hi = A.get(name, 'pitch_lo'), A.get(name, 'pitch_hi')
   local base_pitch = (o.pitch or 1) * (lo + (hi - lo) * rnd())
@@ -397,11 +398,11 @@ end
 -- (a new preview cuts the last one: dragging a slider replays it every quarter second)
 A.rt = 0
 A.pending_rt = {}
-function A.preview(name)
+function A.preview(name, only)     -- (Lich: only = that file of the slot alone)
   if A.preview_h then sound_handle_stop(A.preview_h); A.preview_h = nil end
   A.pending_rt = {}
   local lp = A.last_play[name] or {}
-  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb }
+  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, only = only }
   local w = max(0, A.get(name, 'delay'))
   local tr = A.get(name, 'travel')
   if tr > 0 and o.pos and A.get(name, 'spatial') and A.on3d then w = w + tr * o.pos:distance_to(LIS.pos) / SPEED end

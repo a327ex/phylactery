@@ -88,6 +88,45 @@ end""")
               local name = L.name
               label(txt, x, rr.y, status_color(name), clickable and function() M.open_edit(name) end or nil, paused and 0.9 or 0.75)
             end""")
+    # (Lich, 2026-10-11) one file of a slot alone: his "how do I play that sound separately while testing and editing?"
+    # A click on a file in the editor's PLAYS row makes it the only one the editor plays (PLAY, SPACE, every slider's
+    # replay, RESET) until it is clicked again; the game itself still picks among all of them. And in the picker,
+    # Shift + the second click adds a variant (as Shift+Enter, and as Shift+click on a red slot's suggestions).
+    s = rep(s, "its files (X removes one; a red slot",
+            "its files (X removes one; (Lich) a click on one: only it plays in the editor, every replay, until\n"
+            "             clicked again; a red slot")
+    s = rep(s, "Enter (or a second click) to use, Shift+Enter to add a variant,",
+            "Enter (or a second click) to use, Shift+Enter (Lich: or Shift + the second click) to add a variant,")
+    s = rep(s, "local function changed(name, room)\n",
+            "-- (Lich) the editor's replays: the file he clicked alone, else the slot as the game plays it\n"
+            "local function preview(name) return AU.preview(name, ui.solo_slot == name and ui.solo or nil) end\n"
+            "local function changed(name, room)\n")
+    s = rep(s, "  HUD.text(state .. (is_loop(name) and '  (A LOOP)' or ''), ",
+            "  if ui.solo_slot == name and ui.solo then state = state .. '  ONLY FILE ' .. ui.solo end   -- (Lich)\n"
+            "  HUD.text(state .. (is_loop(name) and '  (A LOOP)' or ''), ")
+    s = rep(s, "AU.preview(name)", "preview(name)", count=3)
+    s = rep(s, "AU.preview(ui.slot)", "preview(ui.slot)")
+    s = rep(s, """      if x + tw(short) + 20 > 628 then HUD.text('+' .. (#files - i + 1), x, y, DIM); break end
+      x = button('X', x, y - 2, function() remove_pick(name, i) end, ORANGE)
+      HUD.text(short, x, y, GREEN)
+      x = x + tw(short) + 8""", """      if x + tw(short) + 20 > 628 then   -- (Lich) another row, up to three (the settings start at 64), then +n
+        if y >= 52 then HUD.text('+' .. (#files - i + 1), x, y, DIM); break end
+        y, x = y + 11, 46
+      end
+      x = button('X', x, y - 2, function() remove_pick(name, i); if ui.solo_slot == name then ui.solo = nil end end, ORANGE)
+      -- (Lich) a click on a file: only it plays in the editor until clicked again (highlighted while it is the one)
+      local fi, fw = i, tw(short)
+      local solo = ui.solo_slot == name and ui.solo == i
+      local hot = ui.mx >= x - 2 and ui.mx < x + fw + 2 and ui.my >= y - 2 and ui.my < y + 8
+      if hot or solo then HUD.rect(x - 2, y - 2, fw + 4, 10, solo and 'rgba(80,72,40,0.95)' or 'rgba(50,50,60,0.9)') end
+      HUD.text(short, x, y, GREEN)
+      hits[#hits + 1] = { id = 'file_' .. i, x = x - 2, y = y - 2, w = fw + 4, h = 10, act = function()
+        if solo then ui.solo = nil else ui.solo_slot, ui.solo = name, fi end
+        preview(name)
+      end }
+      x = x + fw + 8""")
+    s = rep(s, "        if ui.sel == ri and ui.heard == ri then save_pick(name, r.rel, false) else listen(ri) end",
+            "        if ui.sel == ri and ui.heard == ri then save_pick(name, r.rel, key_is_down('lshift') or key_is_down('rshift')) else listen(ri) end")
     # TAB and the ESC panel also count a loop that ended a moment ago (the lens's cut lasts about a second)
     s = rep(s, """  for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n end end
 """, """  for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n end end
@@ -151,6 +190,14 @@ end
                "  cave = { size = 0.85, damp = 0.4, predelay = 0.04, gain = 0.80, width = 1, lowcut = 140, ear = 0.5 },\n"
                "}\n", a, count=1, flags=re.S)
     a = rep(a, "  local i = math.random(1, #v)", "  local i = 1 + floor(rnd()*#v)")
+    # (Lich) the editor playing one file of a slot alone (soundui's click on a file)
+    a = rep(a, "local function pick(name)\n  local v = A.sounds[name]\n  if not v or #v == 0 then return nil end\n",
+            "local function pick(name, only)\n  local v = A.sounds[name]\n  if not v or #v == 0 then return nil end\n"
+            "  if only and v[only] then return v[only] end      -- (Lich) the editor: that file alone\n")
+    a = rep(a, "  local snd = pick(name)\n", "  local snd = pick(name, o.only)\n")
+    a = rep(a, "function A.preview(name)\n", "function A.preview(name, only)     -- (Lich: only = that file of the slot alone)\n")
+    a = rep(a, "  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb }\n",
+            "  local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, only = only }\n")
     a = rep(a, "  local base_pitch = (o.pitch or 1) * (lo + (hi - lo) * math.random())",
             "  local base_pitch = (o.pitch or 1) * (lo + (hi - lo) * rnd())")
     a = rep(a, """local function voice(name, o, loop)
