@@ -54,6 +54,7 @@ M.KNOWN = {
   'orb_clack', 'item_pickup', 'orb_hover', 'ui_hover', 'ui_click', 'viewer_open', 'viewer_close', 'viewer_next',
   'viewer_throw', 'power_lost', 'ending_begin', 'egg_knock', 'egg_crack', 'egg_open', 'egg_piece_land',
   'lens_shard_land',     -- (Lich, round 69: the broken lens's shards landing; no file yet)
+  'lift_ball_burst',     -- (Lich, 2026-10-12: the lift's ball of snakes bursting; lift_burst = single ones)
 }
 
 local YELLOW, GREEN, RED, GREY = '#ffd65a', '#9be58f', '#ff5a4e', '#8d8a84'

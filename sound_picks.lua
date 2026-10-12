@@ -547,15 +547,82 @@ return {
     ["reverb"] = 0.3,
     ["unsure"] = true,
   },
-  ["lift_burst"] = {
+  ["lift_ball_burst"] = {
     ["files"] = {
       "assets/sfx/mass_burst_1.ogg",
       "assets/sfx/mass_burst_2.ogg",
+      "assets/sfx/lift_burst_7.ogg",
+      "assets/sfx/lift_burst_8.ogg",
+      "assets/sfx/lift_burst_9.ogg",
+      "assets/sfx/lift_burst_10.ogg",
+      "assets/sfx/lift_burst_11.ogg",
+      "assets/sfx/lift_burst_12.ogg",
+    },
+    ["lay"] = {
+      ["1"] = {
+        ["reverb"] = 0.4,
+        ["sr"] = 5,
+        ["vol"] = 1.21,
+      },
+    },
+    ["per"] = {
+      ["assets/sfx/lift_burst_12.ogg"] = {
+        ["layer"] = 2,
+        ["reverb"] = 0.4,
+        ["sr"] = 4,
+        ["vol"] = 1.25,
+      },
     },
     ["reverb"] = 0.6,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 1.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 2.wav",
+      "Ultimate SFX Bundle (2020)/Gore Sounds Pro/Popping bloody Sac/Popping bloody Sac 2.wav",
+      "Ultimate SFX Bundle (2020)/Gore Sounds Pro/Popping bloody Sac/Popping bloody Sac 1.wav",
+      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 5.wav",
+      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 4.wav",
+      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 3.wav",
+      "SFX_Collection/WAV/Blood/Blood_Fall_After_Wound_03.wav",
+    },
+    ["vol"] = 1.6,
+    ["width"] = 0.7,
+  },
+  ["lift_burst"] = {
+    ["files"] = {
+      "assets/sfx/mass_burst_1.ogg",
+      "assets/sfx/mass_burst_2.ogg",
+      "assets/sfx/lift_burst_7.ogg",
+      "assets/sfx/lift_burst_8.ogg",
+      "assets/sfx/lift_burst_9.ogg",
+      "assets/sfx/lift_burst_10.ogg",
+      "assets/sfx/lift_burst_11.ogg",
+      "assets/sfx/lift_burst_12.ogg",
+    },
+    ["lay"] = {
+      ["1"] = {
+        ["reverb"] = 0.4,
+        ["sr"] = 5,
+        ["vol"] = 1.21,
+      },
+    },
+    ["per"] = {
+      ["assets/sfx/lift_burst_12.ogg"] = {
+        ["layer"] = 2,
+        ["reverb"] = 0.4,
+        ["sr"] = 4,
+        ["vol"] = 1.25,
+      },
+    },
+    ["reverb"] = 0.6,
+    ["src"] = {
+      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 1.wav",
+      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 2.wav",
+      "Ultimate SFX Bundle (2020)/Gore Sounds Pro/Popping bloody Sac/Popping bloody Sac 2.wav",
+      "Ultimate SFX Bundle (2020)/Gore Sounds Pro/Popping bloody Sac/Popping bloody Sac 1.wav",
+      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 5.wav",
+      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 4.wav",
+      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 3.wav",
+      "SFX_Collection/WAV/Blood/Blood_Fall_After_Wound_03.wav",
     },
     ["vol"] = 1.6,
     ["width"] = 0.7,
@@ -563,10 +630,23 @@ return {
   ["lift_cast"] = {
     ["files"] = {
       "assets/sfx/lift_cast_1.ogg",
+      "assets/sfx/lift_cast_4.ogg",
+    },
+    ["lay"] = {
+      ["1"] = {
+        ["all"] = true,
+      },
+    },
+    ["per"] = {
+      ["assets/sfx/lift_cast_4.ogg"] = {
+        ["sr"] = 3,
+        ["vol"] = 0.5,
+      },
     },
     ["reverb"] = 0.35,
     ["src"] = {
       "Pixel Magic Sound Effects Pack/PM_ELEM_Dark06_Gravity_P1_Cast.wav",
+      "Pixel Magic Sound Effects Pack/PM_SPELL_Cast14_Gravity_Ball.wav",
     },
     ["vol"] = 0.6,
   },
