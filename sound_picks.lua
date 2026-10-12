@@ -221,10 +221,12 @@ return {
     ["vol"] = 0.8,
   },
   ["fire_sweep"] = {
+    ["fade"] = 5,
     ["files"] = {
       "assets/sfx/fire_sweep_1.ogg",
     },
     ["reverb"] = 0.2,
+    ["sr"] = 4,
     ["src"] = {
       "Pixel Magic Sound Effects Pack/PM_ELEM_Fire08_Flamethrower_Loop.wav",
     },
@@ -547,20 +549,16 @@ return {
   },
   ["lift_burst"] = {
     ["files"] = {
-      "assets/sfx/lift_burst_1.ogg",
-      "assets/sfx/lift_burst_2.ogg",
-      "assets/sfx/lift_burst_3.ogg",
-      "assets/sfx/lift_burst_4.ogg",
+      "assets/sfx/mass_burst_1.ogg",
+      "assets/sfx/mass_burst_2.ogg",
     },
-    ["reverb"] = 0.5,
+    ["reverb"] = 0.6,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 1.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 2.wav",
-      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 3.wav",
-      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 4.wav",
     },
-    ["vol"] = 1.2,
-    ["width"] = 0.5,
+    ["vol"] = 1.6,
+    ["width"] = 0.7,
   },
   ["lift_cast"] = {
     ["files"] = {
