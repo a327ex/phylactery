@@ -65,9 +65,9 @@ A.DEFAULTS = {
   -- (Lich) a layer's: once = in a loop it plays once as the loop starts instead of looping; all = every file of it
   -- plays (that is in), not one at random
   vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false, once = false, all = false,
-  -- (Lich: the ear hangs on the room camera's line of sight, `ear` of the way in (A.ROOM_DEFAULTS, port/game.lua):
-  -- ~6.5 m from the egg, ~4 m from him, ~20 m from the far wall. near = the fight round the egg at full
-  -- loudness, the far wall ~10 dB down; the air a little duller with distance than a head's)
+  -- (Lich: the ear is at his head, turned as the camera (A.ROOM_DEFAULTS `head`, port/game.lua): ~2 m from the egg,
+  -- ~17 m from the far wall. near = the fight round him and the egg at full loudness, the far wall ~9 dB down; the
+  -- air a little duller with distance than a head's)
   spatial = true, curve = 'inverse', near = 6.0, far = 60, rolloff = 1.0, air = 0.5, occlusion = 1.0,
   width = 0, binaural = true, doppler = 1.0, travel = 0, lowcut = 0,
 }
@@ -78,8 +78,9 @@ A.ROOM_DEFAULTS = {
   -- (Lich) one cave, stone, 31 m across under a high dome: a long tail (size), the highs dying a little sooner
   -- than a bare hall's (rough rock, damp), the walls answering 13-20 m off (predelay 40 ms), nothing under
   -- 140 Hz sent in (the cave loop's drone and the rock slams would turn the tail to mud).
-  -- ear = where you hear from: 0 = the room camera, 1 = what it looks at (port/game.lua places the listener)
-  cave = { size = 0.85, damp = 0.4, predelay = 0.04, gain = 0.80, width = 1, lowcut = 140, ear = 0.5 },
+  -- head = where you hear from: 1 = his head (owner, 2026-10-11), 0 = the room camera (port/game.lua places it; a new
+  -- key: round 68's `ear`, half way down the camera's line of sight, is left behind in old sound_rooms.lua files)
+  cave = { size = 0.85, damp = 0.4, predelay = 0.04, gain = 0.80, width = 1, lowcut = 140, head = 1 },
 }
 A.rooms = {}
 

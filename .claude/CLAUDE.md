@@ -29,7 +29,7 @@ bring megablock's later changes over by hand. A slot's files sit in LAYERS (each
 at random; settings file -> layer -> slot -> DEFAULTS). His picks: `sound_picks.lua` (the in-game editor writes it:
 TAB / ESC, not on the site); mine came from `tools/sfx_spec.py` -> `tools/sfx_bake.py` (his edits win). Red =
 `unsure` on purpose. Sound code never draws from the game's rngs. Round 68 (2026-10-11): the ear is not the camera but
-half way down its line of sight (port/game.lua `ear_of`, the cave's EAR row in sound_rooms.lua); each slot's cave
+at his head, turned as the camera (port/game.lua `ear_of`; the cave's EAR row = sound_rooms.lua `head`, 68j); each slot's cave
 levers (reverb, width, rolloff) live in tools/sfx_spec.py `CAVE`. ⚠ An agent instance reads AND WRITES the real
 `sound_picks.lua` / `sound_rooms.lua` (he edits them in his running game at the same time): a probe that drives the
 editor snapshots them with file_read_string first and writes them back at the end (scratch/s14/solo_probe.lua), and

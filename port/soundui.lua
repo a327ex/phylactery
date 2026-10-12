@@ -338,7 +338,7 @@ M.SLIDERS = {
     { key = 'gain', label = 'LEVEL', lo = 0, hi = 3, map = 'sq', q = 0.01, fmt = '%.2f' },
     { key = 'width', label = 'WIDTH', lo = 0, hi = 1, map = 'lin', q = 0.01, fmt = '%.2f' },
     { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 1000, map = 'sq', q = 5, fmt = '%dHZ' },
-    { key = 'ear', label = 'EAR', lo = 0, hi = 1, map = 'lin', q = 0.01, fmt = '%d%% IN', mul = 100 },   -- (Lich)
+    { key = 'head', label = 'EAR', lo = 0, hi = 1, map = 'lin', q = 0.01, fmt = '%d%% TO HIM', mul = 100 },   -- (Lich: 100% = his head, 0% = the camera)
   },
 }
 

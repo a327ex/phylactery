@@ -427,10 +427,10 @@ return {
         ["layer"] = 2,
         ["reverb"] = 0.1,
         ["sr"] = 5,
-        ["vol"] = 1,
+        ["vol"] = 0.9,
       },
       ["assets/sfx/lens_fire_6.ogg"] = {
-        ["vol"] = 1,
+        ["vol"] = 0.7,
       },
     },
     ["reverb"] = 0.15,
@@ -451,16 +451,14 @@ return {
   },
   ["lens_form"] = {
     ["files"] = {
-      "assets/sfx/lens_form_3.ogg",
-      "assets/sfx/lens_form_5.ogg",
+      "assets/sfx/lens_form_10.ogg",
     },
     ["reverb"] = 0.45,
-    ["sr"] = 4,
+    ["sr"] = 5,
     ["src"] = {
-      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Fire Magic/RPG3_FireMagicArrow_CuteCast.wav",
-      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic_FreezeShort01.wav",
+      "soundeffect-lab/battle/magic-ice2__freeze.ogg",
     },
-    ["vol"] = 0.7,
+    ["vol"] = 0.45,
   },
   ["lich_die"] = {
     ["files"] = {
