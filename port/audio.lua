@@ -679,7 +679,7 @@ local function refresh(dt, fdt)
       alive = v.loop ~= nil or v.fade ~= nil or A.now - v.t0 < 10
       if v.loop or v.fade then
         sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master * fx.dry * 0.5 * (fx.gain_l + fx.gain_r)
-          * (v.fade and fade_gain(v) or 1))
+          * (v.fade and fade_gain(v) or 1) * ((v.loop and A.editing == v.name) and 0 or 1))
       end
     end
     if alive and v.fade and v.fade.t >= v.fade.dur then sound_handle_stop(v.h); alive = false end   -- (Lich) faded out
@@ -687,7 +687,8 @@ local function refresh(dt, fdt)
       if abs(pf - v.pf) > 0.002 then v.pf = pf; sound_handle_set_pitch(v.h, v.pitch * pf) end
       if v.loop and sound_handle_set_fx then
         local s = A.slots[v.name]
-        sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master)
+        -- (Lich) the editor open on this slot: the game's own loop of it is hushed (its PLAY is heard alone)
+        sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master * (A.editing == v.name and 0 or 1))
         if s and s.mute then loop_off(v.loop) end
       elseif v.fade and sound_handle_set_fx then      -- (Lich) dying away
         sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master * fade_gain(v))

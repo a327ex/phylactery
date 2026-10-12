@@ -377,7 +377,7 @@ local function preview(name)
 end
 local function changed(name, room)
   if room then ui.dirty_rooms = true else ui.dirty = true end
-  if name and not is_loop(name) and ui.rt - ui.aud_t > 0.25 then
+  if name and ui.rt - ui.aud_t > 0.25 then     -- (Lich: loops too: their game voice could be near silent or absent)
     ui.aud_t = ui.rt
     preview(name)
   end
@@ -563,6 +563,8 @@ function M.update(dt)
   ui.rt = ui.rt + dt
   if ui.msg_t > 0 then ui.msg_t = ui.msg_t - dt end
   local typed = engine_get_typed_text() or ''
+  -- (Lich) the slot the editor is on: the game's own loops of it are hushed meanwhile (audio refresh)
+  AU.editing = (ui.mode == 'edit' or ui.mode == 'picker') and ui.slot or nil
   if ui.mode == 'play' then return end
   AU.paused_update(dt)
   if ui.mode == 'edit' or ui.mode == 'picker' then     -- (Lich) undo
@@ -610,7 +612,7 @@ function M.update(dt)
   if ui.mode == 'edit' then
     if key_is_pressed('escape') then close_edit(); return end
     if key_is_pressed('space') then
-      if is_loop(ui.slot) then say('IT IS A LOOP: IT IS PLAYING') else preview(ui.slot) end
+      preview(ui.slot)     -- (Lich: a loop's too; the game's own loop of it is hushed while the editor is on it)
     end
     if key_is_pressed('f') then M.open_picker(ui.slot) end
     return
@@ -906,7 +908,7 @@ function draw_edit()
   HUD.text(state .. (AU.loop_slot[name] and '  (A LOOP)' or ''), 12 + tw(name, 2) + 10, 15, col)
   -- the buttons, top right
   local bx = 628 - (tw('PLAY (SPACE)') + tw('FIND (F)') + tw('UNMUTE') + tw('RESET') + tw('UNDO') + tw('BACK (ESC)') + 36 + 20)
-  bx = button('PLAY (SPACE)', bx, 10, function() if is_loop(name) then say('IT IS A LOOP: IT IS PLAYING') else preview(name) end end, GREEN)
+  bx = button('PLAY (SPACE)', bx, 10, function() preview(name) end, GREEN)
   bx = button('FIND (F)', bx, 10, function() M.open_picker(name) end)
   bx = button(AU.muted(name) and 'UNMUTE' or 'MUTE', bx, 10, function()
     local m = not AU.muted(name)
