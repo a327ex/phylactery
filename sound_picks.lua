@@ -181,6 +181,11 @@ return {
     ["files"] = {
       "assets/sfx/fire_burn_1.ogg",
     },
+    ["per"] = {
+      ["assets/sfx/fire_burn_1.ogg"] = {
+        ["vol"] = 0.55,
+      },
+    },
     ["reverb"] = 0.1,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/General Fire Loop 6.wav",
