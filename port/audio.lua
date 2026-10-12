@@ -303,7 +303,7 @@ function A.note(name, pos, delay)
     end
   end
   A.events[#A.events + 1] = { name = name, pos = pos and pos:clone() or nil, t = now + (delay or 0), count = 1 }
-  if #A.events > 80 then table.remove(A.events, 1) end
+  if #A.events > 400 then table.remove(A.events, 1) end   -- (Lich: 80 was a few seconds of a fight; TAB looks back 10 s)
 end
 
 -- ------------------------------------------------------------------------------------------------ the listener

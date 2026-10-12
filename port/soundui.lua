@@ -4,7 +4,7 @@
   soundui.lua -- sounds as words, and the editor that tunes them (soundui.js + soundlib.js of the web
   build, native; round 5: the Tab list, the slot editor, 3D).
   While playing, every sound the game asks for shows up as its slot name: at its place in the world, or stacked
-  near the bottom when it has none; a loop shows ~name while it sounds. Green = it has a file, yellow = no file yet,
+  near the bottom when it has none; a loop shows (name) while it sounds. Green = it has a file, yellow = no file yet,
   RED = no file ON PURPOSE (a pick nobody was sure of: it waits for him), grey = muted.
 
     TAB      the game stops and lists the sounds that were playing when you pressed it (and loops that just ended),
@@ -418,20 +418,26 @@ function M.pause() if ui.mode == 'play' then ui.mode = 'pause'; ui.back = 'pause
 function M.resume() AU.stop_audition(); flush_saves(); ui.mode = 'play'; ui.drag = nil end
 function M.take_resume() local r = ui.resume; ui.resume = false; return r end
 
--- TAB: what is sounding now (live voices, loops, anything asked for in the last 1.5 s), newest first
+-- TAB: what is sounding now and everything heard in the last RECENT seconds, newest first (Lich: was 1.5 s, and a
+-- sound a few seconds before the one he noticed, lens_form before the lens's burn, could never be found)
+local RECENT = 10
 function M.open_list()
   local now, rows, seen = AU.now, {}, {}
   local playing = AU.playing()
+  ui.list_age = {}
   for i = #AU.events, 1, -1 do
     local e = AU.events[i]
-    if not seen[e.name] and (playing[e.name] or now - e.t <= 1.5) and now - e.t >= -0.01 then
+    if not seen[e.name] and (playing[e.name] or now - e.t <= RECENT) and now - e.t >= -0.01 then
       seen[e.name] = true; rows[#rows + 1] = e.name
+      ui.list_age[e.name] = playing[e.name] and 0 or now - e.t
     end
   end
   local loops = {}
-  for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n end end
-  for n, t in pairs(AU.loop_end) do if not seen[n] and not playing[n] and now - t <= 1.5 then loops[#loops + 1] = n end end   -- (Lich)
-  table.sort(loops)
+  for n in pairs(playing) do if not seen[n] then loops[#loops + 1] = n; ui.list_age[n] = 0 end end
+  for n, t in pairs(AU.loop_end) do
+    if not seen[n] and not playing[n] and now - t <= RECENT then loops[#loops + 1] = n; ui.list_age[n] = now - t end
+  end
+  table.sort(loops, function(a, b) return ui.list_age[a] < ui.list_age[b] end)
   for _, n in ipairs(loops) do seen[n] = true; rows[#rows + 1] = n end
   ui.list = rows
   ui.list_scroll = 0
@@ -683,6 +689,10 @@ function M.draw(hud, camera)
   local clickable = ui.mode == 'pause' or ui.mode == 'list'
   if ui.mode ~= 'edit' and ui.mode ~= 'picker' then
     local placed = {}
+    -- (Lich) the TAB list's and the ESC panel's rects count as taken: the HUD draws text after rects, so a name in
+    -- the world showed through the panel over its rows
+    if ui.mode == 'list' then placed[1] = { x = 6, y = 6, w = 330, h = 348 } end
+    if ui.mode == 'pause' then placed[1] = { x = 470, y = 6, w = 164, h = 348 } end
     local function fits(r)
       for _, p in ipairs(placed) do
         if r.x < p.x + p.w and p.x < r.x + r.w and r.y < p.y + p.h and p.y < r.y + r.h then return false end
@@ -734,7 +744,7 @@ function M.draw(hud, camera)
         if p and (paused or L.h) then
           local x, y = project(p, 1, false)
           if x then
-            local txt = '~' .. L.name
+            local txt = '(' .. L.name .. ')'     -- (Lich: a loop in brackets; the font has no ~, it drew ?)
             local w = tw(txt) + 4
             local rr
             for k = 0, 7 do      -- (Lich: nudged up off the other names, as the one-shots' are)
@@ -771,9 +781,9 @@ end
 
 function draw_panel(now)
   local recent, looping = {}, {}
-  for _, e in ipairs(AU.events) do if now - e.t < 4 then recent[e.name] = true end end
+  for _, e in ipairs(AU.events) do if now - e.t < RECENT then recent[e.name] = true end end
   for L in pairs(AU.loop_set) do looping[L.name] = true end
-  for n, t in pairs(AU.loop_end) do if now - t < 4 then recent[n] = true end end   -- (Lich: a loop that just ended)
+  for n, t in pairs(AU.loop_end) do if now - t < RECENT then recent[n] = true end end   -- (Lich: a loop that just ended)
   local names = M.all_slots()
   local x0, y0, w, row_h = 470, 6, 164, 9
   local fit_rows = floor((360 - 34) / row_h)
@@ -793,7 +803,7 @@ function draw_panel(now)
     local files = s and s.files and #s.files or 0
     local col = status_color(n)
     HUD.alpha((recent[n] or hot) and 1 or 0.7)
-    HUD.text((recent[n] and '> ' or '  ') .. n .. (looping[n] and ' ~' or ''), x0 + 4, y, col)
+    HUD.text((recent[n] and '> ' or '  ') .. n .. (looping[n] and ' (LOOP)' or ''), x0 + 4, y, col)
     HUD.alpha(1)
     if files > 0 then HUD.text(tostring(files), x0 + w - 4, y, DIM, 1, 'right') end
     hits[#hits + 1] = { x = x0, y = y - 1, w = w, h = row_h, act = function() M.open_edit(n) end }
@@ -809,7 +819,7 @@ end
 function draw_list()
   local x0, y0, w = 6, 6, 330
   HUD.rect(x0, y0, w, 348, 'rgba(8,8,10,0.94)')
-  HUD.text('PLAYING WHEN YOU PRESSED TAB', x0 + 6, y0 + 5, CREAM)
+  HUD.text('HEARD IN THE LAST ' .. RECENT .. ' SECONDS, NEWEST FIRST', x0 + 6, y0 + 5, CREAM)
   -- the global switches, A/B
   local bx = x0 + 6
   bx = button(AU.on3d and '3D ON' or '3D OFF', bx, y0 + 18, function() AU.on3d = not AU.on3d; AU.save_rooms() end, AU.on3d and GREEN or GREY, AU.on3d)
@@ -817,7 +827,7 @@ function draw_list()
   HUD.text('ROOM: ' .. (AU.zone or '?'):upper(), bx + 4, y0 + 20, DIM)
   local rows = {}
   for _, n in ipairs(ui.list) do rows[#rows + 1] = { name = n } end
-  if #ui.list == 0 then rows[#rows + 1] = { text = 'NOTHING WAS PLAYING' } end
+  if #ui.list == 0 then rows[#rows + 1] = { text = 'NOTHING IN THE LAST ' .. RECENT .. ' SECONDS' } end
   local unsure = M.unsure_slots()
   rows[#rows + 1] = { gap = true }
   rows[#rows + 1] = { text = 'UNSURE (RED): NO FILE ON PURPOSE, ' .. #unsure .. ' LEFT', head = true }
@@ -836,8 +846,10 @@ function draw_list()
       if hot then HUD.rect(x0 + 1, y - 2, w - 2, row_h, 'rgba(70,70,82,0.9)') end
       local s = AU.slots[n]
       local files = s and s.files and #s.files or 0
-      HUD.text(n .. (is_loop(n) and ' ~' or ''), x0 + 8, y, status_color(n))
-      HUD.text(where(n), x0 + 150, y, DIM)
+      HUD.text(n .. (is_loop(n) and ' (LOOP)' or ''), x0 + 8, y, status_color(n))
+      local age = ui.list_age and ui.list_age[n]       -- (Lich) how long ago
+      if age then HUD.text(age < 0.05 and 'NOW' or ('%.1fS'):format(age), x0 + 136, y, age < 0.05 and GREEN or CREAM) end
+      HUD.text(where(n), x0 + 172, y, DIM)
       HUD.text(files > 0 and (files .. (files > 1 and ' FILES' or ' FILE')) or (AU.unsure(n) and 'UNSURE' or 'NO FILE'), x0 + w - 6, y, DIM, 1, 'right')
       hits[#hits + 1] = { x = x0, y = y - 2, w = w, h = row_h, act = function() M.open_edit(n) end }
     end
