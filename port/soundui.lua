@@ -53,6 +53,7 @@ M.KNOWN = {
   'lens_dissolve', 'item_throw', 'item_land_mask', 'item_land_hand', 'item_land_lodestone', 'item_land_orbs', 'item_land_gem', 'item_land_lens',
   'orb_clack', 'item_pickup', 'orb_hover', 'ui_hover', 'ui_click', 'viewer_open', 'viewer_close', 'viewer_next',
   'viewer_throw', 'power_lost', 'ending_begin', 'egg_knock', 'egg_crack', 'egg_open', 'egg_piece_land',
+  'lens_shard_land',     -- (Lich, round 69: the broken lens's shards landing; no file yet)
 }
 
 local YELLOW, GREEN, RED, GREY = '#ffd65a', '#9be58f', '#ff5a4e', '#8d8a84'
