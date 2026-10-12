@@ -18,6 +18,7 @@ local smoothstep = U.smoothstep
 local sqrt, abs, sin, cos, exp, floor, ceil, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.exp, math.floor, math.ceil, math.min, math.max, math.pi
 
 local LE = {}
+LE.STAGGER = 0.25     -- (2026-10-12) at least this long between two lenses starting (the game's flow)
 local FORM, CONVERGE, SPEED, SWEEP, LEAD, OFF, FADE, CUT_R = 0.4, 0.8, 3.0, 2.6, 0.35, 0.2, 0.45, 0.13
 local LENS_R = 0.38
 local LIGHTS_OFF = 0.15
@@ -98,6 +99,13 @@ function LE.create(ctx)
   end
   -- round 69 (owner, 2026-10-11): a lens that is done breaks like glass (the game's flow; LICH_ROOM keeps the dissolve)
   local shards = ctx.varied and require('port.shards').create(R, cave, fx) or nil
+  -- 2026-10-12 (owner: "multiple attack lens can't spawn at exactly the same time, at least a 0.25s or so delay between
+  -- them, otherwise the attack sound gets repeated"): in the game's flow a lens starts STAGGER s after the last one
+  -- started, at the soonest (casts of several, and casts close together). Its snake, ring and place are chosen at the
+  -- cast as before; it waits (q.wait_t: unseen, silent, its snake kept), then starts as if spawned then. LICH_ROOM:
+  -- all at once, as before.
+  local stagger = ctx.varied and LE.STAGGER or 0
+  local clock, last_start = 0, -1e9
   local active = {}
   local look = 0
   local cuts, fired = {}, {}
@@ -178,6 +186,11 @@ function LE.create(ctx)
   end
   local function spawn(s, k, quick, group)
     quick = quick or false
+    local wait = 0
+    if stagger > 0 then
+      local start = math.max(clock, last_start + stagger)
+      wait, last_start = start - clock, start
+    end
     local L
     for _, q in ipairs(LENSES) do if not q.on then L = q; break end end
     if not L then return nil end
@@ -194,8 +207,9 @@ function LE.create(ctx)
     if q.light then q.light.lens = q end
     beside(q, q.spot)
     L.on = true
-    AU.play('lens_form', { pos = pos })
-    L.m.position:copy(pos); L.m.scale:set_scalar(0.001); L.m.visible = true; L.sh.visible = true
+    if wait > 0 then q.wait_t = wait                                  -- (it sounds and shows as it starts: update)
+    else AU.play('lens_form', { pos = pos }) end
+    L.m.position:copy(pos); L.m.scale:set_scalar(0.001); L.m.visible = wait <= 0; L.sh.visible = true
     active[#active + 1] = q
     return pos
   end
@@ -252,10 +266,26 @@ function LE.create(ctx)
   end
 
   local function update(t, dt)
+    clock = t
     if shards then shards.update(t, dt, R.world_camera) end
     for ii = #active, 1, -1 do
       local q = active[ii]
       local i = ii - 1                              -- lens.js's index (the drift and flicker phases)
+      -- (a staggered lens waits its turn, unseen and silent, keeping its snake(s); then it starts, quick if hurried)
+      if q.wait_t then
+        q.wait_t = q.wait_t - dt
+        if q.wait_t > 0 then
+          if snakes.reclaim then
+            if q.s and snakes.free(q.s) then snakes.reclaim(q.s, 'LENS') end
+            if q.group then for _, g in ipairs(q.group) do if snakes.free(g) then snakes.reclaim(g, 'LENS') end end end
+          end
+          q.L.m.visible = false
+          goto next_lens
+        end
+        q.wait_t = nil
+        if q.hurried then q.t = max(q.t, FORM + CONVERGE - 0.12); q.hurried = nil end
+        AU.play('lens_form', { pos = q.pos })
+      end
       q.t = q.t + dt
       -- (round 52: a lens on its way keeps its snake(s) until its cut has passed)
       if snakes.reclaim and q.t - FORM - CONVERGE <= q.dur then
@@ -476,6 +506,7 @@ function LE.create(ctx)
         if q.light then q.light.l.intensity = 0; q.light.lens = nil end
         table.remove(active, ii)
       end
+      ::next_lens::
     end
   end
 
@@ -491,7 +522,8 @@ function LE.create(ctx)
   function P.hurry(s)
     for _, q in ipairs(active) do
       if q.s == s or (q.group and (function() for _, g in ipairs(q.group) do if g == s then return true end end; return false end)()) then
-        if not q.fired then q.t = max(q.t, FORM + CONVERGE - 0.12) end
+        if q.wait_t then q.hurried = true                        -- (still waiting its turn: quick as it starts)
+        elseif not q.fired then q.t = max(q.t, FORM + CONVERGE - 0.12) end
         return true
       end
     end
