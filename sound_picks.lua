@@ -407,15 +407,23 @@ return {
     ["files"] = {
       "assets/sfx/lens_fire_6.ogg",
       "assets/sfx/lens_fire_7.ogg",
+      "assets/sfx/lens_fire_8.ogg",
     },
-    ["layer"] = true,
+    ["lay"] = {
+      ["2"] = {
+        ["once"] = true,
+      },
+    },
     ["per"] = {
       ["assets/sfx/lens_fire_6.ogg"] = {
         ["vol"] = 1,
       },
       ["assets/sfx/lens_fire_7.ogg"] = {
-        ["once"] = true,
+        ["layer"] = 2,
         ["vol"] = 1,
+      },
+      ["assets/sfx/lens_fire_8.ogg"] = {
+        ["layer"] = 2,
       },
     },
     ["reverb"] = 0,
@@ -423,8 +431,9 @@ return {
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Flamethrower Fire Loop 2.wav",
       "SFX_Collection/WAV/Magic Spells/Buff_Power_Up_01.wav",
+      "RPG Magic SFX/Spells/Debuff_Silence_01.wav",
     },
-    ["vol"] = 0.66,
+    ["vol"] = 0.75,
   },
   ["lens_focus"] = {
     ["candidates"] = {

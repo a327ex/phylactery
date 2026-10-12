@@ -681,7 +681,9 @@ function GM.create(R, hud_layer)
   local function draw_hud()
     HUD.begin()
     if inspect_active() then inspect.draw_hud(); return end      -- (round 49: not the testing text's)
-    if not END.won and not SEQ.on then draw_inventory()
+    local snd_panel = SU.mode() == 'edit' or SU.mode() == 'picker'    -- (the sound editor covers the screen: no icons over it)
+    if snd_panel then -- nothing
+    elseif not END.won and not SEQ.on then draw_inventory()
     elseif SEQ.on and SEQ.t < 1.2 then HUD.alpha(1 - smoothstep(0, 1.2, SEQ.t)); draw_inventory(); HUD.alpha(1) end   -- (round 56: it fades as he is taken)
     if SEQ.on and SEQ.label_n > 0 then
       -- (round 59: which background, for 2.5 s after a change; counted in drawn frames)

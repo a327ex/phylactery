@@ -21,7 +21,14 @@ def rep(s, old, new, count=1):
 
 
 def main():
-    commit = subprocess.run(['git', '-C', MB, 'log', '-1', '--format=%h', '--', 'mb/audio.lua', 'mb/soundui.lua'],
+    # RETIRED 2026-10-11 (round 68g): port/audio.lua and port/soundui.lua are Lich's own since then (layers, undo, the
+    # picker that only adds); running this would overwrite them with megablock's + the patches below. Kept as the
+    # record of what Lich changed up to the fork; megablock's later changes come over by hand.
+    import sys
+    if '--force' not in sys.argv:
+        raise SystemExit('retired: port/audio.lua and port/soundui.lua are Lich\'s own since round 68g (2026-10-11); '
+                         'bring megablock changes over by hand (--force overwrites them)')
+    commit =subprocess.run(['git', '-C', MB, 'log', '-1', '--format=%h', '--', 'mb/audio.lua', 'mb/soundui.lua'],
                             capture_output=True, text=True).stdout.strip()
     stamp = f'  PORTED from megablock\'s mb/{{}} (megablock {commit}) by tools/port_soundui.py: edit there, or here and say so.\n'
 

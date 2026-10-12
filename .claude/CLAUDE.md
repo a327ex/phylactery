@@ -23,9 +23,10 @@ powers.lua `ctx.varied`, the group versions in beam/lift/rock/lens/fire) are on 
 LICH_ROOM; with it, the old respawn timers and fair rotation run exactly as before.
 
 **Sounds (2026-10-10, RECORD.md round 67)**: every sound is a SLOT (`AU.play(name, {pos, volume, gap})`, `AU.loop`)
-in port/audio.lua + port/soundui.lua, PORTED from megablock's mb/audio.lua + mb/soundui.lua by
-`tools/port_soundui.py` (Lich's differences live in that script; re-run it after megablock changes the originals,
-never hand-edit the ported files without saying so). His picks: `sound_picks.lua` (the in-game editor writes it:
+in port/audio.lua + port/soundui.lua, LICH'S OWN since round 68g (2026-10-11): forked from megablock's
+mb/audio.lua + mb/soundui.lua (012a1f1); `tools/port_soundui.py` is retired (it records the changes up to the fork);
+bring megablock's later changes over by hand. A slot's files sit in LAYERS (each play = every layer, one of its files
+at random; settings file -> layer -> slot -> DEFAULTS). His picks: `sound_picks.lua` (the in-game editor writes it:
 TAB / ESC, not on the site); mine came from `tools/sfx_spec.py` -> `tools/sfx_bake.py` (his edits win). Red =
 `unsure` on purpose. Sound code never draws from the game's rngs. Round 68 (2026-10-11): the ear is not the camera but
 half way down its line of sight (port/game.lua `ear_of`, the cave's EAR row in sound_rooms.lua); each slot's cave

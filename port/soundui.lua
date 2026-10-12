@@ -1,25 +1,30 @@
 --[[
-  PORTED from megablock's mb/soundui.lua (megablock 012a1f1) by tools/port_soundui.py: edit there, or here and say so.
+  LICH'S OWN since 2026-10-11 (round 68g): forked from megablock's mb/soundui.lua (megablock 012a1f1), first through
+  tools/port_soundui.py (retired; it lists every change up to the fork). Megablock's later changes come over by hand.
   soundui.lua -- sounds as words, and the editor that tunes them (soundui.js + soundlib.js of the web
   build, native; round 5: the Tab list, the slot editor, 3D).
   While playing, every sound the game asks for shows up as its slot name: at its place in the world, or stacked
-  near the bottom when it has none. Green = it has a file, yellow = no file yet, RED = no file ON PURPOSE (a pick
-  nobody was sure of: it waits for him), grey = muted.
+  near the bottom when it has none; a loop shows ~name while it sounds. Green = it has a file, yellow = no file yet,
+  RED = no file ON PURPOSE (a pick nobody was sure of: it waits for him), grey = muted.
 
-    TAB      the game stops and lists the sounds that were playing when you pressed it, then every red slot
-             (always there, whatever was playing). Click one to edit it. TAB again or a click outside: play.
+    TAB      the game stops and lists the sounds that were playing when you pressed it (and loops that just ended),
+             then every red slot. Click one to edit it. TAB again or a click outside: play.
     ESC      the game stops and every slot is listed (the whole catalogue). Click one to edit it.
-    EDITOR   one slot: its files (X removes one; (Lich) a click on one: only it plays in the editor, every replay, until
-             clicked again; a red slot shows its suggestions: click to listen, again to
-             use, shift+click to add as a variant), Horse Game's tuner (volume, a random pitch range, a delay
-             whose negative side starts into the clip, bits, sample-rate crush, low cut) and the 3D settings
-             (spatial, binaural, the distance curve, near / far / rolloff, air, walls, the reverb send, width,
-             doppler, travel time); below them the reverb of the room you stand in. Drag a slider; right-click
-             puts it back to the default; every change replays the sound from where it last played, heard
-             from where you stand, and the readout says what each ear got. SPACE plays, F finds a file, ESC
-             goes back. Everything saves itself (sound_picks.lua, sound_rooms.lua).
-    PICKER   (F) Horse Game's sound picker over Desktop/sound packs: type to search, arrows or a click to
-             listen, Enter (or a second click) to use, Shift+Enter (Lich: or Shift + the second click) to add a variant, Tab to listen again.
+    EDITOR   one slot, in LAYERS: every play plays each layer, one of its files at random (its variations). A row
+             per layer: LAYER n (click: the sliders are that layer's own, it plays one of its files), in a loop's
+             slot LOOPS / PLAYS ONCE (once = as the loop starts), its files (click one: it plays alone and the sliders
+             are its own; X removes it), + (find a file for that layer); + NEW LAYER; with a file clicked, MOVE IT TO
+             another layer. NAME* = settings of its own. Settings resolve file -> layer -> the whole sound -> the
+             defaults (8 bits, 3x crush); right-click on a slider = back to the level above. Horse Game's tuner
+             (volume, a random pitch range, a delay whose negative side starts into the clip, bits, sample-rate crush,
+             low cut) and the 3D settings (spatial, binaural, the distance curve, near / far / rolloff, air, walls,
+             the reverb send, width, doppler, travel time); below them the cave's reverb and EAR. Every change
+             replays what is clicked from where it last played. SPACE plays, F finds a file, RESET clears where the
+             editor is set, CTRL+Z / UNDO takes back the last change, ESC goes back. Everything saves itself
+             (sound_picks.lua, sound_rooms.lua). A red slot shows its suggestions: click to listen, again to add.
+    PICKER   (F, or a layer's +) Horse Game's sound picker over Desktop/sound packs: type to search, arrows or a click
+             to listen, Enter (or a second click) ADDS it to the layer named at the top (nothing is ever replaced),
+             Shift adds it as a new layer (the next adds join that one), Tab listens again.
 
   The game calls (port/game.lua):
     M.update(dt)          while stopped: keys, typing, clicks, drags, wheel
@@ -252,24 +257,26 @@ local function slot_of(name)
   return s
 end
 
-local function save_pick(name, rel, add)
+-- (Lich) a pack file into the slot: always ADDED, nothing is ever replaced (X removes; CTRL+Z undoes). `layer` = the
+-- layer it joins (a number) or 'new' (a layer of its own after the others). -> the layer it went into
+local function add_pick(name, rel, layer)
   local s = slot_of(name)
-  if add then
-    for _, r in ipairs(s.src) do if r == rel then say('ALREADY IN ' .. name:upper()); return end end
-  end
+  for _, r in ipairs(s.src) do if r == rel then say('ALREADY IN ' .. name:upper()); return end end
   if not have_ffmpeg() then say('FFMPEG NOT FOUND ON PATH'); return end
   local out, err = convert(name, rel, s)
   if not out then say(err); return end
-  if add then
-    s.files[#s.files + 1] = out; s.src[#s.src + 1] = rel
-  else
-    s.files = { out }; s.src = { rel }; s.per = nil     -- (Lich: the old files' own settings go with them)
-  end
-  s.unsure = nil            -- a pick he made: no longer waiting for him
   AU.slots[name] = s
+  local list = AU.layers(name)
+  if layer == 'new' then layer = #list > 0 and list[#list] + 1 or 1 end
+  s.files[#s.files + 1] = out; s.src[#s.src + 1] = rel
+  AU.set_layer_of(name, #s.files, layer or 1)
+  AU.compact_layers(name)
+  layer = AU.layer_of(name, #s.files)
+  s.unsure = nil            -- a pick he made: no longer waiting for him
   AU.save_picks()
   reload(name)
-  say((add and 'ADDED TO ' or 'SET ') .. name:upper())
+  say('ADDED TO ' .. name:upper() .. ', LAYER ' .. layer)
+  return layer
 end
 
 local function remove_pick(name, i)
@@ -278,8 +285,24 @@ local function remove_pick(name, i)
   if s.per and s.files[i] then s.per[s.files[i]] = nil; if not next(s.per) then s.per = nil end end   -- (Lich)
   table.remove(s.files, i)
   if s.src and s.src[i] then table.remove(s.src, i) end
+  AU.compact_layers(name)                                       -- (Lich) an emptied layer goes
+  if ui.focus and ui.focus.slot == name then ui.focus = nil end
   AU.save_picks()
   reload(name)
+end
+
+-- (Lich) a file into another layer (n past the last = a new one)
+local function move_file(name, fi, n)
+  AU.set_layer_of(name, fi, n)
+  AU.compact_layers(name)
+  AU.save_picks()
+  say('MOVED TO LAYER ' .. AU.layer_of(name, fi))
+end
+
+-- (Lich) where the editor is set: nil = the whole sound; { slot, kind = 'layer' | 'file', n }
+local function focus_of(name)
+  local f = ui.focus
+  if f and f.slot == name then return f end
 end
 
 -- ================================================================================================ the settings
@@ -339,17 +362,14 @@ local function fmt(sp, v)
 end
 
 -- the reverb send of a slot as the editor shows it: its own, else what the game's call asks for
-local function send_of(name, fi)
-  if fi and AU.own_file(name, fi, 'reverb') then return AU.get(name, 'reverb', fi), true end   -- (Lich) the file's own
-  local s = AU.slots[name]
-  if s and s.reverb then return s.reverb, not fi end
-  local lp = AU.last_play[name]
-  return (lp and lp.reverb) or 0.25, false
-end
-
 -- a setting changed: keep it, hear it (the drag replays at most every 0.25 s, as Horse Game's tuner)
--- (Lich) the editor's replays: the file he clicked alone, else the slot as the game plays it
-local function preview(name) return AU.preview(name, ui.solo_slot == name and ui.solo or nil) end
+-- (Lich) the editor's replays: the file clicked alone, the layer clicked (one of its files), else the whole sound
+local function preview(name)
+  local f = focus_of(name)
+  if f and f.kind == 'file' then return AU.preview(name, f.n) end
+  if f and f.kind == 'layer' then return AU.preview(name, nil, f.n) end
+  return AU.preview(name)
+end
 local function changed(name, room)
   if room then ui.dirty_rooms = true else ui.dirty = true end
   if name and not is_loop(name) and ui.rt - ui.aud_t > 0.25 then
@@ -365,13 +385,24 @@ end
 local function reset_slot(name)
   local s = AU.slots[name]
   if not s then return end
-  if ui.solo_slot == name and ui.solo and s.files and s.files[ui.solo] then   -- (Lich) a file clicked: its own only
-    if s.per then s.per[s.files[ui.solo]] = nil; if not next(s.per) then s.per = nil end end
-    ui.dirty = true; flush_saves(); preview(name); return
+  -- (Lich) RESET clears the settings of where the editor is set: a file's own, a layer's own (it stays ONCE or LOOPS),
+  -- or the whole sound's with every layer's and file's own; which layer a file is in is never reset
+  local function clear(t, keep) if t then for k in pairs(t) do if k ~= keep then t[k] = nil end end end end
+  local f = focus_of(name)
+  if f and f.kind == 'file' then
+    local path = s.files and s.files[f.n]
+    if path and s.per and s.per[path] then clear(s.per[path], 'layer'); if not next(s.per[path]) then s.per[path] = nil end end
+  elseif f and f.kind == 'layer' then
+    local l = s.lay and s.lay[tostring(f.n)]
+    if l then clear(l, 'once'); if not next(l) then s.lay[tostring(f.n)] = nil end end
+  else
+    for k in pairs(AU.DEFAULTS) do if k ~= 'vol' and k ~= 'once' then s[k] = nil end end
+    s.reverb = nil
+    for _, p in pairs(s.per or {}) do clear(p, 'layer') end
+    for _, l in pairs(s.lay or {}) do clear(l, 'once') end
   end
-  for k in pairs(AU.DEFAULTS) do if k ~= 'vol' then s[k] = nil end end
-  s.reverb = nil
-  s.per = nil      -- (Lich) and every file's own
+  if s.per then for k, p in pairs(s.per) do if not next(p) then s.per[k] = nil end end; if not next(s.per) then s.per = nil end end
+  if s.lay then for k, l in pairs(s.lay) do if not next(l) then s.lay[k] = nil end end; if not next(s.lay) then s.lay = nil end end
   ui.dirty = true
   flush_saves()
   preview(name)
@@ -406,15 +437,60 @@ end
 
 function M.open_edit(name)
   ui.mode = 'edit'; ui.slot = name; ui.cand_heard = nil
+  if not focus_of(name) then ui.focus = nil end     -- (Lich) back in the same sound: still set where it was
   engine_get_typed_text()
 end
 
-function M.open_picker(name)
+-- (Lich) target = the layer an added file joins (a number, or 'new'); nil = the layer clicked (or the clicked file's),
+-- else the first
+function M.open_picker(name, target)
   ui.mode = 'picker'; ui.slot = name; ui.q = ''; ui.results = {}; ui.sel = 0; ui.scroll = 0; ui.heard = nil
+  if target == nil then
+    local f = focus_of(name)
+    target = f and (f.kind == 'layer' and f.n or AU.layer_of(name, f.n)) or 1
+  end
+  ui.target = target
   M.set_rows()
   engine_get_typed_text()    -- drop what was typed before it opened
 end
 function M.close_picker() AU.stop_audition(); ui.mode = 'edit'; ui.heard = nil end
+-- (Lich) the picker's add (Enter, or a second click): into its layer; with Shift, a new layer of its own, which the
+-- next adds then join (a sound plus its variations)
+local function add_here(rel)
+  local shift = key_is_down('lshift') or key_is_down('rshift')
+  local n = add_pick(ui.slot, rel, shift and 'new' or ui.target)
+  if n and (shift or ui.target == 'new') then ui.target = n end
+end
+
+-- (Lich) UNDO / CTRL+Z: the slot as it was before each change (a slider's whole drag is one change), up to 60 back
+ui.undo = {}
+local function undo_watch()
+  local name = ui.slot
+  if not name then return end
+  local cur = AU.ser(AU.slots[name])
+  local w = ui.undo_w
+  if not w or w.name ~= name then ui.undo_w = { name = name, ser = cur }; return end
+  if cur ~= w.ser then
+    if not (ui.drag and w.drag) then
+      ui.undo[#ui.undo + 1] = { name = name, ser = w.ser }
+      if #ui.undo > 60 then table.remove(ui.undo, 1) end
+    end
+    w.drag = ui.drag ~= nil
+    w.ser = cur
+  elseif not ui.drag then w.drag = false end
+end
+function M.undo()
+  local u = table.remove(ui.undo)
+  if not u then say('NOTHING TO UNDO'); return end
+  local f = load('return ' .. u.ser, 'undo', 't', {})
+  local ok, t = pcall(f)
+  AU.slots[u.name] = (ok and type(t) == 'table') and t or nil
+  AU.save_picks()
+  reload(u.name)
+  if ui.undo_w and ui.undo_w.name == u.name then ui.undo_w.ser = AU.ser(AU.slots[u.name]) end
+  if ui.focus and ui.focus.slot == u.name then ui.focus = nil end
+  say('UNDONE (' .. u.name:upper() .. ')')
+end
 local function close_edit() AU.stop_audition(); flush_saves(); ui.mode = ui.back == 'pause' and 'pause' or 'list'; ui.slot = nil end
 
 function M.set_rows()   -- what the picker's list shows: search results, or the pack folders when the query is empty
@@ -476,6 +552,10 @@ function M.update(dt)
   local typed = engine_get_typed_text() or ''
   if ui.mode == 'play' then return end
   AU.paused_update(dt)
+  if ui.mode == 'edit' or ui.mode == 'picker' then     -- (Lich) undo
+    undo_watch()
+    if key_is_pressed('z') and (key_is_down('lctrl') or key_is_down('rctrl')) then M.undo() end
+  end
   if ui.fresh then ui.fresh = false; return end
   ui.mx, ui.my = mouse_position()
   -- a drag in progress
@@ -549,7 +629,7 @@ function M.update(dt)
   if key_is_pressed('tab') and ui.sel > 0 then listen(ui.sel) end
   if key_is_pressed('return') then
     local r = ui.rows[ui.sel]
-    if r and r.rel then save_pick(ui.slot, r.rel, key_is_down('lshift') or key_is_down('rshift'))
+    if r and r.rel then add_here(r.rel)
     elseif r and r.folder then set_query(r.folder:lower() .. ' ') end
   end
 end
@@ -782,20 +862,31 @@ function draw_edit()
   local name = ui.slot
   local s = AU.slots[name] or { files = {}, src = {} }
   local files, src = s.files or {}, s.src or {}
-  -- (Lich) a file clicked: the sliders are that file's own (over the slot's); else the slot's
-  local fi = ui.solo_slot == name and ui.solo or nil
-  if fi and not files[fi] then ui.solo, fi = nil, nil end
-  local function get(k) return AU.get(name, k, fi) end
-  local function set(k, v) if fi then AU.set_file(name, fi, k, v) else AU.set(name, k, v) end end
-  local function is_own(k) if fi then return AU.own_file(name, fi, k) end return s[k] ~= nil end
+  -- (Lich) what the sliders are set on: the whole sound, one layer (its own over the sound's) or one file (its own
+  -- over its layer's); a file clicked also plays alone, a layer clicked plays one of its files
+  local f = focus_of(name)
+  if f and ((f.kind == 'file' and not files[f.n]) or (f.kind == 'layer' and #files == 0)) then ui.focus, f = nil, nil end
+  local fi = f and f.kind == 'file' and f.n or nil
+  local li = f and f.kind == 'layer' and f.n or nil
+  local function get(k) return AU.get(name, k, fi, li) end
+  local function set(k, v)
+    if fi then AU.set_file(name, fi, k, v) elseif li then AU.set_layer(name, li, k, v) else AU.set(name, k, v) end
+  end
+  local function is_own(k)
+    if fi then return AU.own_file(name, fi, k) elseif li then return AU.own_layer(name, li, k) end
+    return s[k] ~= nil
+  end
+  local function short_of(i)
+    local t = (src[i] or files[i]):match('[^/]*$') or files[i]
+    return #t > 30 and (t:sub(1, 28) .. '..') or t
+  end
   HUD.rect(6, 6, 628, 348, 'rgba(10,10,13,0.95)')
   local col = status_color(name)
   HUD.text(name, 12, 11, col, 2)
   local state = AU.muted(name) and 'MUTED' or (#files > 0 and 'PICKED' or (AU.unsure(name) and 'UNSURE: NOT PICKED ON PURPOSE' or 'NO FILE YET'))
-  if fi then state = state .. '  FILE ' .. fi .. ': ITS OWN SETTINGS' end   -- (Lich)
-  HUD.text(state .. (is_loop(name) and '  (A LOOP)' or ''), 12 + tw(name, 2) + 10, 15, col)
+  HUD.text(state .. (AU.loop_slot[name] and '  (A LOOP)' or ''), 12 + tw(name, 2) + 10, 15, col)
   -- the buttons, top right
-  local bx = 628 - (tw('PLAY (SPACE)') + tw('FIND (F)') + tw('UNMUTE') + tw('RESET') + tw('BACK (ESC)') + 30 + 16)
+  local bx = 628 - (tw('PLAY (SPACE)') + tw('FIND (F)') + tw('UNMUTE') + tw('RESET') + tw('UNDO') + tw('BACK (ESC)') + 36 + 20)
   bx = button('PLAY (SPACE)', bx, 10, function() if is_loop(name) then say('IT IS A LOOP: IT IS PLAYING') else preview(name) end end, GREEN)
   bx = button('FIND (F)', bx, 10, function() M.open_picker(name) end)
   bx = button(AU.muted(name) and 'UNMUTE' or 'MUTE', bx, 10, function()
@@ -805,44 +896,73 @@ function draw_edit()
     if not m then for L in pairs(AU.loop_set) do if L.name == name and not L.h then AU.start_loop(L) end end end
   end, nil, AU.muted(name))
   bx = button('RESET', bx, 10, function() reset_slot(name) end, ORANGE)
+  bx = button('UNDO', bx, 10, function() M.undo() end)
   button('BACK (ESC)', bx, 10, close_edit)
-  -- the files
+  -- (Lich) the layers: every play plays each layer, one of its files at random (its variations). A row each: the
+  -- layer (click: its own sliders), LOOPS / ONCE in a loop's slot, its files (click: that file alone and its own
+  -- sliders; X removes it), + (find a file for this layer). Then + NEW LAYER, and with a file clicked, MOVE IT TO.
   local y = 30
+  local layers, by = AU.layers(name)
   if #files == 0 then
     HUD.text('NO FILE: THIS SOUND IS SILENT. F = SEARCH THE PACKS.', 12, y, DIM)
+    y = y + 12
   else
-    local x = 12
-    HUD.text('PLAYS:', x, y, DIM); x = x + 34
-    for i = 1, #files do
-      local short = (src[i] or files[i]):match('[^/]*$') or files[i]
-      if #short > 34 then short = short:sub(1, 32) .. '..' end
-      if x + tw(short) + 20 > 628 then   -- (Lich) another row, up to three (the settings start at 64), then +n
-        if y >= 52 then HUD.text('+' .. (#files - i + 1), x, y, DIM); break end
-        y, x = y + 11, 46
-      end
-      x = button('X', x, y - 2, function() remove_pick(name, i); if ui.solo_slot == name then ui.solo = nil end end, ORANGE)
-      -- (Lich) a click on a file: only it plays in the editor until clicked again (highlighted while it is the one)
-      local mine = s.per and s.per[files[i]] and '*' or ''     -- (* = settings of its own)
-      local fk, fw = i, tw(short .. mine)
-      local solo = ui.solo_slot == name and ui.solo == i
-      local hot = ui.mx >= x - 2 and ui.mx < x + fw + 2 and ui.my >= y - 2 and ui.my < y + 8
-      if hot or solo then HUD.rect(x - 2, y - 2, fw + 4, 10, solo and 'rgba(80,72,40,0.95)' or 'rgba(50,50,60,0.9)') end
-      HUD.text(short .. mine, x, y, GREEN)
-      hits[#hits + 1] = { id = 'file_' .. i, x = x - 2, y = y - 2, w = fw + 4, h = 10, act = function()
-        if solo then ui.solo = nil else ui.solo_slot, ui.solo = name, fk end
+    for _, n in ipairs(layers) do
+      local lo = s.lay and s.lay[tostring(n)]
+      local mine = false
+      if lo then for k in pairs(lo) do if k ~= 'once' then mine = true end end end
+      local x = button('LAYER ' .. n .. (mine and '*' or ''), 12, y - 2, function()
+        if li == n then ui.focus = nil else ui.focus = { slot = name, kind = 'layer', n = n } end
         preview(name)
-      end }
-      x = x + fw + 8
+      end, li == n and YELLOW or CREAM, li == n)
+      if AU.loop_slot[name] and #layers > 1 then
+        local once = AU.get(name, 'once', nil, n)
+        x = button(once and 'PLAYS ONCE' or 'LOOPS', x, y - 2, function()
+          AU.set_layer(name, n, 'once', (not once) or nil); ui.dirty = true; flush_saves()
+        end, once and YELLOW or GREY, once)
+      end
+      local x0 = x
+      for _, i in ipairs(by[n]) do
+        local pm = s.per and s.per[files[i]]
+        local own = false
+        if pm then for k in pairs(pm) do if k ~= 'layer' then own = true end end end
+        local label = short_of(i) .. (own and '*' or '')
+        local fw = tw(label)
+        if x + fw + 24 > 612 and x > x0 then y, x = y + 11, x0 end
+        x = button('X', x, y - 2, function() remove_pick(name, i) end, ORANGE)
+        local sel = fi == i
+        local hot = ui.mx >= x - 2 and ui.mx < x + fw + 2 and ui.my >= y - 2 and ui.my < y + 8
+        if hot or sel then HUD.rect(x - 2, y - 2, fw + 4, 10, sel and 'rgba(80,72,40,0.95)' or 'rgba(50,50,60,0.9)') end
+        HUD.text(label, x, y, GREEN)
+        hits[#hits + 1] = { id = 'file_' .. i, x = x - 2, y = y - 2, w = fw + 4, h = 10, act = function()
+          if sel then ui.focus = nil else ui.focus = { slot = name, kind = 'file', n = i } end
+          preview(name)
+        end }
+        x = x + fw + 8
+      end
+      button('+', x, y - 2, function() M.open_picker(name, n) end, GREEN)
+      y = y + 12
     end
+    local x = button('+ NEW LAYER', 12, y - 2, function() M.open_picker(name, 'new') end, GREEN)
+    if fi then
+      local cur = AU.layer_of(name, fi)
+      local txt = 'MOVE ' .. short_of(fi) .. ' TO:'
+      HUD.text(txt, x + 6, y, DIM)
+      x = x + tw(txt) + 12
+      for _, n in ipairs(layers) do
+        if n ~= cur then x = button('LAYER ' .. n, x, y - 2, function() move_file(name, fi, n) end) end
+      end
+      if #by[cur] > 1 then button('A NEW LAYER', x, y - 2, function() move_file(name, fi, layers[#layers] + 1) end) end
+    end
+    y = y + 12
   end
   -- a red slot: the suggestions nobody was sure of
   local cands = s.candidates or {}
-  local sy = 42
   if #files == 0 and #cands > 0 then
-    HUD.text('SUGGESTIONS (NOT USED): CLICK = LISTEN, AGAIN = USE IT, SHIFT+CLICK = ADD AS A VARIANT', 12, sy, RED)
+    HUD.text('SUGGESTIONS (NOT USED): CLICK = LISTEN, AGAIN = ADD IT', 12, y, RED)
     for i = 1, min(6, #cands) do
       local rel = cands[i]
-      local ry = sy + 2 + i * 10
+      local ry = y + 2 + i * 10
       local short = rel:match('[^/]*$') or rel
       local folder = (rel:match('^(.*)/[^/]*$') or ''):match('[^/]*$') or ''
       local hot = ui.mx >= 10 and ui.mx < 624 and ui.my >= ry - 1 and ui.my < ry + 9
@@ -850,8 +970,7 @@ function draw_edit()
       HUD.text(short, 14, ry, CREAM)
       HUD.text(folder, 620, ry, DIM, 1, 'right')
       hits[#hits + 1] = { x = 10, y = ry - 2, w = 614, h = 10, act = function()
-        local add = key_is_down('lshift') or key_is_down('rshift')
-        if add or ui.cand_heard == i then save_pick(name, rel, add); ui.cand_heard = nil
+        if ui.cand_heard == i then add_pick(name, rel, 1); ui.cand_heard = nil
         else
           local ok, played = pcall(AU.audition, ROOT .. '/' .. rel, 0.5, name)
           ui.cand_heard = (ok and played) and i or nil
@@ -859,27 +978,15 @@ function draw_edit()
         end
       end }
     end
-    sy = sy + 4 + min(6, #cands) * 10
+    y = y + 4 + min(6, #cands) * 10
   end
-  -- the settings: SOUND (left), 3D (right)
-  local top = max(64, sy + 8)
+  -- the settings: SOUND (left), 3D (right), each saying whose they are
+  local top = max(64, y + 4)
   local lx, rx, cw = 12, 326, 296
   local sp_y = top
-  HUD.text('SOUND', lx, sp_y, YELLOW)
-  -- (Lich) the whole sound: one file at random each play, or every file at once; a loop's file: loops or plays once
-  if #files > 1 then
-    local lay = AU.get(name, 'layer')
-    local bx2 = button(lay and 'ALL FILES AT ONCE' or 'ONE FILE AT RANDOM', lx + 40, sp_y - 2, function()
-      AU.set(name, 'layer', (not lay) or nil); ui.dirty = true; flush_saves(); changed(name)
-    end, lay and GREEN or GREY, lay)
-    if fi and AU.loop_slot[name] then
-      local once = AU.get(name, 'once', fi)
-      button('FILE ' .. fi .. (once and ' PLAYS ONCE' or ' LOOPS'), bx2, sp_y - 2, function()
-        AU.set_file(name, fi, 'once', (not once) or nil); ui.dirty = true; flush_saves(); changed(name)
-      end, once and YELLOW or GREY, once)
-    end
-  end
-  HUD.text('3D', rx, sp_y, YELLOW)
+  local whose = fi and (short_of(fi) .. "'S OWN") or (li and ('LAYER ' .. li .. "'S OWN") or 'THE WHOLE SOUND')
+  HUD.text('SOUND: ' .. whose, lx, sp_y, YELLOW)
+  HUD.text('3D: ' .. whose, rx, sp_y, YELLOW)
   for i, sp in ipairs(M.SLIDERS.sound) do
     local v = get(sp.key)
     local own = is_own(sp.key)
@@ -910,7 +1017,8 @@ function draw_edit()
   end)
   for i, sp in ipairs(M.SLIDERS.space) do
     local v, own
-    if sp.key == 'reverb' then v, own = send_of(name, fi) else v = get(sp.key); own = is_own(sp.key) end
+    v, own = get(sp.key), is_own(sp.key)
+    if sp.key == 'reverb' and v == nil then local lp0 = AU.last_play[name]; v = (lp0 and lp0.reverb) or 0.25 end   -- (the game's send)
     slider('3_' .. sp.key, sp, rx, ty + 2 + i * 11, cw, v, not own,
       function(nv) if nv ~= v or not own then set(sp.key, nv); changed(name) end end,
       function() set(sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)
@@ -936,7 +1044,7 @@ function draw_edit()
   end
   -- what each ear gets, heard from where you stand
   local lp = AU.last_play[name]
-  local fx, info = AU.spatial(name, lp and lp.pos, lp and { reverb = lp.reverb, fi = fi }, nil, nil, _fx, _inf)
+  local fx, info = AU.spatial(name, lp and lp.pos, lp and { reverb = lp.reverb, fi = fi, li = li }, nil, nil, _fx, _inf)
   local ry = 318
   HUD.rect(12, ry - 4, 616, 1, 'rgba(236,230,216,0.18)')
   local function db(g) return g <= 0.0001 and '-INF' or ('%+.1f'):format(20 * math.log(g, 10)) end
@@ -953,8 +1061,10 @@ function draw_edit()
     (info.itd or 0) * 1000, round(min(fx.lp_l, 20000)), round(min(fx.lp_r, 20000)), fx.wet or 0, info.pf or 1)
   HUD.text(line1, 12, ry, CREAM)
   HUD.text(line2, 12, ry + 10, CREAM)
-  if fi then HUD.text("FILE " .. fi .. " CLICKED: THE SLIDERS ARE ITS OWN (RIGHT-CLICK = THE WHOLE SOUND'S). CLICK IT AGAIN: ALL.", 12, 342, YELLOW)
-  else HUD.text('DRAG A SLIDER (RIGHT-CLICK = DEFAULT). EVERY CHANGE REPLAYS IT FROM WHERE IT LAST PLAYED. SAVES ITSELF.', 12, 342, DIM) end
+  -- (Lich) what the sliders are and what a click does, for where the editor is set
+  if fi then HUD.text("THIS FILE ALONE: ITS OWN SLIDERS (RIGHT-CLICK = ITS LAYER'S). CLICK IT AGAIN FOR THE WHOLE SOUND.", 12, 342, YELLOW)
+  elseif li then HUD.text("LAYER " .. li .. ": ITS FILES ARE VARIATIONS, ONE AT RANDOM. ITS OWN SLIDERS (RIGHT-CLICK = THE SOUND'S).", 12, 342, YELLOW)
+  else HUD.text('EVERY LAYER PLAYS EACH TIME, ONE OF ITS FILES AT RANDOM. CLICK A LAYER OR FILE TO TUNE IT. CTRL+Z UNDOES.', 12, 342, DIM) end
   if ui.msg_t > 0 then HUD.text(ui.msg, 628, 30, GREEN, 1, 'right') end
 end
 
@@ -971,7 +1081,7 @@ function draw_picker()
   local files, src = s.files or {}, s.src or {}
   HUD.text('FIND: ' .. name, 12, 12, status_color(name), 2)
   local bx = 12 + tw('FIND: ' .. name, 2) + 12
-  HUD.text('SAVED IN SOUND_PICKS.LUA', bx + 6, 16, DIM)
+  HUD.text(ui.target == 'new' and 'ADDS AS A NEW LAYER' or ('ADDS TO LAYER ' .. tostring(ui.target) .. '   (SHIFT: A NEW LAYER)'), bx + 6, 16, YELLOW)   -- (Lich)
   button('BACK (ESC)', 628 - tw('BACK (ESC)') - 6, 10, M.close_picker)
   -- current files (named by the pack file they came from)
   local y = 32
@@ -1022,7 +1132,7 @@ function draw_picker()
       hits[#hits + 1] = { x = 10, y = ry - 2, w = 614, h = ROW_H, act = function()
         if r.folder then set_query(r.folder:lower() .. ' '); return end
         -- a second click on the row that's playing: use it
-        if ui.sel == ri and ui.heard == ri then save_pick(name, r.rel, key_is_down('lshift') or key_is_down('rshift')) else listen(ri) end
+        if ui.sel == ri and ui.heard == ri then add_here(r.rel) else listen(ri) end
       end }
     end
     local n = #list
@@ -1035,7 +1145,7 @@ function draw_picker()
     end
     button('RESCAN', 628 - tw('RESCAN') - 6, 30, function() M.build_index(); set_query(ui.q) end)
   end
-  HUD.text('TYPE = SEARCH  UP/DOWN OR CLICK = LISTEN  ENTER OR CLICK AGAIN = USE IT  SHIFT+ENTER = ADD AS A VARIANT  TAB = AGAIN', 12, 342, DIM)
+  HUD.text('TYPE = SEARCH  UP/DOWN OR CLICK = LISTEN  ENTER OR CLICK AGAIN = ADD IT  SHIFT = TO A NEW LAYER  CTRL+Z = UNDO', 12, 342, DIM)
   if ui.msg_t > 0 then HUD.text(ui.msg, 628, 330, GREEN, 1, 'right') end
   if LIB.error ~= '' then HUD.text(LIB.error:sub(1, 100), 12, 330, ORANGE) end
 end
