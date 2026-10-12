@@ -898,8 +898,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
       if not skip then
         if s.leak >= 1.12 and not s.burn and s.sink < 0 then
           api.dissolved = api.dissolved + 1
-          if api.on_dissolve then api.on_dissolve(s) end
-          AU.play('snake_dissolve', { pos = s.spine[5] })
+          if api.on_dissolve then api.on_dissolve(s) end     -- (its sound plays as the leak takes hold: leak.lua)
           respawn(s)
         else
           build(s)

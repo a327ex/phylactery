@@ -203,6 +203,9 @@ function LK.create(ctx)
             local bi, bd = 0, 1e9
             for i = 0, N - 1, 2 do local e = hyp(s.spine[i + 1].x - L.x, s.spine[i + 1].z - L.z); if e < bd then bd = e; bi = i end end
             s.leak_at = bi
+            -- (2026-10-11, owner: "Snake dissolve sound should play when the dissolve effect starts": here, where the leak
+            -- takes hold of it, not when it is all gone)
+            AU.play('snake_dissolve', { pos = s.spine[bi + 1], gap = 0.1 })
           end
           local k = 1 - 0.5*d/reach
           s.leak = s.leak + rate*k*dt*((urgent and urgent[s]) and 4 or 1)
