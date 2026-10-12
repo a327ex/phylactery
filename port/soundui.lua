@@ -319,6 +319,8 @@ M.SLIDERS = {
     { key = 'bits', label = 'BITS', lo = 16, hi = 1, map = 'lin', q = 1, fmt = '%d' },
     { key = 'sr', label = 'SR CRUSH', lo = 1, hi = 16, map = 'lin', q = 1, fmt = '%dX' },
     { key = 'lowcut', label = 'LOW CUT', lo = 0, hi = 2000, map = 'sq', q = 10, fmt = '%dHZ' },
+    -- (Lich) a loop's: when the game stops it, it dies away over this long (0 = at once); shown for loops only
+    { key = 'fade', label = 'FADE OUT', lo = 0, hi = 5, map = 'sq', q = 0.01, fmt = '%.2fS' },
   },
   space = {
     { key = 'near', label = 'NEAR', lo = 0.1, hi = 10, map = 'log', q = 0.05, fmt = '%.2fM' },
@@ -1021,15 +1023,17 @@ function draw_edit()
   HUD.text('SOUND: ' .. whose, lx, sp_y, YELLOW)
   HUD.text('3D: ' .. whose, rx, sp_y, YELLOW)
   for i, sp in ipairs(M.SLIDERS.sound) do
-    local v = get(sp.key)
-    local own = is_own(sp.key)
-    slider('s_' .. sp.key, sp, lx, sp_y + 4 + i * 11, cw, v, not own,
-      function(nv)
-        if sp.key == 'pitch_lo' and nv > get('pitch_hi') then set('pitch_hi', nv) end
-        if sp.key == 'pitch_hi' and nv < get('pitch_lo') then set('pitch_lo', nv) end
-        if nv ~= v then set(sp.key, nv); changed(name) end
-      end,
-      function() set(sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)
+    if sp.key ~= 'fade' or AU.loop_slot[name] then     -- (Lich) FADE OUT is a loop's: one-shots end by themselves
+      local v = get(sp.key)
+      local own = is_own(sp.key)
+      slider('s_' .. sp.key, sp, lx, sp_y + 4 + i * 11, cw, v, not own,
+        function(nv)
+          if sp.key == 'pitch_lo' and nv > get('pitch_hi') then set('pitch_hi', nv) end
+          if sp.key == 'pitch_hi' and nv < get('pitch_lo') then set('pitch_lo', nv) end
+          if nv ~= v then set(sp.key, nv); changed(name) end
+        end,
+        function() set(sp.key, nil); ui.dirty = true; flush_saves(); changed(name) end)
+    end
   end
   -- the 3D toggles
   local ty = sp_y + 15

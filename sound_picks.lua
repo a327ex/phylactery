@@ -406,32 +406,40 @@ return {
   ["lens_fire"] = {
     ["files"] = {
       "assets/sfx/lens_fire_6.ogg",
-      "assets/sfx/lens_fire_7.ogg",
-      "assets/sfx/lens_fire_8.ogg",
+      "assets/sfx/lens_fire_11.ogg",
+      "assets/sfx/lens_fire_12.ogg",
     },
+    ["fade"] = 0.8,
     ["lay"] = {
       ["2"] = {
+        ["all"] = true,
         ["once"] = true,
       },
     },
     ["per"] = {
+      ["assets/sfx/lens_fire_11.ogg"] = {
+        ["layer"] = 2,
+        ["reverb"] = 0.1,
+        ["sr"] = 5,
+        ["vol"] = 0.8,
+      },
+      ["assets/sfx/lens_fire_12.ogg"] = {
+        ["delay"] = 0.1,
+        ["layer"] = 2,
+        ["reverb"] = 0.1,
+        ["sr"] = 5,
+        ["vol"] = 0.9,
+      },
       ["assets/sfx/lens_fire_6.ogg"] = {
-        ["vol"] = 1,
-      },
-      ["assets/sfx/lens_fire_7.ogg"] = {
-        ["layer"] = 2,
-        ["vol"] = 1,
-      },
-      ["assets/sfx/lens_fire_8.ogg"] = {
-        ["layer"] = 2,
+        ["vol"] = 0.7,
       },
     },
-    ["reverb"] = 0,
+    ["reverb"] = 0.15,
     ["sr"] = 4,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Flamethrower Fire Loop 2.wav",
-      "SFX_Collection/WAV/Magic Spells/Buff_Power_Up_01.wav",
-      "RPG Magic SFX/Spells/Debuff_Silence_01.wav",
+      "soundeffect-lab/battle/magic-flame1__fireball-cast.ogg",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Fire Magic/RPG3_FireMagicBall_Projectile04.wav",
     },
     ["vol"] = 0.75,
   },
@@ -444,15 +452,14 @@ return {
   },
   ["lens_form"] = {
     ["files"] = {
-      "assets/sfx/lens_form_1.ogg",
-      "assets/sfx/lens_form_2.ogg",
+      "assets/sfx/lens_form_10.ogg",
     },
     ["reverb"] = 0.45,
+    ["sr"] = 5,
     ["src"] = {
-      "RPG Magic SFX 2/Se-uk_Jeong_Spells_SFX_[Video_Demo_3]/Ice_Crystal_Buff_Cast.wav",
-      "Pixel Magic Sound Effects Pack/PM_ELEM_Ice05_Crystal_Buff.wav",
+      "soundeffect-lab/battle/magic-ice2__freeze.ogg",
     },
-    ["vol"] = 0.7,
+    ["vol"] = 0.45,
   },
   ["lich_die"] = {
     ["files"] = {

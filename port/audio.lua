@@ -64,7 +64,8 @@ A.DEFAULTS = {
   -- (Lich, his ruling 2026-10-11: every sound 8 bits and 3x sample-rate crush unless its slot says otherwise)
   -- (Lich) a layer's: once = in a loop it plays once as the loop starts instead of looping; all = every file of it
   -- plays (that is in), not one at random
-  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false, once = false, all = false,
+  -- fade = when the game stops a loop, it dies away over this many seconds instead of stopping at once
+  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false, once = false, all = false, fade = 0,
   -- (Lich: the ear is at his head, turned as the camera (A.ROOM_DEFAULTS `head`, port/game.lua): ~2 m from the egg,
   -- ~17 m from the far wall. near = the fight round him and the egg at full loudness, the far wall ~9 dB down; the
   -- air a little duller with distance than a head's)
@@ -570,7 +571,9 @@ function A.preview(name, only, li)
   for _, h in ipairs(A.preview_hs) do sound_handle_stop(h) end
   A.preview_hs = {}
   A.pending_rt = {}
+  A.preview_stop = nil
   local lp = A.last_play[name] or {}
+  local looped = {}       -- (Lich) a loop's slot: its voices loop for PREVIEW_HOLD s, then stop as the game stops them
   local function one(fi)
     local o = { pos = lp.pos and lp.pos:clone() or nil, volume = lp.volume, pitch = lp.pitch, reverb = lp.reverb, fi = fi }
     local w = max(0, A.get(name, 'delay', fi))
@@ -578,27 +581,46 @@ function A.preview(name, only, li)
     if tr > 0 and o.pos and A.get(name, 'spatial', fi) and A.on3d then w = w + tr * o.pos:distance_to(LIS.pos) / SPEED end
     if w > 0 then A.pending_rt[#A.pending_rt + 1] = { name = name, o = o, at = A.rt + w }; return true end
     local h = voice(name, o)
-    if h then A.preview_hs[#A.preview_hs + 1] = h; A.preview_h = A.preview_h or h end
+    if h then
+      A.preview_hs[#A.preview_hs + 1] = h; A.preview_h = A.preview_h or h
+      if A.loop_slot[name] and not A.get(name, 'once', fi) then sound_handle_set_looping(h, true); looped[#looped + 1] = h end
+    end
     return h ~= nil
   end
-  if only then return one(only) end
   local any = false
-  for _, fi in ipairs(A.choose(name, li)) do if one(fi) then any = true end end
+  if only then any = one(only)
+  else for _, fi in ipairs(A.choose(name, li)) do if one(fi) then any = true end end end
+  if #looped > 0 then A.preview_stop = { at = A.rt + A.PREVIEW_HOLD, hs = looped } end
   return any
 end
+A.PREVIEW_HOLD = 1.5
 
 -- loops are registered even with nothing picked yet, so a pick made later starts them in place
 -- (Lich) a loop's voices stop: its main one and a layered loop's others
-local function loop_off(L)
-  if L.h then sound_handle_stop(L.h); L.h = nil end
-  if L.extra then for _, h in ipairs(L.extra) do sound_handle_stop(h) end; L.extra = nil end
+-- fade = the loop was stopped by the game (L.stop): a voice whose FADE OUT is set dies away over that many seconds
+-- instead (it leaves the loop and refresh fades it); a restart, a mute, the site going off screen stop at once
+local function loop_off(L, fade)
+  local function off(h)
+    if fade then
+      for _, v in ipairs(A.voices) do
+        if v.h == h then
+          local d = A.get(v.name, 'fade', v.o.fi)
+          if d > 0 then v.fade = { t = 0, dur = d }; v.loop = nil; return end
+          break
+        end
+      end
+    end
+    sound_handle_stop(h)
+  end
+  if L.h then off(L.h); L.h = nil end
+  if L.extra then for _, h in ipairs(L.extra) do off(h) end; L.extra = nil end
 end
 function A.loop(name, o)
   o = o or {}
   o.pos = v3(o.pos)
   local L = { name = name, opts = o, h = nil, stopped = false }
   -- (Lich: loop_end = when it stopped, so TAB still lists a loop that ended a moment ago)
-  function L.stop() L.stopped = true; A.loop_end[name] = A.now; A.loop_set[L] = nil; loop_off(L) end
+  function L.stop() L.stopped = true; A.loop_end[name] = A.now; A.loop_set[L] = nil; loop_off(L, true) end
   -- (Lich) a loop that moves with what makes it, and gets louder or softer (its voice reads opts every frame)
   function L.set_pos(p) if p then if o.pos then o.pos:set(p.x or p[1] or 0, p.y or p[2] or 0, p.z or p[3] or 0) else o.pos = v3(p) end end end
   function L.set_volume(v) o.volume = v end
@@ -632,9 +654,14 @@ function A.start_loop(L)
 end
 
 -- every live voice follows the listener (and its source); voices the engine let go are dropped
-local function refresh(dt)
+-- (Lich) a fading voice's gain: down 48 dB over its FADE OUT, even in dB (the way a sound dies away), then it stops
+local function fade_gain(v) return 10^(-2.4*v.fade.t/v.fade.dur) end
+
+-- fdt = the time fades move on by (the editor's paused previews fade too; the rest of a paused refresh is dt 0)
+local function refresh(dt, fdt)
   local keep = {}
   for _, v in ipairs(A.voices) do
+    if v.fade then v.fade.t = v.fade.t + (fdt or dt or 0) end
     local pos = source_pos(v.o)
     v.occ_t = v.occ_t - (dt or 0)
     if pos and v.occ_t <= 0 then v.walls = walls_between(pos); v.occ_t = OCC_EVERY end
@@ -643,15 +670,21 @@ local function refresh(dt)
     local alive
     if sound_handle_set_fx then alive = sound_handle_set_fx(v.h, fx)
     else   -- (Lich) no FX voices: a loop's loudness follows; a one-shot is let go after 10 s
-      alive = v.loop ~= nil or A.now - v.t0 < 10
-      if v.loop then sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master * fx.dry * 0.5 * (fx.gain_l + fx.gain_r)) end
+      alive = v.loop ~= nil or v.fade ~= nil or A.now - v.t0 < 10
+      if v.loop or v.fade then
+        sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master * fx.dry * 0.5 * (fx.gain_l + fx.gain_r)
+          * (v.fade and fade_gain(v) or 1))
+      end
     end
+    if alive and v.fade and v.fade.t >= v.fade.dur then sound_handle_stop(v.h); alive = false end   -- (Lich) faded out
     if alive then
       if abs(pf - v.pf) > 0.002 then v.pf = pf; sound_handle_set_pitch(v.h, v.pitch * pf) end
       if v.loop and sound_handle_set_fx then
         local s = A.slots[v.name]
         sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master)
         if s and s.mute then loop_off(v.loop) end
+      elseif v.fade and sound_handle_set_fx then      -- (Lich) dying away
+        sound_handle_set_volume(v.h, (v.o.volume or 1) * A.get(v.name, 'vol', v.o.fi) * A.master * fade_gain(v))
       end
       keep[#keep + 1] = v
     elseif v.loop and v.loop.h == v.h then
@@ -716,7 +749,22 @@ function A.paused_update(dt)
     else keep[#keep + 1] = p end
   end
   A.pending_rt = keep
-  refresh(0)
+  -- (Lich) a loop's preview: it sounds for a moment, then stops as the game stops it (its FADE OUT)
+  if A.preview_stop and A.rt >= A.preview_stop.at then
+    for _, h in ipairs(A.preview_stop.hs) do
+      local faded = false
+      for _, v in ipairs(A.voices) do
+        if v.h == h then
+          local d = A.get(v.name, 'fade', v.o.fi)
+          if d > 0 then v.fade = { t = 0, dur = d }; faded = true end
+          break
+        end
+      end
+      if not faded then sound_handle_stop(h) end
+    end
+    A.preview_stop = nil
+  end
+  refresh(0, dt)
   room_tick(dt)
 end
 
