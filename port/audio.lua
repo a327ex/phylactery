@@ -4,8 +4,9 @@
   Lich's: its own random generator; the ear half way down the room camera's line of sight (port/game.lua); the cave;
   8 bits / 3x crush by default; gap / max / set_pos / set_volume; the site's mute and its engine without FX voices;
   LAYERS: a slot's files sit in layers (per[path].layer, 1 when unset); every play plays each layer, one of its
-  files at random (its variations); settings resolve file -> layer (lay["n"]) -> slot -> DEFAULTS; a layer marked
-  ONCE in a loop plays once as the loop starts.
+  files at random (its variations) or with ALL (lay["n"].all) every one; settings resolve file -> layer (lay["n"]) ->
+  slot -> DEFAULTS; a layer marked ONCE in a loop plays once as the loop starts; a file or layer OUT (per/lay .off)
+  never plays (A.choose).
   audio.lua -- sound slots, placed in 3D (audio.js + sfxlog.js of the web build, then round 5's 3D sound).
   The game names a SLOT for every sound; the slot plays the files picked for it (sound_picks.lua in the game
   folder, written by the editor in port/soundui.lua; the files are converted copies in assets/sfx/), and every
@@ -61,8 +62,9 @@ local OCC_EVERY = 0.12                 -- seconds between a voice's wall checks
 -- a slot's settings when it names none (pitch 1..1: the game's calls already jitter their pitch)
 A.DEFAULTS = {
   -- (Lich, his ruling 2026-10-11: every sound 8 bits and 3x sample-rate crush unless its slot says otherwise)
-  -- (Lich) once = in a loop, this layer (or file) plays once as the loop starts instead of looping
-  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false, once = false,
+  -- (Lich) a layer's: once = in a loop it plays once as the loop starts instead of looping; all = every file of it
+  -- plays (that is in), not one at random
+  vol = 1, pitch_lo = 1, pitch_hi = 1, delay = 0, bits = 8, sr = 3, mute = false, once = false, all = false,
   -- (Lich: the ear hangs on the room camera's line of sight, `ear` of the way in (A.ROOM_DEFAULTS, port/game.lua):
   -- ~6.5 m from the egg, ~4 m from him, ~20 m from the far wall. near = the fight round the egg at full
   -- loudness, the far wall ~10 dB down; the air a little duller with distance than a head's)
@@ -203,6 +205,19 @@ function A.compact_layers(name)
   end
   for fi = 1, #(s.files or {}) do A.set_layer_of(name, fi, map[A.layer_of(name, fi)]) end
   s.lay = next(lay) and lay or nil
+end
+-- (Lich) a file or a whole layer taken OUT (right-click in the editor): listed, never played by the game or the whole
+-- sound's preview (clicking it alone still plays it)
+function A.file_off(name, fi)
+  local s = A.slots[name]
+  local path = s and s.files and s.files[fi]
+  local p = path and s.per and s.per[path]
+  return p ~= nil and p.off == true
+end
+function A.layer_off(name, n)
+  local s = A.slots[name]
+  local l = s and s.lay and s.lay[tostring(n)]
+  return l ~= nil and l.off == true
 end
 function A.set_layer(name, n, key, v)
   local s = A.slots[name]
@@ -438,7 +453,10 @@ local function pick(name, only, layer)
     return nil
   end
   local c = {}
-  for k = 1, #v do if not layer or A.layer_of(name, ix[k] or k) == layer then c[#c + 1] = k end end
+  for k = 1, #v do
+    local fi = ix[k] or k
+    if (not layer or A.layer_of(name, fi) == layer) and not A.file_off(name, fi) then c[#c + 1] = k end   -- (out = never)
+  end
   if #c == 0 then return nil end
   local key = layer and (name .. '#' .. layer) or name
   local j = 1 + floor(rnd()*#c)
@@ -446,6 +464,23 @@ local function pick(name, only, layer)
   local i = c[j]
   A.last[key] = v[i]
   return v[i], ix[i] or i
+end
+-- (Lich) the files one play plays: from each layer that is in, one of its files at random, or with ALL AT ONCE every
+-- one of its files that is in. only_layer = that layer alone (the editor's, even if it is out).
+function A.choose(name, only_layer)
+  local layers, by = A.layers(name)
+  local out = {}
+  for _, n in ipairs(layers) do
+    if (only_layer and n == only_layer) or (not only_layer and not A.layer_off(name, n)) then
+      if A.get(name, 'all', nil, n) then
+        for _, fi in ipairs(by[n]) do if not A.file_off(name, fi) then out[#out + 1] = fi end end
+      else
+        local _, fi = pick(name, nil, n)
+        if fi then out[#out + 1] = fi end
+      end
+    end
+  end
+  return out
 end
 
 local function source_pos(o)
@@ -498,25 +533,23 @@ function A.play(name, o)
     A.last_t[name] = A.now
   end
   o.pos = v3(o.pos)
-  local layers = A.layers(name)
-  if not o.fi and #layers <= 1 then local _, fi = pick(name); o.fi = fi end   -- (Lich) its file, chosen now
+  local fis = o.fi and { o.fi } or A.choose(name)     -- (Lich) the files this play plays, chosen now
   A.note(name, o.pos, o.delay)
   A.last_play[name] = { pos = o.pos and o.pos:clone() or nil, volume = o.volume, pitch = o.pitch, reverb = o.reverb }
-  if not o.fi and #layers > 1 then   -- (Lich) every layer, one of its files at random, each its own play
+  if #fis == 0 then return nil end
+  if #fis > 1 then   -- (Lich) several (layers, or a layer playing all its files): each its own play
     local h1
-    for _, n in ipairs(layers) do
-      local _, fi = pick(name, nil, n)
-      if fi then
-        local oc = {}
-        for k, x in pairs(o) do oc[k] = x end
-        oc.fi, oc.pos = fi, o.pos and o.pos:clone() or nil
-        local w = wait_for(name, oc)
-        if w > 0 then A.pending[#A.pending + 1] = { name = name, o = oc, at = A.now + w }
-        else local h = voice(name, oc); h1 = h1 or h end
-      end
+    for _, fi in ipairs(fis) do
+      local oc = {}
+      for k, x in pairs(o) do oc[k] = x end
+      oc.fi, oc.pos = fi, o.pos and o.pos:clone() or nil
+      local w = wait_for(name, oc)
+      if w > 0 then A.pending[#A.pending + 1] = { name = name, o = oc, at = A.now + w }
+      else local h = voice(name, oc); h1 = h1 or h end
     end
     return h1
   end
+  o.fi = fis[1]
   local w = wait_for(name, o)
   if w > 0 then
     A.pending[#A.pending + 1] = { name = name, o = o, at = A.now + w }
@@ -549,12 +582,7 @@ function A.preview(name, only, li)
   end
   if only then return one(only) end
   local any = false
-  for _, n in ipairs(A.layers(name)) do
-    if not li or n == li then
-      local _, fi = pick(name, nil, n)
-      if fi and one(fi) then any = true end
-    end
-  end
+  for _, fi in ipairs(A.choose(name, li)) do if one(fi) then any = true end end
   return any
 end
 
@@ -589,26 +617,17 @@ function A.start_loop(L)
     for _, o in ipairs(A.loops) do if o ~= L and o.name == L.name and o.h and not o.stopped then n = n + 1 end end
     if n >= L.opts.max then return end
   end
-  -- (Lich) layers: each one, one of its files at random, its own voice and settings; a layer marked ONCE plays once
-  -- (a plain one-shot, let finish), the others loop
-  local layers = A.layers(L.name)
-  if #layers > 1 then
-    for _, n in ipairs(layers) do
-      local _, fi = pick(L.name, nil, n)
-      local once = fi and A.get(L.name, 'once', fi)
-      local oc = setmetatable({ fi = fi }, { __index = L.opts })   -- (its position and volume follow the loop's)
-      local h = fi and voice(L.name, oc, (not once) and L or nil)
-      if h and not once then
-        sound_handle_set_looping(h, true)
-        if L.h then L.extra = L.extra or {}; L.extra[#L.extra + 1] = h else L.h = h end
-      end
+  -- (Lich) the files chosen as for a play (each layer that is in: one at random, or all of it), each its own voice
+  -- and settings; a layer marked ONCE plays once (a plain one-shot, let finish), the others loop
+  for _, fi in ipairs(A.choose(L.name)) do
+    local once = A.get(L.name, 'once', fi)
+    local oc = setmetatable({ fi = fi }, { __index = L.opts })   -- (its position and volume follow the loop's)
+    local h = voice(L.name, oc, (not once) and L or nil)
+    if h and not once then
+      sound_handle_set_looping(h, true)
+      if L.h then L.extra = L.extra or {}; L.extra[#L.extra + 1] = h else L.h = h end
     end
-    return
   end
-  L.opts.fi = nil      -- (Lich) a loop (re)started picks its file again (the one it had may be gone)
-  local h = voice(L.name, L.opts, L)
-  if h and A.get(L.name, 'once', L.opts.fi) then return end    -- (Lich) a ONCE file picked: it plays once
-  if h then sound_handle_set_looping(h, true); L.h = h end
 end
 
 -- every live voice follows the listener (and its source); voices the engine let go are dropped

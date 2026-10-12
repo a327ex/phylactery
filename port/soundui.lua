@@ -11,10 +11,12 @@
              then every red slot. Click one to edit it. TAB again or a click outside: play.
     ESC      the game stops and every slot is listed (the whole catalogue). Click one to edit it.
     EDITOR   one slot, in LAYERS: every play plays each layer, one of its files at random (its variations). A row
-             per layer: LAYER n (click: the sliders are that layer's own, it plays one of its files), in a loop's
-             slot LOOPS / PLAYS ONCE (once = as the loop starts), its files (click one: it plays alone and the sliders
-             are its own; X removes it), + (find a file for that layer); + NEW LAYER; with a file clicked, MOVE IT TO
-             another layer. NAME* = settings of its own. Settings resolve file -> layer -> the whole sound -> the
+             per layer: LAYER n (click: the sliders are that layer's own, it plays), ONE AT RANDOM / ALL AT ONCE
+             (how many of its files play), in a loop's slot LOOPS / PLAYS ONCE (once = as the loop starts), its files
+             (click one: it plays alone and the sliders are its own; X removes it), + (find a file for that layer);
+             + NEW LAYER; with a file clicked, MOVE IT TO another layer. RIGHT-CLICK a file or a layer: OUT / BACK IN
+             (an out one stays listed, greyed and struck through, and never plays: for trying sets of variations).
+             NAME* = settings of its own. Settings resolve file -> layer -> the whole sound -> the
              defaults (8 bits, 3x crush); right-click on a slider = back to the level above. Horse Game's tuner
              (volume, a random pitch range, a delay whose negative side starts into the clip, bits, sample-rate crush,
              low cut) and the 3D settings (spatial, binaural, the distance curve, near / far / rolloff, air, walls,
@@ -385,21 +387,23 @@ end
 local function reset_slot(name)
   local s = AU.slots[name]
   if not s then return end
-  -- (Lich) RESET clears the settings of where the editor is set: a file's own, a layer's own (it stays ONCE or LOOPS),
-  -- or the whole sound's with every layer's and file's own; which layer a file is in is never reset
-  local function clear(t, keep) if t then for k in pairs(t) do if k ~= keep then t[k] = nil end end end end
+  -- (Lich) RESET clears the settings of where the editor is set: a file's own, a layer's own, or the whole sound's
+  -- with every layer's and file's own. The make-up stays: which layer a file is in, what is in or out, a layer's
+  -- ONCE / LOOPS and ONE AT RANDOM / ALL AT ONCE
+  local KEEP = { layer = true, off = true, once = true, all = true }
+  local function clear(t) if t then for k in pairs(t) do if not KEEP[k] then t[k] = nil end end end end
   local f = focus_of(name)
   if f and f.kind == 'file' then
     local path = s.files and s.files[f.n]
-    if path and s.per and s.per[path] then clear(s.per[path], 'layer'); if not next(s.per[path]) then s.per[path] = nil end end
+    if path and s.per and s.per[path] then clear(s.per[path]); if not next(s.per[path]) then s.per[path] = nil end end
   elseif f and f.kind == 'layer' then
     local l = s.lay and s.lay[tostring(f.n)]
-    if l then clear(l, 'once'); if not next(l) then s.lay[tostring(f.n)] = nil end end
+    if l then clear(l); if not next(l) then s.lay[tostring(f.n)] = nil end end
   else
-    for k in pairs(AU.DEFAULTS) do if k ~= 'vol' and k ~= 'once' then s[k] = nil end end
+    for k in pairs(AU.DEFAULTS) do if k ~= 'vol' and not KEEP[k] then s[k] = nil end end
     s.reverb = nil
-    for _, p in pairs(s.per or {}) do clear(p, 'layer') end
-    for _, l in pairs(s.lay or {}) do clear(l, 'once') end
+    for _, p in pairs(s.per or {}) do clear(p) end
+    for _, l in pairs(s.lay or {}) do clear(l) end
   end
   if s.per then for k, p in pairs(s.per) do if not next(p) then s.per[k] = nil end end; if not next(s.per) then s.per = nil end end
   if s.lay then for k, l in pairs(s.lay) do if not next(l) then s.lay[k] = nil end end; if not next(s.lay) then s.lay = nil end end
@@ -910,12 +914,24 @@ function draw_edit()
     for _, n in ipairs(layers) do
       local lo = s.lay and s.lay[tostring(n)]
       local mine = false
-      if lo then for k in pairs(lo) do if k ~= 'once' then mine = true end end end
-      local x = button('LAYER ' .. n .. (mine and '*' or ''), 12, y - 2, function()
+      if lo then for k in pairs(lo) do if k ~= 'once' and k ~= 'all' and k ~= 'off' then mine = true end end end
+      local lout = AU.layer_off(name, n)
+      local x = button('LAYER ' .. n .. (mine and '*' or '') .. (lout and ' OUT' or ''), 12, y - 2, function()
         if li == n then ui.focus = nil else ui.focus = { slot = name, kind = 'layer', n = n } end
         preview(name)
-      end, li == n and YELLOW or CREAM, li == n)
-      if AU.loop_slot[name] and #layers > 1 then
+      end, lout and GREY or (li == n and YELLOW or CREAM), li == n)
+      hits[#hits].right = function()       -- right-click: the whole layer out / back in
+        AU.set_layer(name, n, 'off', (not lout) or nil); ui.dirty = true; flush_saves()
+        say('LAYER ' .. n .. (lout and ' BACK IN' or ' OUT: IT DOES NOT PLAY'))
+      end
+      -- its two switches: how many of its files play, and (a loop's) whether it loops
+      if #by[n] > 1 then
+        local all = AU.get(name, 'all', nil, n)
+        x = button(all and 'ALL AT ONCE' or 'ONE AT RANDOM', x, y - 2, function()
+          AU.set_layer(name, n, 'all', (not all) or nil); ui.dirty = true; flush_saves(); changed(name)
+        end, all and YELLOW or GREY, all)
+      end
+      if AU.loop_slot[name] then
         local once = AU.get(name, 'once', nil, n)
         x = button(once and 'PLAYS ONCE' or 'LOOPS', x, y - 2, function()
           AU.set_layer(name, n, 'once', (not once) or nil); ui.dirty = true; flush_saves()
@@ -925,7 +941,8 @@ function draw_edit()
       for _, i in ipairs(by[n]) do
         local pm = s.per and s.per[files[i]]
         local own = false
-        if pm then for k in pairs(pm) do if k ~= 'layer' then own = true end end end
+        if pm then for k in pairs(pm) do if k ~= 'layer' and k ~= 'off' then own = true end end end
+        local out = AU.file_off(name, i)
         local label = short_of(i) .. (own and '*' or '')
         local fw = tw(label)
         if x + fw + 24 > 612 and x > x0 then y, x = y + 11, x0 end
@@ -933,10 +950,14 @@ function draw_edit()
         local sel = fi == i
         local hot = ui.mx >= x - 2 and ui.mx < x + fw + 2 and ui.my >= y - 2 and ui.my < y + 8
         if hot or sel then HUD.rect(x - 2, y - 2, fw + 4, 10, sel and 'rgba(80,72,40,0.95)' or 'rgba(50,50,60,0.9)') end
-        HUD.text(label, x, y, GREEN)
+        HUD.text(label, x, y, (out or lout) and GREY or GREEN)
+        if out then HUD.rect(x - 1, y + 3, fw + 2, 1, GREY) end      -- struck through: out
         hits[#hits + 1] = { id = 'file_' .. i, x = x - 2, y = y - 2, w = fw + 4, h = 10, act = function()
           if sel then ui.focus = nil else ui.focus = { slot = name, kind = 'file', n = i } end
           preview(name)
+        end, right = function()        -- right-click: this file out / back in
+          AU.set_file(name, i, 'off', (not out) or nil); ui.dirty = true; flush_saves()
+          say(short_of(i) .. (out and ' BACK IN' or ' OUT: IT DOES NOT PLAY'))
         end }
         x = x + fw + 8
       end
@@ -1061,11 +1082,12 @@ function draw_edit()
     (info.itd or 0) * 1000, round(min(fx.lp_l, 20000)), round(min(fx.lp_r, 20000)), fx.wet or 0, info.pf or 1)
   HUD.text(line1, 12, ry, CREAM)
   HUD.text(line2, 12, ry + 10, CREAM)
-  -- (Lich) what the sliders are and what a click does, for where the editor is set
-  if fi then HUD.text("THIS FILE ALONE: ITS OWN SLIDERS (RIGHT-CLICK = ITS LAYER'S). CLICK IT AGAIN FOR THE WHOLE SOUND.", 12, 342, YELLOW)
-  elseif li then HUD.text("LAYER " .. li .. ": ITS FILES ARE VARIATIONS, ONE AT RANDOM. ITS OWN SLIDERS (RIGHT-CLICK = THE SOUND'S).", 12, 342, YELLOW)
-  else HUD.text('EVERY LAYER PLAYS EACH TIME, ONE OF ITS FILES AT RANDOM. CLICK A LAYER OR FILE TO TUNE IT. CTRL+Z UNDOES.', 12, 342, DIM) end
-  if ui.msg_t > 0 then HUD.text(ui.msg, 628, 30, GREEN, 1, 'right') end
+  -- (Lich) what the sliders are and what a click does, for where the editor is set; a message takes its place for
+  -- its 3 s (at the top it covered the layers)
+  if ui.msg_t > 0 then HUD.text(ui.msg, 12, 342, GREEN)
+  elseif fi then HUD.text("THIS FILE ALONE: ITS OWN SLIDERS (RIGHT-CLICK = ITS LAYER'S). CLICK IT AGAIN FOR THE WHOLE SOUND.", 12, 342, YELLOW)
+  elseif li then HUD.text("LAYER " .. li .. ": ITS OWN SLIDERS (RIGHT-CLICK ONE = THE SOUND'S). RIGHT-CLICK A FILE: OUT / BACK IN.", 12, 342, YELLOW)
+  else HUD.text('EVERY LAYER PLAYS EACH TIME. CLICK A LAYER OR FILE: TUNE IT. RIGHT-CLICK: OUT / BACK IN. CTRL+Z: UNDO.', 12, 342, DIM) end
 end
 
 local function short_name(path)
