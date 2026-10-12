@@ -409,6 +409,7 @@ return {
       "assets/sfx/lens_fire_11.ogg",
       "assets/sfx/lens_fire_12.ogg",
     },
+    ["fade"] = 0.8,
     ["lay"] = {
       ["2"] = {
         ["all"] = true,
