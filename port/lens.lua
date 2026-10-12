@@ -324,7 +324,9 @@ function LE.create(ctx)
       m:look_at(q.spot); m:rotate_x(pi/2)
       local conv = t_conv < 0 and 0 or (t_conv >= 1 and 1 or t_conv)
       local on_c = t_conv >= 0 and sweep_t < LIGHTS_OFF
-      if t_conv >= 0 and not q.focus_snd then q.focus_snd = true; AU.play('lens_focus', { pos = q.spot }) end
+      -- (2026-10-11, owner: lens_focus -> lens_charge, "right after the lens forms, while the attack is building up": from the
+      -- lens itself now, not the spot on the floor where its light gathers)
+      if t_conv >= 0 and not q.focus_snd then q.focus_snd = true; AU.play('lens_charge', { pos = lp }) end
       L.cone.visible = on_c; L.patch.visible = on_c
       if on_c then
         local rf = 0.03 + 0.9*((1 - conv)^1.6)

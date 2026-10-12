@@ -400,16 +400,29 @@ return {
     ["candidates"] = {
       "Universal Sound FX/GLASS/GLASS_Rattle_Many_Fragments_01_stereo.wav",
     },
-    ["reverb"] = 0.45,
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/lens_dissolve_2.ogg",
+      "assets/sfx/lens_dissolve_3.ogg",
+      "assets/sfx/lens_dissolve_4.ogg",
+      "assets/sfx/lens_dissolve_5.ogg",
+    },
+    ["reverb"] = 0.2,
+    ["sr"] = 5,
+    ["src"] = {
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic2_IceBreak03.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic2_IceBreak01.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic2_IceBreak02.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic2_IceBreak04Crit.wav",
+    },
+    ["vol"] = 0.6,
   },
   ["lens_fire"] = {
+    ["fade"] = 0.8,
     ["files"] = {
       "assets/sfx/lens_fire_6.ogg",
       "assets/sfx/lens_fire_11.ogg",
       "assets/sfx/lens_fire_12.ogg",
     },
-    ["fade"] = 0.8,
     ["lay"] = {
       ["2"] = {
         ["all"] = true,
@@ -431,6 +444,12 @@ return {
         ["vol"] = 0.9,
       },
       ["assets/sfx/lens_fire_6.ogg"] = {
+        ["air"] = 3.1,
+        ["doppler"] = 1,
+        ["fade"] = 5,
+        ["reverb"] = 0.19,
+        ["rolloff"] = 0.85,
+        ["travel"] = 0,
         ["vol"] = 0.7,
       },
     },
@@ -443,16 +462,34 @@ return {
     },
     ["vol"] = 0.75,
   },
-  ["lens_focus"] = {
+  ["lens_charge"] = {
     ["candidates"] = {
       "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav",
     },
-    ["reverb"] = 0.35,
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/lens_focus_2.ogg",
+      "assets/sfx/lens_focus_3.ogg",
+      "assets/sfx/lens_focus_4.ogg",
+      "assets/sfx/lens_focus_5.ogg",
+    },
+    ["reverb"] = 0.2,
+    ["sr"] = 4,
+    ["src"] = {
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_02.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_03.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_04.wav",
+    },
+    ["vol"] = 0.7,
   },
   ["lens_form"] = {
     ["files"] = {
       "assets/sfx/lens_form_10.ogg",
+    },
+    ["per"] = {
+      ["assets/sfx/lens_form_10.ogg"] = {
+        ["vol"] = 0.55,
+      },
     },
     ["reverb"] = 0.45,
     ["sr"] = 5,

@@ -402,6 +402,16 @@
   "unsure": true,
   "vol": 1.0
  },
+ "lens_charge": {
+  "candidates": [
+   "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav"
+  ],
+  "files": [],
+  "reverb": 0.35,
+  "src": [],
+  "unsure": true,
+  "vol": 1.0
+ },
  "lens_cut": {
   "files": [
    "assets/sfx/lens_cut_1.ogg",
@@ -435,16 +445,6 @@
    "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/Blow Torch Loop.wav"
   ],
   "vol": 2.0
- },
- "lens_focus": {
-  "candidates": [
-   "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav"
-  ],
-  "files": [],
-  "reverb": 0.35,
-  "src": [],
-  "unsure": true,
-  "vol": 1.0
  },
  "lens_form": {
   "files": [
