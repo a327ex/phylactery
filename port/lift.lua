@@ -114,7 +114,8 @@ function LI.create(ctx)
           TOWARD:set(L.x, L.y + 0.4, L.z)
           if not grp.burst_snd then      -- (the group bursts on one tick: one sound for all of them)
             grp.burst_snd = true
-            AU.play('lift_burst', { pos = grp.snd_p or s.spine[mid + 1], volume = math.min(1, 0.6 + 0.12*(grp.snd_n or 1)) })
+            -- (2026-10-12, owner: "a different lift_burst event for when a ball of snakes is destroyed": the knot's own)
+            AU.play(grp.knot and 'lift_ball_burst' or 'lift_burst', { pos = grp.snd_p or s.spine[mid + 1], volume = math.min(1, 0.6 + 0.12*(grp.snd_n or 1)) })
             if grp.snd then grp.snd.stop(); grp.snd = nil end
           end
           gore.burst(s, mid, TOWARD)
