@@ -181,6 +181,11 @@ return {
     ["files"] = {
       "assets/sfx/fire_burn_1.ogg",
     },
+    ["per"] = {
+      ["assets/sfx/fire_burn_1.ogg"] = {
+        ["vol"] = 0.55,
+      },
+    },
     ["reverb"] = 0.1,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Fire N Flame Sounds/General Fire Loop 6.wav",
@@ -216,10 +221,12 @@ return {
     ["vol"] = 0.8,
   },
   ["fire_sweep"] = {
+    ["fade"] = 5,
     ["files"] = {
       "assets/sfx/fire_sweep_1.ogg",
     },
     ["reverb"] = 0.2,
+    ["sr"] = 4,
     ["src"] = {
       "Pixel Magic Sound Effects Pack/PM_ELEM_Fire08_Flamethrower_Loop.wav",
     },
@@ -359,8 +366,14 @@ return {
       "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_LowGust01.wav",
       "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_LowGust02.wav",
     },
+    ["files"] = {
+      "assets/sfx/leak_ripple_1.ogg",
+    },
     ["reverb"] = 0.45,
-    ["unsure"] = true,
+    ["src"] = {
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagic_Drone01_LowSubtleLoop.wav",
+    },
+    ["vol"] = 0.4,
     ["width"] = 0.6,
   },
   ["leak_snake"] = {
@@ -380,6 +393,14 @@ return {
     },
     ["reverb"] = 0.2,
     ["unsure"] = true,
+  },
+  ["lens_charge"] = {
+    ["candidates"] = {
+      "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav",
+    },
+    ["reverb"] = 0.2,
+    ["sr"] = 4,
+    ["vol"] = 0.7,
   },
   ["lens_cut"] = {
     ["files"] = {
@@ -462,26 +483,6 @@ return {
     },
     ["vol"] = 0.75,
   },
-  ["lens_charge"] = {
-    ["candidates"] = {
-      "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav",
-    },
-    ["files"] = {
-      "assets/sfx/lens_focus_2.ogg",
-      "assets/sfx/lens_focus_3.ogg",
-      "assets/sfx/lens_focus_4.ogg",
-      "assets/sfx/lens_focus_5.ogg",
-    },
-    ["reverb"] = 0.2,
-    ["sr"] = 4,
-    ["src"] = {
-      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_01.wav",
-      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_02.wav",
-      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_03.wav",
-      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_04.wav",
-    },
-    ["vol"] = 0.7,
-  },
   ["lens_form"] = {
     ["files"] = {
       "assets/sfx/lens_form_10.ogg",
@@ -548,20 +549,16 @@ return {
   },
   ["lift_burst"] = {
     ["files"] = {
-      "assets/sfx/lift_burst_1.ogg",
-      "assets/sfx/lift_burst_2.ogg",
-      "assets/sfx/lift_burst_3.ogg",
-      "assets/sfx/lift_burst_4.ogg",
+      "assets/sfx/mass_burst_1.ogg",
+      "assets/sfx/mass_burst_2.ogg",
     },
-    ["reverb"] = 0.5,
+    ["reverb"] = 0.6,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 1.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 2.wav",
-      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 3.wav",
-      "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Head exploding/Head exploding 4.wav",
     },
-    ["vol"] = 1.2,
-    ["width"] = 0.5,
+    ["vol"] = 1.6,
+    ["width"] = 0.7,
   },
   ["lift_cast"] = {
     ["files"] = {
@@ -760,8 +757,21 @@ return {
       "Pixel Magic Sound Effects Pack/PM_ELEM_Dark10_P3_Disappear.wav",
       "Universal Sound FX/GLASS/GLASS_Rattle_Many_Fragments_01_stereo.wav",
     },
-    ["reverb"] = 0.35,
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/snake_dissolve_2.ogg",
+      "assets/sfx/snake_dissolve_3.ogg",
+      "assets/sfx/snake_dissolve_4.ogg",
+      "assets/sfx/snake_dissolve_5.ogg",
+    },
+    ["reverb"] = 0.19,
+    ["sr"] = 4,
+    ["src"] = {
+      "RPG Magic SFX/Basic_Attacks_Impacts/Fire_Swoosh_01.wav",
+      "RPG Magic SFX/Basic_Attacks_Impacts/Fire_Swoosh_02.wav",
+      "RPG Magic SFX/Basic_Attacks_Impacts/Fire_Swoosh_03.wav",
+      "RPG Magic SFX/Basic_Attacks_Impacts/Fire_Swoosh_04.wav",
+    },
+    ["vol"] = 0.74,
   },
   ["snake_hiss"] = {
     ["files"] = {
