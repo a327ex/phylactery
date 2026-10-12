@@ -328,7 +328,6 @@ function GM.create(R, hud_layer)
     end
     return eye
   end
-  local CAM_TGT = Vector3.new()     -- what the camera looks at, this frame (the ear hangs on the line to it)
   local function place_camera(dt)
     local c = CAMS[G.cam + 1]
     local k = 1 - exp(-3.5*dt)
@@ -376,7 +375,6 @@ function GM.create(R, hud_layer)
     C.up:set(0, 1, 0)
     C:look_at(tgt)
     C:update_matrix_world()
-    CAM_TGT:copy(tgt)
   end
   local function set_cam(i) G.cam = clamp(floor(i), 0, #CAMS - 1); F:copy(L) end
   -- the two-shot (round 56c/57: 10 m back, lower)
@@ -976,19 +974,21 @@ function GM.create(R, hud_layer)
     elseif snd.hurt then snd.hurt.stop(); snd.hurt = nil end
   end
 
-  -- the ear (2026-10-11): turned as the camera, on its line of sight, `ear` of the way from it to what it looks at
-  -- (the cave's EAR row in the sound editor, sound_rooms.lua; 0.5 = ~6.5 m from the egg). Heard from the room camera
-  -- itself, ~15 m off and high, the whole cave was one distance; from here the fight by the egg is close, a snake
-  -- at the far wall far, and one at the side is at the side. Screen left is still the left ear.
+  -- the ear: AT HIS HEAD, turned as the camera (screen left is the left ear). Owner, 2026-10-11: "The 3D sound position
+  -- should be on the lich's head instead of static somewhere above the cave". `head` (the cave's EAR row in the sound
+  -- editor, sound_rooms.lua) = how far from the camera to his head it sits: 1 = his head (the default), 0 = the camera.
+  -- (Round 68 had it half way down the camera's line of sight, a fixed point in the air over the near side.)
   local EAR = { matrix_world = { elements = {} } }
+  local HEAD_P = Vector3.new()
   local function ear_of(cam)
     local rm = AU.rooms[AU.zone or 'cave']
-    local k = rm and rm.ear or 0
+    local k = rm and rm.head or 1
     local e, o = cam.matrix_world.elements, EAR.matrix_world.elements
     for i = 1, 16 do o[i] = e[i] end
-    o[13] = e[13] + (CAM_TGT.x - e[13])*k
-    o[14] = e[14] + (CAM_TGT.y - e[14])*k
-    o[15] = e[15] + (CAM_TGT.z - e[15])*k
+    local hp = lich.head_pos(HEAD_P)
+    o[13] = e[13] + (hp.x - e[13])*k
+    o[14] = e[14] + (hp.y - e[14])*k
+    o[15] = e[15] + (hp.z - e[15])*k
     return EAR
   end
 
