@@ -116,6 +116,8 @@ function LI.create(ctx)
             grp.burst_snd = true
             -- (2026-10-12, owner: "a different lift_burst event for when a ball of snakes is destroyed": the knot's own)
             AU.play(grp.knot and 'lift_ball_burst' or 'lift_burst', { pos = grp.snd_p or s.spine[mid + 1], volume = math.min(1, 0.6 + 0.12*(grp.snd_n or 1)) })
+            -- (owner: "Play mass_burst as well ... when a lift_ball_burst happens": the ending's burst on top of the ball's)
+            if grp.knot then AU.play('mass_burst', { pos = grp.snd_p or s.spine[mid + 1], volume = math.min(1, 0.6 + 0.12*(grp.snd_n or 1)) }) end
             if grp.snd then grp.snd.stop(); grp.snd = nil end
           end
           gore.burst(s, mid, TOWARD)
