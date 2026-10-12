@@ -2,7 +2,8 @@
   lens.lua -- the port to Anchor: web/src/lens.js. LENS: a glass lens crystallizes in the shaft
   (transmissive glass), gathers the sunlight into a cone and a patch on the floor that tightens to
   a point beside the snake, then fires a fire laser that sweeps across it and cuts it (cut_fx);
-  the glass dissolves into glints. No gesture; several lenses at once with fewer powers.
+  the glass dissolves into glints (round 69: in the game's flow it BREAKS instead, port/shards.lua; LICH_ROOM keeps
+  the dissolve). No gesture; several lenses at once with fewer powers.
   Round 50: three or more in one cast (the bouts, powers.lua): one larger lens, and its burning point
   draws one long cut through them all, from beside the first through each in turn (cast_group).
 ]]
@@ -95,6 +96,8 @@ function LE.create(ctx)
     R.world_scene:add(l)
     LIGHTS[#LIGHTS + 1] = { l = l, lens = nil }
   end
+  -- round 69 (owner, 2026-10-11): a lens that is done breaks like glass (the game's flow; LICH_ROOM keeps the dissolve)
+  local shards = ctx.varied and require('port.shards').create(R, cave, fx) or nil
   local active = {}
   local look = 0
   local cuts, fired = {}, {}
@@ -249,6 +252,7 @@ function LE.create(ctx)
   end
 
   local function update(t, dt)
+    if shards then shards.update(t, dt, R.world_camera) end
     for ii = #active, 1, -1 do
       local q = active[ii]
       local i = ii - 1                              -- lens.js's index (the drift and flicker phases)
@@ -274,6 +278,12 @@ function LE.create(ctx)
       UU.uRim.value = (0.3 + 2.2*q.flare*q.flare)*grow*(1 - gone)
       m.position:copy(q.pos):add(Vector3.new(sin(t*0.9 + i)*0.04, sin(t*1.3 + i*2)*0.05, cos(t*0.8 + i)*0.04))
       local lp = m.position:clone()
+      -- round 69: done, it breaks: gone in one frame, its glass in shards (facing the spot it burned, as it looked)
+      if shards and gone > 0 and not q.broke then
+        q.broke = true
+        shards.burst(lp, LENS_R*q.big, Vector3.new():sub_vectors(q.spot, lp), look == 0)
+      end
+      if q.broke then m.visible = false end
       if not q.fired and not snakes.free(q.s) then
         local nx = nil
         if q.group then for _, s in ipairs(q.group) do if snakes.free(s) then nx = s; break end end end
@@ -434,8 +444,8 @@ function LE.create(ctx)
         q.light.l.intensity = 2.2*lit*(0.85 + 0.15*sin(t*37))
       end
       if q.snd and sweep_t > q.dur + OFF then q.snd.stop(); q.snd = nil end
-      if gone > 0 and not q.gone_snd then q.gone_snd = true; AU.play('lens_dissolve', { pos = lp }) end
-      if gone > 0 and gone < 1 and rng.next() < 0.5 then
+      if not shards and gone > 0 and not q.gone_snd then q.gone_snd = true; AU.play('lens_dissolve', { pos = lp }) end
+      if not shards and gone > 0 and gone < 1 and rng.next() < 0.5 then     -- (the dissolve's glints: LICH_ROOM only now)
         local x = lp.x + rng.spread(0.3)
         local y = lp.y + rng.spread(0.05)
         local z = lp.z + rng.spread(0.3)
