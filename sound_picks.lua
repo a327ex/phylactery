@@ -462,12 +462,25 @@ return {
     },
     ["vol"] = 0.75,
   },
-  ["lens_focus"] = {
+  ["lens_charge"] = {
     ["candidates"] = {
       "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav",
     },
-    ["reverb"] = 0.35,
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/lens_focus_2.ogg",
+      "assets/sfx/lens_focus_3.ogg",
+      "assets/sfx/lens_focus_4.ogg",
+      "assets/sfx/lens_focus_5.ogg",
+    },
+    ["reverb"] = 0.2,
+    ["sr"] = 4,
+    ["src"] = {
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_02.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_03.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_matter_grow_04.wav",
+    },
+    ["vol"] = 0.7,
   },
   ["lens_form"] = {
     ["files"] = {

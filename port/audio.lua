@@ -116,8 +116,14 @@ local function read_lua(path)
   return ok and type(t) == 'table' and t or nil
 end
 
+-- (Lich) slots renamed: a file written under the old name (an older game still running saves it so) moves over
+A.RENAMED = { lens_focus = 'lens_charge' }     -- 2026-10-11: the lens's build-up
 function A.load_picks()
   A.slots = read_lua(PICKS) or {}
+  for old, new in pairs(A.RENAMED) do
+    if A.slots[old] and not A.slots[new] then A.slots[new] = A.slots[old] end
+    A.slots[old] = nil
+  end
   -- (Lich) round 68f's ALL FILES AT ONCE (layer = true) and a file's ONCE -> a layer per file, ONCE on its layer
   for _, s in pairs(A.slots) do
     if s.layer then

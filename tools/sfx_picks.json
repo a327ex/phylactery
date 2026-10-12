@@ -461,9 +461,9 @@
   ],
   "reverb": 0.45
  },
- "lens_focus": {
+ "lens_charge": {
   "vol": 1.0,
-  "why": "the light gathering to a point: a rising tone, but the packs' risers are synth",
+  "why": "(was lens_focus) the lens charging, right after it forms, while its light gathers: a riser; the packs' are synth",
   "unsure": true,
   "files": [],
   "candidates": [

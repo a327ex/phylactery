@@ -152,8 +152,8 @@ SPEC = {
     # ---------------------------------------------------------------- lens
     'lens_form': dict(files=['RPG Magic SFX 2/Se-uk_Jeong_Spells_SFX_[Video_Demo_3]/Ice_Crystal_Buff_Cast.wav',
         PM + 'PM_ELEM_Ice05_Crystal_Buff.wav'], vol=0.7, why='the glass lens forms high in the shaft: crystal forming'),
-    'lens_focus': dict(unsure=True, candidates=[UNI + 'CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav'],
-        why='the light gathering to a point: a rising tone, but the packs\' risers are synth'),
+    'lens_charge': dict(unsure=True, candidates=[UNI + 'CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav'],
+        why='(was lens_focus) the lens charging, right after it forms, while its light gathers: a riser; the packs\' are synth'),
     'lens_fire': dict(files=[UA + 'Fire N Flame Sounds/Blow Torch Loop.wav'], vol=2.0,
         why='the focused light cutting: a blowtorch loop (seam -0.5 dB)'),
     'lens_cut': dict(files=[UA + 'Gore Sounds Pro/Ripping flesh/Ripping flesh 1.wav', UA + 'Gore Sounds Pro/Ripping flesh/Ripping flesh 3.wav',
@@ -268,7 +268,7 @@ CAVE = {
     'leak_snake': dict(reverb=0.2),
     # the lens
     'lens_form': dict(reverb=0.45),
-    'lens_focus': dict(reverb=0.35),
+    'lens_charge': dict(reverb=0.35),
     'lens_fire': dict(reverb=0.2),
     'lens_cut': dict(reverb=0.2),
     'lens_dissolve': dict(reverb=0.45),

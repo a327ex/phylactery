@@ -49,7 +49,7 @@ M.KNOWN = {
   'snake_ash', 'fire_cast', 'fire_ignite', 'fire_burn', 'fire_sweep', 'lift_cast', 'lift_hold', 'lift_knot',
   'lift_swell', 'lift_fist', 'lift_burst', 'gore_crush', 'gore_land', 'mass_burst', 'rock_rip', 'rock_hold',
   'rock_throw', 'rock_hit', 'rock_land', 'leak_whisper', 'leak_ripple', 'leak_snake', 'beam_cast', 'beam_channel',
-  'beam_shot', 'beam_bite', 'beam_shatter', 'beam_petals', 'lens_form', 'lens_focus', 'lens_fire', 'lens_cut',
+  'beam_shot', 'beam_bite', 'beam_shatter', 'beam_petals', 'lens_form', 'lens_charge', 'lens_fire', 'lens_cut',
   'lens_dissolve', 'item_throw', 'item_land_mask', 'item_land_hand', 'item_land_lodestone', 'item_land_orbs', 'item_land_gem', 'item_land_lens',
   'orb_clack', 'item_pickup', 'orb_hover', 'ui_hover', 'ui_click', 'viewer_open', 'viewer_close', 'viewer_next',
   'viewer_throw', 'power_lost', 'ending_begin', 'egg_knock', 'egg_crack', 'egg_open', 'egg_piece_land',
