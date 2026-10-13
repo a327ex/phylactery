@@ -1010,7 +1010,11 @@ function GM.create(R, hud_layer)
     -- (2026-10-13, the site's unlock animation: where the opened egg is in the frame, 0..1 across and down; the
     -- letters of the posts it unlocks leave from there. Every frame while it is open, the camera moving in on it)
     if HOSTED and SEQ.opened and site_unlock_from then
-      EGG_NDC:set(EGG.x, EGG.y + 0.45, EGG.z):project(R.world_camera)
+      -- (owner, 2026-10-13: "as the egg bounces left and right when the words are coming out, the source position of
+      -- the words needs to move accordingly so they're always coming from the same relative place inside the egg":
+      -- the point 0.45 up its axis, turned with the shell as it rocks, not 0.45 above where it stands)
+      EGG_NDC:set(0, 0.45, 0):apply_quaternion(cave.egg.quaternion)
+      EGG_NDC:set(EGG.x + EGG_NDC.x, EGG.y + EGG_NDC.y, EGG.z + EGG_NDC.z):project(R.world_camera)
       site_unlock_from('lich-survivors', (EGG_NDC.x + 1)/2, (1 - EGG_NDC.y)/2)
     end
     -- (2026-10-13) on the site the ending fades to the page's colour as it is now (its theme), not round 62's #111111
