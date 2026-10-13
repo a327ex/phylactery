@@ -238,6 +238,10 @@ function GM.create(R, hud_layer)
   -- egg's part follows at once (no snakes, no coil). 'GAME': the game as it starts for players (round 63, owner: "now
   -- let me start from the actual start of the game": the default again).
   local START_AT = os.getenv('LICH_START') or 'GAME'       -- (LICH_START=EGG / ENDING in the environment: the ending's tests)
+  -- (2026-10-13, the unlock's tests on the site: the site's admin switch LICH FROM THE EGG asks for the egg start; there
+  -- it waits for the first click inside the game, so it doesn't play out before he looks)
+  if HOSTED and site_game_start then START_AT = site_game_start('lich-survivors') or START_AT end
+  local EGG_WAIT = HOSTED and START_AT == 'EGG'
   -- round 63 (owner, 2026-10-08: "The lich should appear walking automatically towards the egg from offscreen. This
   -- will later be tied to the event of the player focusing on the play window when we upload the game to the
   -- website"): in the players' start he waits out of the room camera's frame, `from` down the lane from the tunnel,
@@ -654,6 +658,7 @@ function GM.create(R, hud_layer)
     -- on the site the walk in starts with the visitor's first click inside the game (the host passes mouse
     -- presses only while the cursor is over it)
     if HOSTED and INTRO.state == 'wait' and mouse_is_pressed(1) then begin() end
+    if EGG_WAIT and mouse_is_pressed(1) then EGG_WAIT = false end     -- (the site's egg start: the click begins it)
     keys_input()
     for _, mk in ipairs(MOVE_KEYS) do if key_is_released(mk[1]) then
       -- keyup: this direction is let go (if its other key is not still down it stays off, as main.js)
@@ -904,6 +909,7 @@ function GM.create(R, hud_layer)
   -- ------------------------------------------------------------------ sim + render
   local function tick()
     GCP.tick()                         -- (round 64: the collector, a little every tick)
+    if EGG_WAIT then return end        -- (the site's egg start, before its click: held)
     if END.won and not SEQ.on then END.over = END.over + DT; if over_black() then return end end
     if inspect_active() then inspect.tick(DT); return end
     -- the model viewer put away with THROW: he throws it (round 48)
@@ -979,6 +985,7 @@ function GM.create(R, hud_layer)
   -- editor, sound_rooms.lua) = how far from the camera to his head it sits: 1 = his head (the default), 0 = the camera.
   -- (Round 68 had it half way down the camera's line of sight, a fixed point in the air over the near side.)
   local EAR = { matrix_world = { elements = {} } }
+  local EGG_NDC = Vector3.new()     -- (the opened egg's place in the frame, for the site's unlock)
   local HEAD_P = Vector3.new()
   local function ear_of(cam)
     local rm = AU.rooms[AU.zone or 'cave']
@@ -998,6 +1005,12 @@ function GM.create(R, hud_layer)
     if SU.mode() == 'play' then
       AU.update(dt, ear_of(R.world_camera))   -- the listener: the ear above (voices' ears, loops, delays, the cave's reverb)
       snd_frame()
+    end
+    -- (2026-10-13, the site's unlock animation: where the opened egg is in the frame, 0..1 across and down; the
+    -- letters of the posts it unlocks leave from there. Every frame while it is open, the camera moving in on it)
+    if HOSTED and SEQ.opened and site_unlock_from then
+      EGG_NDC:set(EGG.x, EGG.y + 0.45, EGG.z):project(R.world_camera)
+      site_unlock_from('lich-survivors', (EGG_NDC.x + 1)/2, (1 - EGG_NDC.y)/2)
     end
     fire.set_camera(R.world_camera, R.H)
     fx.set_camera(R.world_camera, R.H)
