@@ -36,7 +36,9 @@ at his head, turned as the camera (port/game.lua `ear_of`; the cave's EAR row = 
 levers (reverb, width, rolloff) live in tools/sfx_spec.py `CAVE`. ⚠ An agent instance reads AND WRITES the real
 `sound_picks.lua` / `sound_rooms.lua` (he edits them in his running game at the same time): a probe that drives the
 editor snapshots them with file_read_string first and writes them back at the end (scratch/s14/solo_probe.lua), and
-clicks by `SU.hit_by_id`, never by sweeping the mouse (that hit the X buttons once).
+clicks by `SU.hit_by_id`, never by sweeping the mouse (that hit the X buttons once). A probe that does NOT drive the
+editor must not write them back at all (the agent game never saves on its own; a write-back could undo a save his
+game made during the probe).
 
 **three.js first (owner, 2026-09-27)**, like Brutal Behavior: the game lives in `web/`
 (`index.html` + `src/*.js`, three.js 0.170 from jsdelivr, local modules import each other only
