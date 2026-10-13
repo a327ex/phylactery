@@ -986,6 +986,7 @@ function GM.create(R, hud_layer)
   -- (Round 68 had it half way down the camera's line of sight, a fixed point in the air over the near side.)
   local EAR = { matrix_world = { elements = {} } }
   local EGG_NDC = Vector3.new()     -- (the opened egg's place in the frame, for the site's unlock)
+  local PAGE_COL = { SL.SITE_BG[1], SL.SITE_BG[2], SL.SITE_BG[3] }   -- (the site's page colour, read every frame)
   local HEAD_P = Vector3.new()
   local function ear_of(cam)
     local rm = AU.rooms[AU.zone or 'cave']
@@ -1011,6 +1012,12 @@ function GM.create(R, hud_layer)
     if HOSTED and SEQ.opened and site_unlock_from then
       EGG_NDC:set(EGG.x, EGG.y + 0.45, EGG.z):project(R.world_camera)
       site_unlock_from('lich-survivors', (EGG_NDC.x + 1)/2, (1 - EGG_NDC.y)/2)
+    end
+    -- (2026-10-13) on the site the ending fades to the page's colour as it is now (its theme), not round 62's #111111
+    if HOSTED and site_page_rgb then
+      local pr, pg, pb = site_page_rgb()
+      PAGE_COL[1], PAGE_COL[2], PAGE_COL[3] = pr/255, pg/255, pb/255
+      sil.fade_col = PAGE_COL
     end
     fire.set_camera(R.world_camera, R.H)
     fx.set_camera(R.world_camera, R.H)
