@@ -55,6 +55,7 @@ M.KNOWN = {
   'viewer_throw', 'power_lost', 'ending_begin', 'egg_knock', 'egg_crack', 'egg_open', 'egg_piece_land',
   'lens_shard_land',     -- (Lich, round 69: the broken lens's shards landing; no file yet)
   'lift_ball_burst',     -- (Lich, 2026-10-12: the lift's ball of snakes bursting; lift_burst = single ones)
+  'unlock_pour', 'unlock_lift', 'unlock_burst', 'unlock_sweep', 'unlock_final',   -- (2026-10-14: the site's unlock, port/unlock_snd.lua)
   -- (2026-10-14, owner) gone from the list: rock_land ("rock_land isn't necessary as rock_hit is enough": the rock's
   -- landings play nothing)
 }
