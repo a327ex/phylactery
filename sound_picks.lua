@@ -741,6 +741,24 @@ return {
       "assets/sfx/rock_hit_3.ogg",
       "assets/sfx/rock_hit_4.ogg",
     },
+    ["per"] = {
+      ["assets/sfx/rock_hit_1.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+      ["assets/sfx/rock_hit_2.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+      ["assets/sfx/rock_hit_3.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+      ["assets/sfx/rock_hit_4.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+    },
     ["reverb"] = 0.45,
     ["rolloff"] = 0.7,
     ["src"] = {
@@ -749,7 +767,7 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_heavy_slam_03.wav",
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_heavy_slam_04.wav",
     },
-    ["vol"] = 0.85,
+    ["vol"] = 0.75,
   },
   ["rock_hold"] = {
     ["candidates"] = {
