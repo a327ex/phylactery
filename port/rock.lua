@@ -25,7 +25,6 @@ local ORBIT_R, ORBIT_W, ORBIT_HOLD, ORBIT_FROM = 1.15, 2.4, 1.0, 1.5
 
 function RO.create(ctx)
   local R, snakes, fx, cave, rng, gore, warp, lich, get_L = ctx.R, ctx.snakes, ctx.fx, ctx.cave, ctx.rng, ctx.gore, ctx.warp, ctx.lich, ctx.get_L
-  local VARIED = ctx.varied or false   -- (the game's flow; LICH_ROOM keeps the old one, draw for draw)
   local N = snakes.RINGS
   local mid = floor(N*0.4 + 0.5)
   local A = R.statics
@@ -280,16 +279,6 @@ function RO.create(ctx)
             (sin(t*1.7 + q.ph[3])*0.6 + sin(t*3.9 + q.ph[4])*0.4)*amp*0.6,
             (sin(t*2.6 + q.ph[2])*0.6 + sin(t*5.3 + q.ph[3])*0.4)*amp)
         end
-        -- (2026-10-14, owner: "lifting the rock should additionally have the same gravity-ish wobble that happens on the
-        -- snake lift attack") held up as the lift holds its ball of snakes: its place floats on lift.lua's uneven waves
-        -- (the knot's centre: bobbing up and down, drifting to the sides), coming in as it tears out; the game's flow
-        -- only, no draws of its own (the rock's phases)
-        local function float(out, k)
-          if not VARIED then return out:set(0, 0, 0) end
-          return out:set((0.09*sin(t*0.9 + q.ph[4]) + 0.045*sin(t*2.3 + q.ph[1]))*k,
-                         (0.07*sin(t*1.4 + q.ph[2]) + 0.03*sin(t*3.1 + q.ph[3]))*k,
-                         (0.09*sin(t*0.8 + q.ph[3]) + 0.045*sin(t*2.1 + q.ph[4]))*k)
-        end
         local function hold_on(Tg, f, z, amax, wob)
           local w = 6.2832*f
           q.ramp = min(1, q.ramp + dt/0.15)
@@ -308,23 +297,22 @@ function RO.create(ctx)
           if not q.torn then
             q.torn = true; tear(q); q.v:set(q.dir.x*0.6, q.quick and 5 or 3.4, q.dir.z*0.6); q.ramp = 0.3
             AU.play('rock_rip', { pos = q.from, gap = 0.05 })
+            -- (2026-10-14, owner: "what I was missing was a rock lift event": the unseen hand taking it, as the lift's
+            -- lift_cast takes a snake; it starts as a copy of lift_cast's sound: audio.lua A.SEED)
+            AU.play('rock_lift', { pos = m.position, gap = 0.05 })
             q.snd = AU.loop('rock_hold', { pos = m.position, max = 2 })
           end
           if q.snd then q.snd.set_pos(m.position) end
-          TG:copy(q.hold):add(float(V, smoothstep(0, 0.35, max(0, q.t))))
-          hold_on(TG, q.quick and 2.4 or (q.orbit and 2.2 or 1.5), 0.5, q.quick and 90 or (q.orbit and 60 or 40), 2.5)
+          hold_on(q.hold, q.quick and 2.4 or (q.orbit and 2.2 or 1.5), 0.5, q.quick and 90 or (q.orbit and 60 or 40), 2.5)
           spin(2, 3)
           if rng.next() < 0.5 then aura(m.position, 0.9) end
-          local near = m.position:distance_to(TG) < 0.2 and q.v:length() < 1.2   -- (its place: floating, in the game's flow)
+          local near = m.position:distance_to(q.hold) < 0.2 and q.v:length() < 1.2
           if (q.t > (q.quick and 0.12 or 0.3) and near) or q.t > (q.quick and 0.25 or 0.6) then q.phase = 'hold'; q.pt = 0; q.ramp = 0.5 end
         elseif q.phase == 'hold' then
           q.pt = q.pt + dt
           local back = smoothstep(q.hold_t - 0.14, q.hold_t, q.pt)
           TG:copy(q.hold):add_scaled_vector(q.dir, -0.18*back)
           TG.y = TG.y + (0.05*back + sin(t*2.2 + q.ph[1])*0.03)
-          TG:add(float(V, 1))
-          -- (and its weight: as it settles into the hold it dips and springs back, a bob dying out; the game's flow only)
-          if VARIED then TG.y = TG.y - 0.09*math.exp(-q.pt*5)*math.cos(q.pt*13) end
           hold_on(TG, q.orbit and 2.4 or 1.3, 0.42, q.orbit and 60 or 25, 2.0)
           if q.snd then q.snd.set_pos(m.position) end
           spin(0.8, 2)

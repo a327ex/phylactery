@@ -123,6 +123,8 @@ SPEC = {
         why='the rock hits a snake: heavy stone slams (93-98% under 200 Hz)'),
     # rock_land: (2026-10-14, owner: "rock_land isn't necessary as rock_hit is enough") gone; the rock's landings are
     # silent (my pick was rock_smashable_hit_impact_01-03)
+    # rock_lift: (2026-10-14, owner: "what I was missing was a rock lift event") new, starting as a copy of his lift_cast
+    # (port/audio.lua A.SEED: the gravity casts), played as the rock tears out, beside rock_rip
     # ---------------------------------------------------------------- leak
     'leak_whisper': dict(unsure=True, candidates=[R3 + 'Wind Magic/RPG3_WindMagicMisc_Dark', PM + 'PM_ELEM_Dark04_Absorb_P3_Drone.wav'],
         why='the leak around his skull while it is his: warped air, nothing named for it'),
