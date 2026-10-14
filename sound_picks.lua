@@ -994,13 +994,14 @@ return {
     ["files"] = {
       "assets/sfx/unlock_land_2.ogg",
     },
-    ["pitch_hi"] = 1.5,
-    ["pitch_lo"] = 0.5,
+    ["pitch_hi"] = 2,
+    ["pitch_lo"] = 1.5,
     ["reverb"] = 0.1,
     ["sr"] = 4,
     ["src"] = {
       "soundeffect-lab/machine/keyboard1__keyboard-typing.ogg",
     },
+    ["vol"] = 0.6,
   },
   ["unlock_lift"] = {
     ["candidates"] = {
@@ -1010,7 +1011,14 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_whoosh_buildup6.wav",
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_shinny_high_tone_05.wav",
     },
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/unlock_lift_1.ogg",
+    },
+    ["sr"] = 4,
+    ["src"] = {
+      "RPG Magic SFX 2/DucVu_Spells_SFX_[Video_Demo_1]/Plasma_Gravity_Strike_FULL.wav",
+    },
+    ["vol"] = 0.7,
   },
   ["unlock_pour"] = {
     ["candidates"] = {
@@ -1024,9 +1032,11 @@ return {
     ["files"] = {
       "assets/sfx/unlock_pour_2.ogg",
     },
+    ["sr"] = 4,
     ["src"] = {
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_pop_open_01.wav",
     },
+    ["vol"] = 0.65,
   },
   ["unlock_sweep"] = {
     ["candidates"] = {
