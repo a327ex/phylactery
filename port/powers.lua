@@ -15,6 +15,12 @@
   pulled into one knot and burst at once (lift.lua), the rocks circling him then loosed together
   (rock.lua), the lens as one long cut through them all (lens.lua). Something within URGENT still forces
   a cast now, whatever the bout.
+  2026-10-15 (owner: "you get moments of burst of activity where the lich uses 3+ skills at the same time ... not like
+  this where you have the lich doing 3+ skills at exactly the same time, since it both sounds weird but the animations
+  also tend to not look the best they could"): in the game's flow no attack starts while two others are at work, nor
+  within START_GAP of another starting (room_for); only the guarantee passes (the urgent casts, the rushes, the last
+  resort). The lens is a familiar (lens.lua): between the bouts' casts it takes a snake of its own now and then, and
+  every snake when the lens is the only attack or one of two.
 ]]
 local TM = require('port.three.math')
 local U = require('port.util')
@@ -103,7 +109,7 @@ function PW.create(ctx)
   local VOLLEY_MIN, VOLLEY_MAX, SWEEP_W, SWEEP_V, SWEEP_SEG, SWEEP_LEAD = 0.17, 0.4, 2.6, 6.0, 0.12, 0.5
   -- (a group coming in makes one attack for all of it likelier; a lone snake, a mix or a rotation)
   local MODE_W, MODE_W_GROUP = { 0.18, 0.3, 0.25, 0.27 }, { 0.6, 0.15, 0.1, 0.15 }
-  local function choosable() local out = {}; for _, a in ipairs(CHOOSE) do if on[a] then out[#out + 1] = a end end; return out end
+  local function choosable() local out = {}; for _, a in ipairs(CHOOSE) do if on[a] and not (a == lens and lens.resting()) then out[#out + 1] = a end end; return out end
   -- how likely an attack is to be drawn: those unused longest a little likelier, and (round 55, owner,
   -- 2026-10-07: "prismatic beam and lens are also being used less than the other attacks"; measured over
   -- 5 min: lens 10 casts to the others' 16-17 standing, beam 12 to 13-19 moving) those cast fewer times
@@ -156,9 +162,9 @@ function PW.create(ctx)
   -- the bout's next attack (kept until it is cast)
   local function plan_pick()
     if not plan then return nil end
-    if plan.next and on[plan.next] then return plan.next end
+    if plan.next and on[plan.next] and not (plan.next == lens and lens.resting() and #plan.set > 1) then return plan.next end
     local set = {}
-    for _, a in ipairs(plan.set) do if on[a] then set[#set + 1] = a end end
+    for _, a in ipairs(plan.set) do if on[a] and not (a == lens and lens.resting() and #plan.set > 1) then set[#set + 1] = a end end
     plan.set = set
     if #set == 0 then plan = nil; return nil end
     local a
@@ -224,13 +230,34 @@ function PW.create(ctx)
     elseif plan and (plan.mode == 2 or plan.mode == 3) then cap = max(a.capacity(power), 2)
     else cap = max(1, a.capacity(power)) end
     if a == rock then cap = min(cap, rock.free_rocks()) end
-    if a == lens and cap < 3 then cap = min(cap, lens.free_lenses()) end
+    if a == lens and varied then
+      if lens.slots() <= 0 then return nil end
+      if cap < 3 then cap = min(cap, lens.slots()) end
+    elseif a == lens and cap < 3 then cap = min(cap, lens.free_lenses()) end
     if cap <= 0 then return nil end
     local out = {}
     for k = 1, min(cap, #th) do out[k] = th[k] end
     return out
   end
   local G = { phase = 'idle', ab = nil, targets = {}, t = 0, on_t = 0, arm = 1, ring = 0, primary = nil, quick = false, w = 0, pw = 0, point = Vector3.new(), must_turn = false, still = 0 }
+  -- 2026-10-15: at most AT_ONCE attacks at work, starts at least START_GAP apart (the game's flow). At work: the hand's
+  -- gesture (aiming, firing, holding), a lens forming or cutting (a familiar floating is not), a rock in play, the
+  -- lift's knot. A gesture that follows the hand's last one (chained from its hold) takes its place
+  local START_GAP, AT_ONCE = 0.4, 2
+  local last_start = -10
+  local function started() last_start = clock end
+  local function room_for(a)
+    if not varied then return true end
+    if clock - last_start < START_GAP then return false end
+    local hand = (G.phase == 'aim' or G.phase == 'volley' or G.phase == 'sweep' or G.phase == 'hold') and G.ab or nil
+    if hand and a.gesture and G.phase == 'hold' then hand = nil end
+    local n = 0
+    if hand and hand ~= a then n = n + 1 end
+    if a ~= lens and lens.working() then n = n + 1 end
+    if a ~= rock and rock.busy_count() > 0 then n = n + 1 end
+    if a ~= lift and hand ~= lift and lift.held_count() > 0 then n = n + 1 end
+    return n < AT_ONCE
+  end
   local facing, drops, test_old = 0, 0, false
   local function rel_yaw(c) local L = get_L(); local a = atan2(c.x - L.x, c.z - L.z) - mover.yaw(); return atan2(sin(a), cos(a)) end
   local function behind(c) return abs(rel_yaw(c)) > FRONT end
@@ -276,6 +303,7 @@ function PW.create(ctx)
     local secs = (varied and #targets >= 3) and 2.0 + 0.45*#targets or 2.0
     for _, s in ipairs(targets) do claim(s, ab.name, secs) end
     G.phase = 'aim'; G.ab = ab; G.targets = targets; G.t = 0; G.on_t = 0; G.still = 0; G.quick = quick
+    started()
     G.primary = targets[1]; G.ring = ab.aim_ring()
     G.point:copy(G.primary.spine[G.ring + 1])
     -- round 50: the fire's sweep starts a little before the first (the way it will go)
@@ -331,7 +359,7 @@ function PW.create(ctx)
           end
         end
         nxt[ab] = 0
-      elseif not (ab and ab.gesture) or nxt[ab] > 0 then return false end
+      elseif not (ab and ab.gesture) or nxt[ab] > 0 or not room_for(ab) then return false end
       local sel = want_targets(ab, quick)
       if quick then
         local ur = {}
@@ -493,7 +521,7 @@ function PW.create(ctx)
             G.ab.cast(targets, TIP, G.ring, G.arm, G.quick)
             G.phase = 'hold'
           end
-          count(G.ab, #targets)
+          count(G.ab, #targets); started()     -- (its release: the others' starts keep their distance from it too)
           nxt[G.ab] = (varied and PLAN_CD or G.ab.cooldown)/power; last[G.ab] = clock
           G.t = 0
         end
@@ -639,6 +667,12 @@ function PW.create(ctx)
     m.point = G.pw > 0 and { w = G.pw*G.pw*(3 - 2*G.pw), arm = G.arm, x = G.point.x, y = G.point.y, z = G.point.z } or nil
 
     -- the lens
+    if varied then
+      -- (2026-10-15) one familiar, or (the lens all he has, or one of two) as many as it could cast at once, each staying
+      local strong = #actives <= 2
+      lens.set_familiars(strong and lens.capacity(power) or 1, strong)
+      if not on[lens] then lens.dismiss() end
+    end
     if on[lens] then
       local lone = #gestured == 0
       local busy_hand = G.phase == 'aim' or G.phase == 'volley' or G.phase == 'sweep'
@@ -655,18 +689,38 @@ function PW.create(ctx)
         for k = 1, min(#rush, lens.free_lenses()) do targets[k] = rush[k] end
         for _, s in ipairs(targets) do claim(s, 'LENS-QUICK', 1.2) end
         lens.cast(targets, true)
-        if #targets > 0 then count(lens, #targets); quick_lens = quick_lens + 1 end
+        if #targets > 0 then count(lens, #targets); quick_lens = quick_lens + 1; started() end
       elseif varied then
-        if plan_pick() == lens and nxt[lens] <= 0 and lens.free_lenses() > 0 then
+        if plan_pick() == lens and nxt[lens] <= 0 and lens.slots() > 0 and room_for(lens) then
           local targets = want_targets(lens)
           if targets then
             local grp = #targets >= 3
             for _, s in ipairs(targets) do claim(s, 'LENS', grp and 4.5 or 2.6) end
             local at = grp and lens.cast_group(targets) or lens.cast(targets)
             if grp then groups.LENS = groups.LENS + 1 end
-            count(lens, #targets); plan_done(lens)
+            count(lens, #targets); plan_done(lens); started()
             if #at > 0 then LOOK.p:copy(at[1]); LOOK.t = 0 end
             nxt[lens] = PLAN_CD/power; last[lens] = clock
+          end
+        else
+          -- (2026-10-15) the familiar, between the bouts' casts: a snake of its own when it has rested its while
+          -- (every one there is when the lens is all he has or one of two: a long cut through three or more)
+          local f = lens.idle_familiar()
+          local strong = #actives <= 2
+          if f and f.idle_t >= (strong and 0.15 or f.cd) and room_for(lens) then
+            local th = threats(LENS_ENGAGE)
+            if #th > 0 then
+              local targets = { th[1] }
+              if strong and #th >= 3 then targets = {}; for k = 1, min(6, #th) do targets[k] = th[k] end end
+              local grp = #targets >= 3
+              for _, s in ipairs(targets) do claim(s, 'LENS', grp and 4.5 or 2.6) end
+              local at = grp and lens.cast_group(targets) or lens.cast(targets)
+              if #at > 0 then
+                if grp then groups.LENS = groups.LENS + 1 end
+                count(lens, #targets); started(); used_at[lens] = clock
+                LOOK.p:copy(at[1]); LOOK.t = 0
+              else for _, s in ipairs(targets) do s.claim = nil end end
+            end
           end
         end
       elseif nxt[lens] <= 0 and turn(lens) then
@@ -699,16 +753,16 @@ function PW.create(ctx)
         for k = 1, min(#rush, min(2, rock.free_rocks())) do targets[k] = rush[k] end
         for _, s in ipairs(targets) do claim(s, 'ROCK-QUICK', 1.2) end
         rock.cast(targets, nil, 0, 1, true)
-        count(rock, #targets)
+        count(rock, #targets); started()
       elseif varied then
-        if plan_pick() == rock and nxt[rock] <= 0 and rock.free_rocks() > 0 then
+        if plan_pick() == rock and nxt[rock] <= 0 and rock.free_rocks() > 0 and room_for(rock) then
           local targets = want_targets(rock)
           if targets then
             local grp = #targets >= 3
             for _, s in ipairs(targets) do claim(s, 'ROCK', grp and 4.0 or 2.6) end
             rock.cast(targets, nil, 0, 1, false, grp)
             if grp then groups.ROCK = groups.ROCK + 1 end
-            count(rock, #targets); plan_done(rock)
+            count(rock, #targets); plan_done(rock); started()
             nxt[rock] = PLAN_CD/power; last[rock] = clock
             local p = rock.hold_at()
             if p and G.w < 0.05 then LOOK.p:copy(p); LOOK.t = 0 end
@@ -741,7 +795,7 @@ function PW.create(ctx)
             if a == FIRE then snakes.ignite(s)
             elseif a == lift then lich.fingertip(G.arm or 1, TIP); lift.cast({ s }, TIP, jround(N*0.5), G.arm or 1)
             else beam.shot(s, jround(N*0.3), G.arm or 1) end
-            count(a, 1); used_at[a] = clock
+            count(a, 1); used_at[a] = clock; started()
             last_resorts = last_resorts + 1
           end
         end

@@ -6,6 +6,10 @@
   the dissolve). No gesture; several lenses at once with fewer powers.
   Round 50: three or more in one cast (the bouts, powers.lua): one larger lens, and its burning point
   draws one long cut through them all, from beside the first through each in turn (cast_group).
+  2026-10-15, THE FAMILIAR (the game's flow; LICH_ROOM keeps a lens per cast): a lens, once formed, stays. After its cut
+  it floats in the shaft, resting its gaze on the egg; given its next snake it glides a little and turns to it, gathers
+  the light and cuts again, until its shots or its life are spent or nothing comes for a while, and then it breaks.
+  powers.lua decides when it shoots and how many there may be.
 ]]
 local TM = require('port.three.math')
 local T = require('port.three.core')
@@ -110,6 +114,26 @@ function LE.create(ctx)
   local look = 0
   local cuts, fired = {}, {}
   local stats = { done = 0, empty = 0 }              -- (lenses whose cut ended, and those that cut nothing)
+  -- 2026-10-15 (owner: "the lens should be more like a familiar that is destroyed and created less often. It should
+  -- stay above and float and change angles as it targets snakes instead of being created/destroyed for each individual
+  -- attack. But it shouldn't stay forever nor attack every snake unless the setup requires it when its the only weapon
+  -- or one of the few left"): in the game's flow a lens is a FAMILIAR. It lives max_shots shots or life s, and breaks
+  -- after IDLE_MAX s with nothing to do; when the lens is the only attack or one of two (`strong`, set by powers.lua)
+  -- only the idle time ends it, and there may be more than one. A cast beyond them (the guarantee's rush) still makes a
+  -- lens that breaks after its cut. Once the last one breaks another forms only after a while. Its own draws (frng)
+  -- leave the lens rng's order as it was.
+  local familiar = ctx.varied or false
+  local frng = familiar and U.run_rng(7331) or nil
+  local fam_max, fam_strong = 1, false
+  local TURN, IDLE_MAX, IDLE_MAX_STRONG = 0.4, 5.0, 6.0
+  local resummon_at = -1e9
+  local EGG_LOOK = Vector3.new(snakes.egg.x, cave.ground_y(snakes.egg.x, snakes.egg.z), snakes.egg.z)
+  local function fam_count() local n = 0; for _, q in ipairs(active) do if q.fam and not q.leaving then n = n + 1 end end; return n end
+  local function idle_fam() for _, q in ipairs(active) do if q.fam and q.idle and not q.leaving then return q end end; return nil end
+  local function new_place(q)                       -- where it floats for its next cut: in the shaft, near where it was
+    local h = frng.float(3.8, 5.6)
+    q.pos_to = axis_at(h):add(Vector3.new(frng.spread(0.9), 0, frng.spread(0.9)))
+  end
 
   local function cut_fx(s, c)
     local tan = Vector3.new():sub_vectors(s.spine[max(0, c - 3) + 1], s.spine[min(N - 1, c + 3) + 1]); tan.y = 0; tan:normalize()
@@ -176,6 +200,7 @@ function LE.create(ctx)
       end
     end
     if best then q.s = best; q.ring = aim_ring(); claim(best); return true end
+    if q.fam then q.settle_now = true; return false end           -- (a familiar: back to floating, no shot spent)
     q.fired = true; q.t = FORM + CONVERGE + q.dur + OFF + 1e-3
     return false
   end
@@ -184,7 +209,7 @@ function LE.create(ctx)
     out.y = cave.ground_y(out.x, out.z) + 0.02
     return out
   end
-  local function spawn(s, k, quick, group)
+  local function spawn(s, k, quick, group, fam)
     quick = quick or false
     local wait = 0
     if stagger > 0 then
@@ -206,6 +231,11 @@ function LE.create(ctx)
       group = group, big = group and GROUP_BIG or 1 }
     if q.light then q.light.lens = q end
     beside(q, q.spot)
+    if fam then
+      q.fam = true; q.age = 0; q.shots = 0; q.idle_t = 0; q.cd = 0
+      q.max_shots = frng.int(3, 5); q.life = frng.float(9, 14); q.ph = frng.float(0, 6.28)
+      q.look = q.spot:clone(); q.pos_to = pos:clone(); q.bigv = q.big
+    end
     L.on = true
     if wait > 0 then q.wait_t = wait                                  -- (it sounds and shows as it starts: update)
     else AU.play('lens_form', { pos = pos }) end
@@ -265,6 +295,69 @@ function LE.create(ctx)
     return false
   end
 
+  -- a shot's tally (once): its cut done, and whether it cut nothing
+  local function count_shot(q)
+    if q.counted or not q.fired then return end
+    q.counted = true
+    stats.done = stats.done + 1
+    if (q.ncut or 0) == 0 then
+      stats.empty = stats.empty + 1
+      local tg = q.s
+      stats.why = stats.why or {}
+      local d = tg and hyp(tg.spine[q.ring + 1].x - q.b.x, tg.spine[q.ring + 1].z - q.b.z) or -1
+      stats.why[#stats.why + 1] = string.format('%s free %s by %s group %s quick %s ring-to-end %.2f', tostring(tg ~= nil), tostring(tg and snakes.free(tg)),
+        tostring(tg and tg.fx and tg.fx.by or (tg and tg.burn and 'burn') or '-'), tostring(q.group ~= nil), tostring(q.t0q), d)
+      if #stats.why > 30 then table.remove(stats.why, 1) end
+    end
+  end
+  -- the familiar: its cut over (or none to make), it floats waiting; its time up, it breaks where it is (round 69)
+  local function settle(q, no_shot)
+    if not no_shot then count_shot(q); q.shots = q.shots + 1 end
+    if q.core then fx.release(q.core); q.core = nil end
+    if q.snd then q.snd.stop(); q.snd = nil end
+    if q.light then q.light.l.intensity = 0 end
+    q.L.cone.visible = false; q.L.patch.visible = false
+    q.idle = true; q.idle_t = 0; q.cd = frng.float(1.2, 2.4)
+    q.fired = false; q.s = nil; q.group = nil; q.path = nil; q.ncut = 0; q.big = 1; q.flare = 0; q.settle_now = nil
+  end
+  local function leave(q)
+    q.idle = false; q.leaving = true; q.fired = true; q.counted = true; q.focus_snd = true
+    q.s = nil; q.group = nil; q.path = nil
+    q.t = FORM + CONVERGE + q.dur + OFF + 1e-4
+    if q.light then q.light.l.intensity = 0 end
+    if fam_count() == 0 then resummon_at = clock + (fam_strong and 0 or frng.float(4.0, 7.0)) end
+  end
+  -- its next snake (or several: one long cut): it glides a little, turns to it, gathers the light, cuts
+  local function shoot(q, s, quick, group)
+    q.idle = false; q.idle_t = 0
+    q.s = s; q.group = group; q.ring = aim_ring(); q.side = rng.sign()
+    q.dur = SWEEP/SPEED; q.fired = false; q.core = nil; q.ncut = 0; q.path = nil; q.focus_snd = nil; q.counted = nil
+    q.big = group and GROUP_BIG or 1
+    q.t0q = quick or false
+    q.t = quick and FORM + CONVERGE - 0.12 or FORM - TURN
+    new_place(q)
+    beside(q, q.spot)
+    if not q.light then for _, x in ipairs(LIGHTS) do if not x.lens then q.light = x; x.lens = q; break end end end
+    return q.pos_to:clone()
+  end
+  -- it floats, resting its gaze on the egg
+  local IDLE_BOB = Vector3.new()
+  local function float_idle(q, t, dt)
+    local L, m = q.L, q.L.m
+    q.pos:lerp(q.pos_to, 1 - exp(-dt*1.6))
+    IDLE_BOB:set(sin(t*0.9 + q.ph)*0.06, sin(t*1.3 + q.ph*2)*0.08, cos(t*0.8 + q.ph)*0.06)
+    m.position:copy(q.pos):add(IDLE_BOB)
+    q.look:lerp(EGG_LOOK, 1 - exp(-dt*1.2))
+    m:look_at(q.look); m:rotate_x(pi/2)
+    q.bigv = q.bigv + (1 - q.bigv)*(1 - exp(-dt*4))
+    local size = LENS_R*q.bigv
+    m.scale:set(size, size, size); m.visible = true; L.sh.visible = true
+    L.sh.material.uniforms.uA.value = 0; L.sh.material.uniforms.uTime.value = t
+    m.material.user_data.U.uRim.value = 0.3
+    L.cone.visible = false; L.patch.visible = false
+    if q.light then q.light.l.intensity = 0 end
+  end
+
   local function update(t, dt)
     clock = t
     if shards then shards.update(t, dt, R.world_camera) end
@@ -287,6 +380,22 @@ function LE.create(ctx)
         AU.play('lens_form', { pos = q.pos })
       end
       q.t = q.t + dt
+      if q.fam then
+        q.age = q.age + dt
+        if q.t >= FORM + 0.4 then q.formed = true end
+        if q.settle_now then settle(q, true) end
+        -- its cut over: it floats on, or (its shots or its life spent) it breaks
+        if q.fired and not q.leaving and q.t - FORM - CONVERGE > q.dur + OFF then
+          settle(q)
+          if q.dismissed or (not fam_strong and (q.shots >= q.max_shots or q.age >= q.life)) then leave(q) end
+        end
+        if q.idle then
+          q.idle_t = q.idle_t + dt
+          if q.dismissed or q.idle_t > (fam_strong and IDLE_MAX_STRONG or IDLE_MAX) or (not fam_strong and q.age >= q.life) then leave(q)
+          else float_idle(q, t, dt); goto next_lens end
+        end
+        if not q.leaving then q.pos:lerp(q.pos_to, 1 - exp(-dt*1.6)) end
+      end
       -- (round 52: a lens on its way keeps its snake(s) until its cut has passed)
       if snakes.reclaim and q.t - FORM - CONVERGE <= q.dur then
         if q.s and snakes.free(q.s) then snakes.reclaim(q.s, 'LENS') end
@@ -298,26 +407,29 @@ function LE.create(ctx)
       local UU = m.material.user_data.U
       local t_form, t_conv, sweep_t = q.t/FORM, (q.t - FORM)/CONVERGE, q.t - FORM - CONVERGE
       local gone = smoothstep(q.dur + OFF, q.dur + OFF + FADE, sweep_t)
-      local grow = smoothstep(0, FORM, q.t)
-      local size = LENS_R*grow*(1 - 0.4*gone)*q.big
+      local grow = q.formed and 1 or smoothstep(0, FORM, q.t)
+      if q.fam then q.bigv = q.bigv + (q.big - q.bigv)*(1 - exp(-dt*4)) end
+      local size = LENS_R*grow*(1 - 0.4*gone)*(q.fam and q.bigv or q.big)
       m.scale:set(size, size, size)
       m.visible = size > 0.004 and gone < 0.999
-      L.sh.material.uniforms.uA.value = (grow*(1 - smoothstep(FORM, FORM + 0.4, q.t)) + gone*0.8 + 0.7*q.flare)*(1 - gone*gone)
+      L.sh.material.uniforms.uA.value = ((q.formed and 0.45 or 1)*grow*(1 - smoothstep(FORM, FORM + 0.4, q.t)) + gone*0.8 + 0.7*q.flare)*(1 - gone*gone)
       L.sh.material.uniforms.uTime.value = t
       q.flare = max(0, q.flare - dt/0.25)
       UU.uRim.value = (0.3 + 2.2*q.flare*q.flare)*grow*(1 - gone)
-      m.position:copy(q.pos):add(Vector3.new(sin(t*0.9 + i)*0.04, sin(t*1.3 + i*2)*0.05, cos(t*0.8 + i)*0.04))
+      local ph = q.fam and q.ph or i
+      m.position:copy(q.pos):add(Vector3.new(sin(t*0.9 + ph)*0.04, sin(t*1.3 + ph*2)*0.05, cos(t*0.8 + ph)*0.04))
       local lp = m.position:clone()
       -- round 69: done, it breaks: gone in one frame, its glass in shards (facing the spot it burned, as it looked)
       if shards and gone > 0 and not q.broke then
         q.broke = true
-        shards.burst(lp, LENS_R*q.big, Vector3.new():sub_vectors(q.spot, lp), look == 0)
+        shards.burst(lp, LENS_R*(q.fam and q.bigv or q.big), Vector3.new():sub_vectors(q.spot, lp), look == 0)
       end
       if q.broke then m.visible = false end
       if not q.fired and not snakes.free(q.s) then
         local nx = nil
         if q.group then for _, s in ipairs(q.group) do if snakes.free(s) then nx = s; break end end end
         if nx then q.s = nx else retarget(q) end
+        if q.settle_now then settle(q, true); float_idle(q, t, dt); goto next_lens end
       end
       local st = q.t - FORM - CONVERGE
       if st < 0 then beside(q, q.spot)
@@ -351,7 +463,11 @@ function LE.create(ctx)
         if q.path then path_at(q, f, q.spot) else q.spot:lerp_vectors(q.a, q.b, f) end
         q.spot.y = cave.ground_y(q.spot.x, q.spot.z) + 0.02
       end
-      m:look_at(q.spot); m:rotate_x(pi/2)
+      if q.fam then                                  -- (the familiar turns to its snake, then holds on it)
+        q.look:lerp(q.spot, 1 - exp(-dt*(t_conv >= 0 and 25 or 7)))
+        m:look_at(q.look)
+      else m:look_at(q.spot) end
+      m:rotate_x(pi/2)
       local conv = t_conv < 0 and 0 or (t_conv >= 1 and 1 or t_conv)
       local on_c = t_conv >= 0 and sweep_t < LIGHTS_OFF
       -- (2026-10-11, owner: lens_focus -> lens_charge, "right after the lens forms, while the attack is building up": from the
@@ -489,18 +605,7 @@ function LE.create(ctx)
       end
       if sweep_t > q.dur + OFF + FADE then
         L.on = false; m.visible = false; L.sh.visible = false; L.cone.visible = false; L.patch.visible = false
-        if q.fired then
-          stats.done = stats.done + 1
-          if (q.ncut or 0) == 0 then
-            stats.empty = stats.empty + 1
-            local tg = q.s
-            stats.why = stats.why or {}
-            local d = tg and hyp(tg.spine[q.ring + 1].x - q.b.x, tg.spine[q.ring + 1].z - q.b.z) or -1
-            stats.why[#stats.why + 1] = string.format('%s free %s by %s group %s quick %s ring-to-end %.2f', tostring(tg ~= nil), tostring(tg and snakes.free(tg)),
-              tostring(tg and tg.fx and tg.fx.by or (tg and tg.burn and 'burn') or '-'), tostring(q.group ~= nil), tostring(q.t0q), d)
-            if #stats.why > 30 then table.remove(stats.why, 1) end
-          end
-        end
+        count_shot(q)
         if q.core then fx.release(q.core) end
         if q.snd then q.snd.stop(); q.snd = nil end
         if q.light then q.light.l.intensity = 0; q.light.lens = nil end
@@ -514,7 +619,16 @@ function LE.create(ctx)
   function P.capacity(p) return ceil(p/1.5) end
   function P.cast(targets, quick)
     local out = {}
-    for k, s in ipairs(targets) do local p = spawn(s, k - 1, quick); if p then out[#out + 1] = p end end
+    for k, s in ipairs(targets) do
+      local p
+      if familiar then
+        local f = idle_fam()
+        if f then p = shoot(f, s, quick)
+        elseif fam_count() < fam_max and clock >= resummon_at then p = spawn(s, k - 1, quick, nil, true)
+        elseif quick then p = spawn(s, k - 1, quick) end           -- (the guarantee's rush: a lens gone after its cut)
+      else p = spawn(s, k - 1, quick) end
+      if p then out[#out + 1] = p end
+    end
     return out
   end
   -- round 52: a snake near the egg that a lens is already forming over: that lens fires now (as a quick
@@ -530,9 +644,32 @@ function LE.create(ctx)
     return false
   end
   function P.cast_group(targets)
-    local p = spawn(targets[1], 0, false, targets)
+    local p
+    if familiar then
+      local f = idle_fam()
+      if f then p = shoot(f, targets[1], false, targets)
+      elseif fam_count() < fam_max and clock >= resummon_at then p = spawn(targets[1], 0, false, targets, true) end
+    else p = spawn(targets[1], 0, false, targets) end
     return p and { p } or {}
   end
+  -- (the familiars, for powers.lua) how many snakes a cast now could be given (an idle one each, or new ones formed);
+  -- one idle (its idle_t: how long it has rested, cd: how long it rests between cuts of its own); how many there may be
+  -- and whether the lens is all (or nearly all) he has; whether any lens is at work (forming, turning, gathering,
+  -- cutting); resting: none, and none to be formed yet
+  function P.slots()
+    if not familiar then return P.free_lenses() end
+    local n = 0
+    for _, q in ipairs(active) do if q.fam and q.idle and not q.leaving then n = n + 1 end end
+    if clock >= resummon_at then n = n + min(max(0, fam_max - fam_count()), P.free_lenses()) end
+    return n
+  end
+  function P.idle_familiar() return idle_fam() end
+  function P.set_familiars(n, strong) fam_max = max(1, n); fam_strong = strong and true or false end
+  function P.working() for _, q in ipairs(active) do if not q.idle and not q.leaving then return true end end; return false end
+  function P.familiars() return fam_count() end
+  -- the lens taken from him: its familiars break (one cutting finishes its cut first)
+  function P.dismiss() for _, q in ipairs(active) do if q.fam and not q.leaving then q.dismissed = true end end end
+  function P.resting() return familiar and fam_count() == 0 and clock < resummon_at end
   function P.busy_count() return #active end
   function P.get_look() return look end
   function P.set_look(v) look = ((v % NLOOKS) + NLOOKS) % NLOOKS end
