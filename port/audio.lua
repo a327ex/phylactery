@@ -119,7 +119,7 @@ end
 -- (Lich) slots renamed: a file written under the old name (an older game still running saves it so) moves over
 A.RENAMED = { lens_focus = 'lens_charge' }     -- 2026-10-11: the lens's build-up
 -- (Lich) slots that play another's sound, the same in everything (its files, layers and settings: tuning one tunes both)
-A.SAME = { gore_land = 'lift_burst' }           -- 2026-10-14, owner: "gore_land should just be the same as the lift burst sound"
+A.SAME = {}      -- (2026-10-14: gore_land -> lift_burst was tried and taken back the same day: the burst on every landing)
 -- (Lich) new slots that start as a copy of another's sound (files, layers, settings) until they have their own entry:
 -- the copy is made at load, so it is saved with the rest the next time the editor saves, and is its own from then on
 A.SEED = { rock_lift = 'lift_cast' }            -- 2026-10-14, owner: "what I was missing was a rock lift event"
