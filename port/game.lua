@@ -48,6 +48,11 @@ local clamp, smoothstep = U.clamp, U.smoothstep
 local sqrt, abs, sin, cos, atan2, exp, floor, ceil, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.ceil, math.min, math.max, math.pi
 local DT = 1/60
 local HOSTED = GAME_HOSTED == true     -- inside the site's game host (a327ex.com): no test keys, the site's unlock
+-- (2026-10-14) hosted by the desktop's unlock test with the sound editor on (the site's game host sets it there only):
+-- the unlock's sounds tuned while the whole unlock plays; never on the website
+local EDITOR = GAME_EDITOR == true
+-- (the desktop unlock test's TAB, with the game out of view: the editor's list)
+function game_sound_editor() if EDITOR and SU.mode() == 'play' then SU.open_list() end end
 
 local GM = {}
 
@@ -655,8 +660,8 @@ function GM.create(R, hud_layer)
   local function input_update()
     -- the sound tool (2026-10-10, megablock's: port/soundui.lua): TAB lists what is sounding now and every red slot,
     -- ESC (with no viewer up) every slot; the game stands still while it is up; a click outside it plays again.
-    -- His tool only: never on the site.
-    if not HOSTED then
+    -- His tool only: never on the site (but in the desktop's unlock test, EDITOR).
+    if not HOSTED or EDITOR then
       local m = SU.mode()
       if m == 'play' then
         if key_is_pressed('tab') then SU.open_list(); return end
@@ -1045,7 +1050,7 @@ function GM.create(R, hud_layer)
     warp.set_camera(R.world_camera, R.H)
     draw_hud()
     draw_over()
-    if not HOSTED then SU.draw(HUD, R.world_camera) end   -- every sound as its name where it happens (his tool: not on the site)
+    if not HOSTED or EDITOR then SU.draw(HUD, R.world_camera) end   -- every sound as its name where it happens (his tool: not on the site)
     HUD.flush(hud_layer)                -- the HUD into its layer, which the final pass composites
     layer_render(hud_layer)
     R.render(dt)
