@@ -241,13 +241,13 @@ return {
       "assets/sfx/gore_crush_4.ogg",
     },
     ["reverb"] = 0.3,
+    ["sr"] = 4,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 2.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 3.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 5.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 8.wav",
     },
-    ["vol"] = 0.8,
   },
   ["gore_land"] = {
     ["files"] = {
@@ -415,7 +415,7 @@ return {
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping flesh/Ripping flesh 3.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping flesh/Ripping flesh 8.wav",
     },
-    ["vol"] = 0.65,
+    ["vol"] = 0.8,
   },
   ["lens_dissolve"] = {
     ["candidates"] = {
@@ -427,6 +427,11 @@ return {
       "assets/sfx/lens_dissolve_4.ogg",
       "assets/sfx/lens_dissolve_5.ogg",
     },
+    ["lay"] = {
+      ["1"] = {
+        ["vol"] = 0.75,
+      },
+    },
     ["reverb"] = 0.2,
     ["sr"] = 5,
     ["src"] = {
@@ -435,7 +440,7 @@ return {
       "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic2_IceBreak02.wav",
       "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic2_IceBreak04Crit.wav",
     },
-    ["vol"] = 0.6,
+    ["vol"] = 0.71,
   },
   ["lens_fire"] = {
     ["fade"] = 0.8,
@@ -489,7 +494,7 @@ return {
     },
     ["per"] = {
       ["assets/sfx/lens_form_10.ogg"] = {
-        ["vol"] = 0.55,
+        ["vol"] = 0.65,
       },
     },
     ["reverb"] = 0.45,
@@ -497,7 +502,7 @@ return {
     ["src"] = {
       "soundeffect-lab/battle/magic-ice2__freeze.ogg",
     },
-    ["vol"] = 0.45,
+    ["vol"] = 0.71,
   },
   ["lich_die"] = {
     ["files"] = {
@@ -756,7 +761,7 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_hit_impact_02.wav",
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_hit_impact_03.wav",
     },
-    ["vol"] = 0.6,
+    ["vol"] = 0.64,
   },
   ["rock_rip"] = {
     ["files"] = {
