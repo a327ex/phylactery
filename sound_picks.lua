@@ -515,13 +515,21 @@ return {
   },
   ["lich_die"] = {
     ["files"] = {
-      "assets/sfx/lich_die_1.ogg",
+      "assets/sfx/lich_die_2.ogg",
+      "assets/sfx/lich_die_3.ogg",
+    },
+    ["lay"] = {
+      ["1"] = {
+        ["all"] = true,
+      },
     },
     ["reverb"] = 0.5,
+    ["sr"] = 4,
     ["src"] = {
-      "sounddictionary/battle/skeleton-warrior-bones-1__skeleton-bones-rattle.ogg",
+      "soundeffect-lab/battle/blow3__heavy-thud-hit.ogg",
+      "soundeffect-lab/button/decision11__heavy-thud.ogg",
     },
-    ["vol"] = 0.9,
+    ["vol"] = 0.75,
     ["width"] = 0.3,
   },
   ["lich_hover"] = {
@@ -952,6 +960,57 @@ return {
     ["reverb"] = 0,
     ["sr"] = 4,
     ["vol"] = 0.55,
+  },
+  ["unlock_burst"] = {
+    ["candidates"] = {
+      "Universal Sound FX/GLASS/GLASS_Rattle_Many_Fragments_01_stereo.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/ice_spell_impact_shatter_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/glass_smashable_small_break_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/collect_item_sparkle_pop_08.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/coin_bag_ring_gemstone_item_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/chime_bell_positive_ring_01.wav",
+    },
+    ["unsure"] = true,
+  },
+  ["unlock_final"] = {
+    ["candidates"] = {
+      "SFX_Collection/WAV/Interface Musical Sounds/OrchestralCasual_Accomplishment_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/collect_item_jingle_04.wav",
+      "SFX_Collection/WAV/Interface Musical Sounds/HarpSounds_HarpPoints_02.wav",
+      "Ultimate SFX Bundle (2020)/UI & Item Sounds/Win sound/Win sound 5.wav",
+      "SFX_Collection/WAV/Interface Musical Sounds/OrchestralFantasy_FantasyWin_01.wav",
+    },
+    ["unsure"] = true,
+  },
+  ["unlock_lift"] = {
+    ["candidates"] = {
+      "Pixel Magic Sound Effects Pack/PM_ELEM_Dark06_Gravity_P1_Cast.wav",
+      "Pixel Magic Sound Effects Pack/PM_SPELL_Cast14_Gravity_Ball.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_whoosh_buildup3.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_whoosh_buildup6.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_shinny_high_tone_05.wav",
+    },
+    ["unsure"] = true,
+  },
+  ["unlock_pour"] = {
+    ["candidates"] = {
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_shine_light_spell_05.wav",
+      "SFX_Collection/WAV/Coins & Chest/Chest_Gems_Opening_02.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/chimes_magical_bells_02.wav",
+      "Ultimate SFX Bundle (2020)/UI & Item Sounds/Prize wheel spin/Prize wheel spin 3.wav",
+      "SFX_Collection/WAV/Interface Musical Sounds/Magical_MagicDiscovery_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_pop_open_01.wav",
+    },
+    ["unsure"] = true,
+  },
+  ["unlock_sweep"] = {
+    ["candidates"] = {
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_LowGust01.wav",
+      "Pixel Magic Sound Effects Pack/PM_ELEM_Wind01_Gust.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_Dark01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/nature_spell_vines_whoosh_01.wav",
+    },
+    ["unsure"] = true,
   },
   ["viewer_close"] = {
     ["files"] = {

@@ -212,8 +212,11 @@ function M.search(q)
 end
 
 -- ================================================================================================ picks -> sound
+-- (2026-10-14) where the game's files are for what this opens itself (io): hosted by the desktop's unlock test, the
+-- game's folder (GAME_DIR); on its own, here
+local GD = (GAME_DIR and GAME_DIR ~= '') and (GAME_DIR .. '/') or ''
 local function file_exists(path)
-  local f = io.open(path, 'rb')
+  local f = io.open(GD .. path, 'rb')
   if f then f:close(); return true end
   return false
 end
@@ -241,7 +244,7 @@ local function convert(name, rel, s)
     if not used and not file_exists(out) then break end
     n = n + 1
   end
-  local cmd = ('ffmpeg -y -loglevel error -i "%s" -c:a libvorbis -q:a 10 "%s" 2>&1'):format(ROOT .. '/' .. rel, out)
+  local cmd = ('ffmpeg -y -loglevel error -i "%s" -c:a libvorbis -q:a 10 "%s" 2>&1'):format(ROOT .. '/' .. rel, GD .. out)
   local f = io.popen(cmd, 'r')
   if not f then return nil, 'CANNOT RUN FFMPEG' end
   local log = f:read('*a') or ''
