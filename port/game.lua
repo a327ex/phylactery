@@ -282,8 +282,18 @@ function GM.create(R, hud_layer)
     lich.hurt.w = END.w*END.w*(3 - 2*END.w); lich.hurt.level = END.level; lich.hurt.hand = END.hand
     mover.face.half = 1.31
     if END.w <= 0 then return end
+    -- (2026-10-14, owner: "lich should stop being hurt after he dies, the frequency of his hurting should also increase
+    -- the closer it gets to the explosion") dead: no more spasms (the ending's sequence; LICH_ROOM has none)
+    if SEQ.dead then return end
     END.spasm = END.spasm - dt
-    if END.spasm <= 0 then lich.hit(END.w*(0.18 + 0.4*END.level)); END.spasm = end_rng.float(1.1, 3.2)*(1 - 0.4*END.level) end
+    if END.spasm <= 0 then
+      lich.hit(END.w*(0.18 + 0.4*END.level))
+      -- the nearer his death (the snakes' burst), the sooner the next: half of it as the silhouettes come in, the rest
+      -- over the hold before he dies (DIE.hold), the gap down to a fifth and steadier (its spread narrowing: one draw)
+      local near = 0
+      if SEQ.on then near = SEQ.e1 and 0.5 + 0.5*clamp((SEQ.t - SEQ.e1)/DIE.hold, 0, 1) or 0.5*sil.e end
+      END.spasm = end_rng.float(1.1, 3.2 - 1.5*near)*(1 - 0.4*END.level)*(1 - 0.8*near^1.3)
+    end
     mover.face.on = true
     mover.face.yaw = atan2(EGG.x - L.x, EGG.z - L.z)
     mover.face.half = mover.speed() > 0.2 and 0.7 or 0.08
