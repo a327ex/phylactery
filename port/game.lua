@@ -53,6 +53,9 @@ local HOSTED = GAME_HOSTED == true     -- inside the site's game host (a327ex.co
 local EDITOR = GAME_EDITOR == true
 -- (the desktop unlock test's TAB, with the game out of view: the editor's list)
 function game_sound_editor() if EDITOR and SU.mode() == 'play' then SU.open_list() end end
+-- (2026-10-15, owner: "Scrolling down to look for sounds doesn't work because it scrolls down the page.") the site's
+-- page keeps the wheel over us (wheel_through) except while the editor is open: its lists scroll with it
+function game_wants_wheel() return EDITOR and SU.mode() ~= 'play' end
 
 local GM = {}
 
