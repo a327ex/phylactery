@@ -56,6 +56,12 @@ function game_sound_editor() if EDITOR and SU.mode() == 'play' then SU.open_list
 -- (2026-10-15, owner: "Scrolling down to look for sounds doesn't work because it scrolls down the page.") the site's
 -- page keeps the wheel over us (wheel_through) except while the editor is open: its lists scroll with it
 function game_wants_wheel() return EDITOR and SU.mode() ~= 'play' end
+-- (same day: "R doesn't work after going through the tab system") the keyboard is ours only while the editor is open,
+-- not merely while the cursor is over us (after TAB we fill the window); the site's R asks what it is doing (only its
+-- search takes typed text) and closes it, saved, before playing the unlock again
+function game_wants_keys() return EDITOR and SU.mode() ~= 'play' end
+function game_editor_mode() return EDITOR and SU.mode() or nil end
+function game_sound_close() if EDITOR and SU.mode() ~= 'play' then SU.resume() end end
 
 local GM = {}
 
