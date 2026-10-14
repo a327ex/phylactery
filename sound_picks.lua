@@ -1001,7 +1001,12 @@ return {
       "SFX_Collection/WAV/Interface Musical Sounds/Magical_MagicDiscovery_01.wav",
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_pop_open_01.wav",
     },
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/unlock_pour_2.ogg",
+    },
+    ["src"] = {
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_pop_open_01.wav",
+    },
   },
   ["unlock_sweep"] = {
     ["candidates"] = {
