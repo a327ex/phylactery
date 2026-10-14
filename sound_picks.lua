@@ -7,6 +7,7 @@ return {
       "assets/sfx/beam_bite_1.ogg",
       "assets/sfx/beam_bite_2.ogg",
     },
+    ["mute"] = true,
     ["reverb"] = 0.2,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Needle piercing flesh/Needle piercing flesh 1.wav",
@@ -16,15 +17,12 @@ return {
   },
   ["beam_cast"] = {
     ["files"] = {
-      "assets/sfx/beam_cast_1.ogg",
-      "assets/sfx/beam_cast_2.ogg",
-      "assets/sfx/beam_cast_3.ogg",
+      "assets/sfx/beam_cast_14.ogg",
     },
     ["reverb"] = 0.35,
+    ["sr"] = 4,
     ["src"] = {
-      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_Projectile01.wav",
-      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_Projectile02.wav",
-      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic2_Projectile03.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagicEpic_Impact02.wav",
     },
     ["vol"] = 0.75,
   },
@@ -56,15 +54,26 @@ return {
   },
   ["beam_shatter"] = {
     ["files"] = {
-      "assets/sfx/beam_shatter_1.ogg",
-      "assets/sfx/beam_shatter_2.ogg",
-      "assets/sfx/beam_shatter_3.ogg",
+      "assets/sfx/beam_shatter_7.ogg",
+      "assets/sfx/beam_shatter_8.ogg",
+      "assets/sfx/beam_shatter_9.ogg",
+    },
+    ["per"] = {
+      ["assets/sfx/beam_shatter_7.ogg"] = {
+        ["sr"] = 4,
+      },
+      ["assets/sfx/beam_shatter_8.ogg"] = {
+        ["sr"] = 4,
+      },
+      ["assets/sfx/beam_shatter_9.ogg"] = {
+        ["sr"] = 4,
+      },
     },
     ["reverb"] = 0.35,
     ["src"] = {
-      "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/glass_smashable_small_break_01.wav",
-      "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/glass_smashable_small_break_02.wav",
-      "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/glass_smashable_small_break_03.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic_Cast02.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic_Cast02v2.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic_Cast01.wav",
     },
     ["vol"] = 0.75,
   },
@@ -241,13 +250,13 @@ return {
       "assets/sfx/gore_crush_4.ogg",
     },
     ["reverb"] = 0.3,
+    ["sr"] = 4,
     ["src"] = {
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 2.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 3.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 5.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 8.wav",
     },
-    ["vol"] = 0.8,
   },
   ["gore_land"] = {
     ["files"] = {
@@ -415,7 +424,7 @@ return {
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping flesh/Ripping flesh 3.wav",
       "Ultimate SFX Bundle - HD Remaster/Gore Sounds Pro/Ripping flesh/Ripping flesh 8.wav",
     },
-    ["vol"] = 0.65,
+    ["vol"] = 0.8,
   },
   ["lens_dissolve"] = {
     ["candidates"] = {
@@ -427,6 +436,11 @@ return {
       "assets/sfx/lens_dissolve_4.ogg",
       "assets/sfx/lens_dissolve_5.ogg",
     },
+    ["lay"] = {
+      ["1"] = {
+        ["vol"] = 0.75,
+      },
+    },
     ["reverb"] = 0.2,
     ["sr"] = 5,
     ["src"] = {
@@ -435,7 +449,7 @@ return {
       "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic2_IceBreak02.wav",
       "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Ice Magic/RPG3_IceMagic2_IceBreak04Crit.wav",
     },
-    ["vol"] = 0.6,
+    ["vol"] = 0.71,
   },
   ["lens_fire"] = {
     ["fade"] = 0.8,
@@ -489,7 +503,7 @@ return {
     },
     ["per"] = {
       ["assets/sfx/lens_form_10.ogg"] = {
-        ["vol"] = 0.55,
+        ["vol"] = 0.65,
       },
     },
     ["reverb"] = 0.45,
@@ -497,17 +511,25 @@ return {
     ["src"] = {
       "soundeffect-lab/battle/magic-ice2__freeze.ogg",
     },
-    ["vol"] = 0.45,
+    ["vol"] = 0.71,
   },
   ["lich_die"] = {
     ["files"] = {
-      "assets/sfx/lich_die_1.ogg",
+      "assets/sfx/lich_die_2.ogg",
+      "assets/sfx/lich_die_3.ogg",
+    },
+    ["lay"] = {
+      ["1"] = {
+        ["all"] = true,
+      },
     },
     ["reverb"] = 0.5,
+    ["sr"] = 4,
     ["src"] = {
-      "sounddictionary/battle/skeleton-warrior-bones-1__skeleton-bones-rattle.ogg",
+      "soundeffect-lab/battle/blow3__heavy-thud-hit.ogg",
+      "soundeffect-lab/button/decision11__heavy-thud.ogg",
     },
-    ["vol"] = 0.9,
+    ["vol"] = 0.75,
     ["width"] = 0.3,
   },
   ["lich_hover"] = {
@@ -525,12 +547,13 @@ return {
       "assets/sfx/lich_hurt_3.ogg",
     },
     ["reverb"] = 0.3,
+    ["sr"] = 4,
     ["src"] = {
       "Gamemaster Audio - Pro Sound Collection/Foley/bone_break_neck_snap_crack_01.wav",
       "Gamemaster Audio - Pro Sound Collection/Foley/bone_break_neck_snap_crack_03.wav",
       "Gamemaster Audio - Pro Sound Collection/Foley/bone_break_neck_snap_crack_04.wav",
     },
-    ["vol"] = 0.45,
+    ["vol"] = 0.75,
   },
   ["lich_hurt_pose"] = {
     ["candidates"] = {
@@ -726,6 +749,24 @@ return {
       "assets/sfx/rock_hit_3.ogg",
       "assets/sfx/rock_hit_4.ogg",
     },
+    ["per"] = {
+      ["assets/sfx/rock_hit_1.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+      ["assets/sfx/rock_hit_2.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+      ["assets/sfx/rock_hit_3.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+      ["assets/sfx/rock_hit_4.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+    },
     ["reverb"] = 0.45,
     ["rolloff"] = 0.7,
     ["src"] = {
@@ -734,7 +775,7 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_heavy_slam_03.wav",
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_impact_heavy_slam_04.wav",
     },
-    ["vol"] = 0.85,
+    ["vol"] = 0.75,
   },
   ["rock_hold"] = {
     ["candidates"] = {
@@ -755,6 +796,27 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_hit_impact_01.wav",
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_hit_impact_02.wav",
       "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/rock_smashable_hit_impact_03.wav",
+    },
+    ["vol"] = 0.64,
+  },
+  ["rock_lift"] = {
+    ["files"] = {
+      "assets/sfx/lift_cast_4.ogg",
+    },
+    ["lay"] = {
+      ["1"] = {
+        ["all"] = true,
+      },
+    },
+    ["per"] = {
+      ["assets/sfx/lift_cast_4.ogg"] = {
+        ["sr"] = 3,
+        ["vol"] = 0.5,
+      },
+    },
+    ["reverb"] = 0.35,
+    ["src"] = {
+      "Pixel Magic Sound Effects Pack/PM_SPELL_Cast14_Gravity_Ball.wav",
     },
     ["vol"] = 0.6,
   },
@@ -864,6 +926,12 @@ return {
       "assets/sfx/snake_strike_2.ogg",
       "assets/sfx/snake_strike_3.ogg",
     },
+    ["per"] = {
+      ["assets/sfx/snake_strike_3.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.65,
+      },
+    },
     ["reverb"] = 0.25,
     ["src"] = {
       "Ultimate SFX Bundle (2020)/Ultimate Animal Sounds/Snake/Snake Attacks/Snake Attacks 1.wav",
@@ -874,37 +942,91 @@ return {
   },
   ["ui_click"] = {
     ["files"] = {
-      "assets/sfx/ui_click_1.ogg",
+      "assets/sfx/ui_click_5.ogg",
+    },
+    ["per"] = {
+      ["assets/sfx/ui_click_5.ogg"] = {
+        ["sr"] = 4,
+        ["vol"] = 0.6,
+      },
     },
     ["reverb"] = 0,
     ["src"] = {
-      "SFX_Collection/WAV/Inventory_SFX/UI_Magic_Click.wav",
+      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical UI Sounds/Click.wav",
     },
     ["vol"] = 0.5,
   },
   ["ui_hover"] = {
-    ["files"] = {
-      "assets/sfx/ui_hover_1.ogg",
-      "assets/sfx/ui_hover_2.ogg",
-    },
     ["reverb"] = 0,
-    ["src"] = {
-      "Ultimate SFX Bundle - HD Remaster/Modern UI Sounds - HD Remake/Clicks Sound (button hover) 1.wav",
-      "Ultimate SFX Bundle - HD Remaster/Modern UI Sounds - HD Remake/Clicks Sound (button hover) 2.wav",
+    ["sr"] = 4,
+    ["vol"] = 0.55,
+  },
+  ["unlock_burst"] = {
+    ["candidates"] = {
+      "Universal Sound FX/GLASS/GLASS_Rattle_Many_Fragments_01_stereo.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/ice_spell_impact_shatter_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Impacts_Smashable/glass_smashable_small_break_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/collect_item_sparkle_pop_08.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/coin_bag_ring_gemstone_item_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/chime_bell_positive_ring_01.wav",
     },
-    ["vol"] = 0.35,
+    ["unsure"] = true,
+  },
+  ["unlock_final"] = {
+    ["candidates"] = {
+      "SFX_Collection/WAV/Interface Musical Sounds/OrchestralCasual_Accomplishment_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/collect_item_jingle_04.wav",
+      "SFX_Collection/WAV/Interface Musical Sounds/HarpSounds_HarpPoints_02.wav",
+      "Ultimate SFX Bundle (2020)/UI & Item Sounds/Win sound/Win sound 5.wav",
+      "SFX_Collection/WAV/Interface Musical Sounds/OrchestralFantasy_FantasyWin_01.wav",
+    },
+    ["unsure"] = true,
+  },
+  ["unlock_lift"] = {
+    ["candidates"] = {
+      "Pixel Magic Sound Effects Pack/PM_ELEM_Dark06_Gravity_P1_Cast.wav",
+      "Pixel Magic Sound Effects Pack/PM_SPELL_Cast14_Gravity_Ball.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_whoosh_buildup3.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_whoosh_buildup6.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_shinny_high_tone_05.wav",
+    },
+    ["unsure"] = true,
+  },
+  ["unlock_pour"] = {
+    ["candidates"] = {
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_shine_light_spell_05.wav",
+      "SFX_Collection/WAV/Coins & Chest/Chest_Gems_Opening_02.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/chimes_magical_bells_02.wav",
+      "Ultimate SFX Bundle (2020)/UI & Item Sounds/Prize wheel spin/Prize wheel spin 3.wav",
+      "SFX_Collection/WAV/Interface Musical Sounds/Magical_MagicDiscovery_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_pop_open_01.wav",
+    },
+    ["files"] = {
+      "assets/sfx/unlock_pour_2.ogg",
+    },
+    ["src"] = {
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_pop_open_01.wav",
+    },
+  },
+  ["unlock_sweep"] = {
+    ["candidates"] = {
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_LowGust01.wav",
+      "Pixel Magic Sound Effects Pack/PM_ELEM_Wind01_Gust.wav",
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Wind Magic/RPG3_WindMagicMisc_Dark01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Magic_Spells/nature_spell_vines_whoosh_01.wav",
+    },
+    ["unsure"] = true,
   },
   ["viewer_close"] = {
     ["files"] = {
-      "assets/sfx/viewer_close_1.ogg",
-      "assets/sfx/viewer_close_2.ogg",
+      "assets/sfx/viewer_close_4.ogg",
     },
     ["reverb"] = 0.05,
+    ["sr"] = 4,
     ["src"] = {
-      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 11.wav",
-      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 12.wav",
+      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical UI Sounds/Switch 3.wav",
     },
-    ["vol"] = 0.4,
+    ["vol"] = 0.55,
   },
   ["viewer_next"] = {
     ["files"] = {
@@ -918,13 +1040,12 @@ return {
   },
   ["viewer_open"] = {
     ["files"] = {
-      "assets/sfx/viewer_open_1.ogg",
-      "assets/sfx/viewer_open_2.ogg",
+      "assets/sfx/viewer_open_3.ogg",
     },
     ["reverb"] = 0.05,
+    ["sr"] = 4,
     ["src"] = {
-      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 1.wav",
-      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical Swooshes/Magical Swoosh 10.wav",
+      "SFX_Collection/WAV/Cute Magic Spells Sounds/Whoosh_01.wav",
     },
     ["vol"] = 0.5,
   },
