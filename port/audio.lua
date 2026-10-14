@@ -120,11 +120,18 @@ end
 A.RENAMED = { lens_focus = 'lens_charge' }     -- 2026-10-11: the lens's build-up
 -- (Lich) slots that play another's sound, the same in everything (its files, layers and settings: tuning one tunes both)
 A.SAME = { gore_land = 'lift_burst' }           -- 2026-10-14, owner: "gore_land should just be the same as the lift burst sound"
+-- (Lich) new slots that start as a copy of another's sound (files, layers, settings) until they have their own entry:
+-- the copy is made at load, so it is saved with the rest the next time the editor saves, and is its own from then on
+A.SEED = { rock_lift = 'lift_cast' }            -- 2026-10-14, owner: "what I was missing was a rock lift event"
+local function deep_copy(t) if type(t) ~= 'table' then return t end; local c = {}; for k, v in pairs(t) do c[k] = deep_copy(v) end; return c end
 function A.load_picks()
   A.slots = read_lua(PICKS) or {}
   for old, new in pairs(A.RENAMED) do
     if A.slots[old] and not A.slots[new] then A.slots[new] = A.slots[old] end
     A.slots[old] = nil
+  end
+  for new, from in pairs(A.SEED) do
+    if not A.slots[new] and A.slots[from] then A.slots[new] = deep_copy(A.slots[from]) end
   end
   -- (Lich) round 68f's ALL FILES AT ONCE (layer = true) and a file's ONCE -> a layer per file, ONCE on its layer
   for _, s in pairs(A.slots) do
