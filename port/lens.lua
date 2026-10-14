@@ -134,6 +134,29 @@ function LE.create(ctx)
     local h = frng.float(3.8, 5.6)
     q.pos_to = axis_at(h):add(Vector3.new(frng.spread(0.9), 0, frng.spread(0.9)))
   end
+  -- (2026-10-15, owner: "The lens following behavior should also be more loose, and it should lightly be affected by
+  -- the player, so maybe the lens lightly, very lightly follow the player") its place and its gaze ride soft springs
+  -- (they lag and overshoot a little: POS_W / LOOK_W rad/s, under-damped), and its place leans toward the lich by
+  -- PULL of his offset from it across the floor, at most PULL_MAX m
+  local POS_W, POS_Z, LOOK_W, LOOK_W_AIM, LOOK_Z, PULL, PULL_MAX = 1.5, 0.55, 2.6, 7.0, 0.6, 0.12, 1.0
+  local get_L = ctx.get_L
+  local WANT = Vector3.new()
+  local function spring(p, v, to, w, z, dt)
+    local ax, ay, az = w*w*(to.x - p.x) - 2*z*w*v.x, w*w*(to.y - p.y) - 2*z*w*v.y, w*w*(to.z - p.z) - 2*z*w*v.z
+    v.x, v.y, v.z = v.x + ax*dt, v.y + ay*dt, v.z + az*dt
+    p.x, p.y, p.z = p.x + v.x*dt, p.y + v.y*dt, p.z + v.z*dt
+  end
+  local function drift(q, dt)
+    WANT:copy(q.pos_to)
+    local Lp = get_L and get_L()
+    if Lp then
+      local dx, dz = (Lp.x - q.pos_to.x)*PULL, (Lp.z - q.pos_to.z)*PULL
+      local d = hyp(dx, dz)
+      if d > PULL_MAX then dx, dz = dx*PULL_MAX/d, dz*PULL_MAX/d end
+      WANT.x, WANT.z = WANT.x + dx, WANT.z + dz
+    end
+    spring(q.pos, q.posv, WANT, POS_W, POS_Z, dt)
+  end
 
   local function cut_fx(s, c)
     local tan = Vector3.new():sub_vectors(s.spine[max(0, c - 3) + 1], s.spine[min(N - 1, c + 3) + 1]); tan.y = 0; tan:normalize()
@@ -235,6 +258,7 @@ function LE.create(ctx)
       q.fam = true; q.age = 0; q.shots = 0; q.idle_t = 0; q.cd = 0
       q.max_shots = frng.int(3, 5); q.life = frng.float(9, 14); q.ph = frng.float(0, 6.28)
       q.look = q.spot:clone(); q.pos_to = pos:clone(); q.bigv = q.big
+      q.posv = Vector3.new(); q.lookv = Vector3.new()
     end
     L.on = true
     if wait > 0 then q.wait_t = wait                                  -- (it sounds and shows as it starts: update)
@@ -313,6 +337,7 @@ function LE.create(ctx)
   -- the familiar: its cut over (or none to make), it floats waiting; its time up, it breaks where it is (round 69)
   local function settle(q, no_shot)
     if not no_shot then count_shot(q); q.shots = q.shots + 1 end
+    if q.charge then q.charge.stop(); q.charge = nil end
     if q.core then fx.release(q.core); q.core = nil end
     if q.snd then q.snd.stop(); q.snd = nil end
     if q.light then q.light.l.intensity = 0 end
@@ -321,6 +346,7 @@ function LE.create(ctx)
     q.fired = false; q.s = nil; q.group = nil; q.path = nil; q.ncut = 0; q.big = 1; q.flare = 0; q.settle_now = nil
   end
   local function leave(q)
+    if q.charge then q.charge.stop(); q.charge = nil end
     q.idle = false; q.leaving = true; q.fired = true; q.counted = true; q.focus_snd = true
     q.s = nil; q.group = nil; q.path = nil
     q.t = FORM + CONVERGE + q.dur + OFF + 1e-4
@@ -344,10 +370,10 @@ function LE.create(ctx)
   local IDLE_BOB = Vector3.new()
   local function float_idle(q, t, dt)
     local L, m = q.L, q.L.m
-    q.pos:lerp(q.pos_to, 1 - exp(-dt*1.6))
+    drift(q, dt)
     IDLE_BOB:set(sin(t*0.9 + q.ph)*0.06, sin(t*1.3 + q.ph*2)*0.08, cos(t*0.8 + q.ph)*0.06)
     m.position:copy(q.pos):add(IDLE_BOB)
-    q.look:lerp(EGG_LOOK, 1 - exp(-dt*1.2))
+    spring(q.look, q.lookv, EGG_LOOK, LOOK_W*0.6, LOOK_Z, dt)
     m:look_at(q.look); m:rotate_x(pi/2)
     q.bigv = q.bigv + (1 - q.bigv)*(1 - exp(-dt*4))
     local size = LENS_R*q.bigv
@@ -394,7 +420,7 @@ function LE.create(ctx)
           if q.dismissed or q.idle_t > (fam_strong and IDLE_MAX_STRONG or IDLE_MAX) or (not fam_strong and q.age >= q.life) then leave(q)
           else float_idle(q, t, dt); goto next_lens end
         end
-        if not q.leaving then q.pos:lerp(q.pos_to, 1 - exp(-dt*1.6)) end
+        if not q.leaving then drift(q, dt) end
       end
       -- (round 52: a lens on its way keeps its snake(s) until its cut has passed)
       if snakes.reclaim and q.t - FORM - CONVERGE <= q.dur then
@@ -464,7 +490,7 @@ function LE.create(ctx)
         q.spot.y = cave.ground_y(q.spot.x, q.spot.z) + 0.02
       end
       if q.fam then                                  -- (the familiar turns to its snake, then holds on it)
-        q.look:lerp(q.spot, 1 - exp(-dt*(t_conv >= 0 and 25 or 7)))
+        spring(q.look, q.lookv, q.spot, t_conv >= 0 and LOOK_W_AIM or LOOK_W, LOOK_Z, dt)
         m:look_at(q.look)
       else m:look_at(q.spot) end
       m:rotate_x(pi/2)
@@ -472,7 +498,17 @@ function LE.create(ctx)
       local on_c = t_conv >= 0 and sweep_t < LIGHTS_OFF
       -- (2026-10-11, owner: lens_focus -> lens_charge, "right after the lens forms, while the attack is building up": from the
       -- lens itself now, not the spot on the floor where its light gathers)
-      if t_conv >= 0 and not q.focus_snd then q.focus_snd = true; AU.play('lens_charge', { pos = lp }) end
+      -- (2026-10-15, owner: "I need a lens_charge event that happens when the lens starts focusing and ends right before it
+      -- fires") a loop from the lens from the moment it starts gathering the light, stopped as the fire comes: its FADE
+      -- OUT (the editor) set to end at the fire. Not for a lens hurried to fire within 0.1 s
+      if t_conv >= 0 and not q.focus_snd then
+        q.focus_snd = true
+        if sweep_t < -0.1 then q.charge = AU.loop('lens_charge', { pos = lp }) end
+      end
+      if q.charge then
+        if sweep_t >= -AU.get('lens_charge', 'fade') then q.charge.stop(); q.charge = nil
+        else q.charge.set_pos(lp) end
+      end
       L.cone.visible = on_c; L.patch.visible = on_c
       if on_c then
         local rf = 0.03 + 0.9*((1 - conv)^1.6)
@@ -608,6 +644,7 @@ function LE.create(ctx)
         count_shot(q)
         if q.core then fx.release(q.core) end
         if q.snd then q.snd.stop(); q.snd = nil end
+        if q.charge then q.charge.stop(); q.charge = nil end
         if q.light then q.light.l.intensity = 0; q.light.lens = nil end
         table.remove(active, ii)
       end
