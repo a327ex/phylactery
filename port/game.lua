@@ -40,6 +40,9 @@ local MAT = require('port.three.materials')
 local UI = require('port.ui_style')
 local AU = require('port.audio')         -- 2026-10-10: the sounds (slots; tools/sfx_spec.py has the picks and why)
 local SU = require('port.soundui')       -- and their names on screen
+local US = require('port.unlock_snd')    -- 2026-10-14: the site's unlock's sounds (slots of ours, tuned in our editor)
+-- the site's unlock asks for them through its game host at its real moments (unlock_fx.lua)
+function game_unlock_sound(event, i, n) return US.play(event, i, n) end
 local Vector2, Vector3 = TM.Vector2, TM.Vector3
 local clamp, smoothstep = U.clamp, U.smoothstep
 local sqrt, abs, sin, cos, atan2, exp, floor, ceil, min, max, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.ceil, math.min, math.max, math.pi
@@ -901,6 +904,8 @@ function GM.create(R, hud_layer)
         cave.M.egg.custom.uCrackGrow.value = clamp(ht/H.crack_t + 0.05*sin(ht*23), 0, 1)
         if ht >= H.crack_t and not SEQ.opened then
           SEQ.opened = true; open_egg()
+          -- (2026-10-14) on our own: the site's unlock sounds on the site's schedule, to tune them here (TAB)
+          if not HOSTED then US.start() end
           if HOSTED and site_unlock_posts then
             local left = 0
             for _, a in ipairs(powers.ALL) do if powers.is_on(a) then left = left + 1 end end
@@ -1011,6 +1016,7 @@ function GM.create(R, hud_layer)
   end
 
   local function render(dt)
+    US.tick(dt)
     if not (inspect and inspect.render_setup()) then R.params.world_override = nil end
     place_camera(0)
     if SU.mode() == 'play' then

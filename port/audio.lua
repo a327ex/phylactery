@@ -124,6 +124,11 @@ A.SAME = {}      -- (2026-10-14: gore_land -> lift_burst was tried and taken bac
 -- the copy is made at load, so it is saved with the rest the next time the editor saves, and is its own from then on
 A.SEED = { rock_lift = 'lift_cast' }            -- 2026-10-14, owner: "what I was missing was a rock lift event"
 local function deep_copy(t) if type(t) ~= 'table' then return t end; local c = {}; for k, v in pairs(t) do c[k] = deep_copy(v) end; return c end
+-- (Lich) new slots with nothing picked yet: red, with suggestions to audition in the editor (seeded at load while the
+-- picks name them not; saved with the rest from then on), and slots that sound while the game is muted. Both filled
+-- by the game's own modules (2026-10-14: port/unlock_snd.lua, the site's unlock), so a port of this file starts empty.
+A.NEW = {}
+A.LOUD = {}
 function A.load_picks()
   A.slots = read_lua(PICKS) or {}
   for old, new in pairs(A.RENAMED) do
@@ -133,6 +138,7 @@ function A.load_picks()
   for new, from in pairs(A.SEED) do
     if not A.slots[new] and A.slots[from] then A.slots[new] = deep_copy(A.slots[from]) end
   end
+  for name, s in pairs(A.NEW) do if not A.slots[name] then A.slots[name] = deep_copy(s) end end
   -- (Lich) round 68f's ALL FILES AT ONCE (layer = true) and a file's ONCE -> a layer per file, ONCE on its layer
   for _, s in pairs(A.slots) do
     if s.layer then
@@ -511,7 +517,7 @@ end
 
 -- start one voice of slot `name`; nil when the slot is silent
 local function voice(name, o, loop)
-  if A.muted(name) or A.quiet then return nil end
+  if A.muted(name) or (A.quiet and not A.LOUD[name]) then return nil end
   local snd, fi = pick(name, o.fi)
   if not snd then return nil end
   o.fi = fi       -- (Lich) the file this voice plays: its own settings, now and every frame after (refresh)
