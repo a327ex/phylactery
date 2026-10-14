@@ -105,8 +105,9 @@ SPEC = {
     'gore_crush': dict(files=[UA + 'Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 2.wav', UA + 'Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 3.wav',
         UA + 'Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 5.wav', UA + 'Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 8.wav'], vol=0.8,
         why='a rock crushes a snake: wet heavy impacts'),
-    # gore_land: (2026-10-14, owner: "gore_land should just be the same as the lift burst sound") plays lift_burst
-    # (port/audio.lua A.SAME); my pick was GORE_Splat_L_Ground_01/02 + GORE_Splat_Hit_Short (splats on the ground)
+    'gore_land': dict(files=[UNI + 'GORE_SPLATS/GORE_Splat_L_Ground_01_mono.wav', UNI + 'GORE_SPLATS/GORE_Splat_L_Ground_02_mono.wav',
+        UNI + 'GORE_SPLATS/GORE_Splat_Hit_Short_mono.wav'], vol=0.45,
+        why='torn pieces landing on the floor (a few per burst): splats on the ground'),
     'mass_burst': dict(files=[UA + 'Gore Sounds Pro/Head exploding/Head exploding 1.wav', UA + 'Gore Sounds Pro/Head exploding/Head exploding 2.wav'],
         vol=1.6, why='every snake on the egg bursts as he dies: the biggest wet bursts, once'),
     # ---------------------------------------------------------------- rock
@@ -247,6 +248,7 @@ CAVE = {
     'fire_sweep': dict(reverb=0.2, width=0.5),
     # gore
     'gore_crush': dict(reverb=0.3),
+    'gore_land': dict(reverb=0.15),
     'mass_burst': dict(reverb=0.6, width=0.7),
     # the beam
     'beam_cast': dict(reverb=0.35),

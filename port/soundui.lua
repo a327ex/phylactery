@@ -47,7 +47,7 @@ M.KNOWN = {
   'cave_amb', 'shaft_hum', 'egg_shiver', 'lich_hover', 'lich_hurt', 'lich_hurt_pose', 'lich_die', 'lich_thud',
   'mask_drop', 'snake_hiss', 'snake_slither', 'snake_strike', 'coil_grip', 'coil_squeeze', 'coil_win', 'snake_dissolve',
   'snake_ash', 'fire_cast', 'fire_ignite', 'fire_burn', 'fire_sweep', 'lift_cast', 'lift_hold', 'lift_knot',
-  'lift_swell', 'lift_fist', 'lift_burst', 'gore_crush', 'mass_burst', 'rock_rip', 'rock_hold',
+  'lift_swell', 'lift_fist', 'lift_burst', 'gore_crush', 'gore_land', 'mass_burst', 'rock_rip', 'rock_hold',
   'rock_lift', 'rock_throw', 'rock_hit', 'leak_whisper', 'leak_ripple', 'leak_snake', 'beam_cast', 'beam_channel',
   'beam_shot', 'beam_bite', 'beam_shatter', 'beam_petals', 'lens_form', 'lens_charge', 'lens_fire', 'lens_cut',
   'lens_dissolve', 'item_throw', 'item_land_mask', 'item_land_hand', 'item_land_lodestone', 'item_land_orbs', 'item_land_gem', 'item_land_lens',
@@ -55,8 +55,8 @@ M.KNOWN = {
   'viewer_throw', 'power_lost', 'ending_begin', 'egg_knock', 'egg_crack', 'egg_open', 'egg_piece_land',
   'lens_shard_land',     -- (Lich, round 69: the broken lens's shards landing; no file yet)
   'lift_ball_burst',     -- (Lich, 2026-10-12: the lift's ball of snakes bursting; lift_burst = single ones)
-  -- (2026-10-14, owner) gone from the list: gore_land (plays lift_burst: audio.lua A.SAME) and rock_land ("rock_land
-  -- isn't necessary as rock_hit is enough": the rock's landings play nothing)
+  -- (2026-10-14, owner) gone from the list: rock_land ("rock_land isn't necessary as rock_hit is enough": the rock's
+  -- landings play nothing)
 }
 
 local YELLOW, GREEN, RED, GREY = '#ffd65a', '#9be58f', '#ff5a4e', '#8d8a84'
