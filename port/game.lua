@@ -588,6 +588,7 @@ function GM.create(R, hud_layer)
     if hit('x') then lich.set_recoil(lich.get_recoil() + 1) end
     if hit('o') then powers.set_facing(powers.get_facing() + 1) end
     if hit('l') then powers.lens.set_look(powers.lens.get_look() + 1) end
+    if hit('q') then powers.lens.set_follow(powers.lens.get_follow() + 1) end
     if hit('t') and not intro_on() then remove_all() end
     if hit('u') then snakes.set_coil_mode(snakes.coil_mode + 1) end
     if hit('n') then END.hand = (END.hand + 1) % #lich.HANDS end
@@ -754,6 +755,7 @@ function GM.create(R, hud_layer)
       HUD.text('Z ON THE FLOOR: ' .. ITM.SIZES[items.opts.size + 1].name, 8, H - 147, '#f2e3c2', 1, 'left', nil, INK)
       HUD.text('M HAND: ' .. ITM.HAND_MATS[items.opts.hand_mat + 1], 8, H - 125, '#f2e3c2', 1, 'left', nil, INK)
     end
+    HUD.text('Q THE LENS DARTS ABOUT: ' .. LENS.FOLLOWS[powers.lens.get_follow() + 1], 8, H - 136, '#f2e3c2', 1, 'left', nil, INK)
     HUD.text('O BEHIND HIM: ' .. PW.FACINGS[powers.get_facing() + 1], 8, H - 114, '#a8987c', 1, 'left', nil, INK)
     HUD.text('K BEAM COLOUR: ' .. BEAM.BEAM_LOOKS[powers.beam.get_look() + 1], 8, H - 103, '#a8987c', 1, 'left', nil, INK)
     HUD.text('X BEAM RECOIL: ' .. lich.RECOILS[lich.get_recoil() + 1].name, 8, H - 92, '#a8987c', 1, 'left', nil, INK)
@@ -775,7 +777,7 @@ function GM.create(R, hud_layer)
     HUD.text('T: REMOVE ALL   RIGHT-CLICK AN OBJECT: THROW IT (TESTING)', W - 8, H - 48, '#8a7c66', 1, 'right', nil, INK)
     HUD.text('CLICK AN OBJECT, OR 5-0: REMOVE IT   I: LOOK AT THEM', W - 8, H - 37, '#f2e3c2', 1, 'right', nil, INK)
     HUD.text('WASD OR HOLD LEFT MOUSE: MOVE', W - 8, H - 26, '#8a7c66', 1, 'right', nil, INK)
-    HUD.text('1-4 Y CAMERA   V C U N Z M O K X L F J R G P B   H HIDE', W - 8, H - 15, '#8a7c66', 1, 'right', nil, INK)
+    HUD.text('1-4 Y CAMERA   V C U N Z M O K X L Q F J R G P B   H HIDE', W - 8, H - 15, '#8a7c66', 1, 'right', nil, INK)
     HUD.plain = false
   end
   local function ss(a, b, x) local t = clamp((x - a)/(b - a), 0, 1); return t*t*(3 - 2*t) end

@@ -407,9 +407,17 @@ return {
     ["candidates"] = {
       "Universal Sound FX/CHARGE_UPS_DOWNS/CHARGE_Complex_Wet_12_Semi_Up_2000ms_stereo.wav",
     },
+    ["files"] = {
+      "assets/sfx/lens_charge_1.ogg",
+    },
+    ["pitch_hi"] = 1.23,
+    ["pitch_lo"] = 1.18,
     ["reverb"] = 0.2,
     ["sr"] = 4,
-    ["vol"] = 0.7,
+    ["src"] = {
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagic_ChargingLoop.wav",
+    },
+    ["vol"] = 0.55,
   },
   ["lens_cut"] = {
     ["files"] = {
@@ -495,7 +503,7 @@ return {
       "soundeffect-lab/battle/magic-flame1__fireball-cast.ogg",
       "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Fire Magic/RPG3_FireMagicBall_Projectile04.wav",
     },
-    ["vol"] = 0.75,
+    ["vol"] = 0.55,
   },
   ["lens_form"] = {
     ["files"] = {

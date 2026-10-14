@@ -29,6 +29,8 @@ local LIGHTS_OFF = 0.15
 local CUT_MIN, CUT_MAX = 1.0, 2.6
 local GROUP_SPEED, GROUP_BIG, GROUP_TAIL = 5.0, 1.45, 0.7
 LE.LENS_LOOKS = { 'FIRE LASER (TITAN, PHRIKE)', 'THE PRISMATIC BEAM, IN FIRE' }
+-- (2026-10-15) what the familiar darts about (Q, testing): its place in the shaft leaning to him, or him
+LE.FOLLOWS = { 'ITS PLACE IN THE SHAFT, LEANING TO HIM', "HIM, LIKE EMOJIAN'S GUN" }
 local NLOOKS = #LE.LENS_LOOKS
 local function jround(x) return floor(x + 0.5) end
 local hyp = js_hypot
@@ -135,10 +137,10 @@ function LE.create(ctx)
     q.pos_to = axis_at(h):add(Vector3.new(frng.spread(0.9), 0, frng.spread(0.9)))
   end
   -- (2026-10-15, owner: "The lens following behavior should also be more loose, and it should lightly be affected by
-  -- the player, so maybe the lens lightly, very lightly follow the player") its place and its gaze ride soft springs
-  -- (they lag and overshoot a little: POS_W / LOOK_W rad/s, under-damped), and its place leans toward the lich by
-  -- PULL of his offset from it across the floor, at most PULL_MAX m
-  local POS_W, POS_Z, LOOK_W, LOOK_W_AIM, LOOK_Z, PULL, PULL_MAX = 1.5, 0.55, 2.6, 7.0, 0.6, 0.12, 1.0
+  -- the player, so maybe the lens lightly, very lightly follow the player") its gaze rides a soft spring (it lags and
+  -- overshoots a little: LOOK_W rad/s, under-damped), and its place leans toward the lich by PULL of his offset from it
+  -- across the floor, at most PULL_MAX m (how it moves there: emojian's arrive, FOLLOW below)
+  local LOOK_W, LOOK_W_AIM, LOOK_Z, PULL, PULL_MAX = 2.6, 7.0, 0.6, 0.12, 1.0
   local get_L = ctx.get_L
   local WANT = Vector3.new()
   local function spring(p, v, to, w, z, dt)
@@ -146,16 +148,51 @@ function LE.create(ctx)
     v.x, v.y, v.z = v.x + ax*dt, v.y + ay*dt, v.z + az*dt
     p.x, p.y, p.z = p.x + v.x*dt, p.y + v.y*dt, p.z + v.z*dt
   end
-  local function drift(q, dt)
-    WANT:copy(q.pos_to)
-    local Lp = get_L and get_L()
-    if Lp then
-      local dx, dz = (Lp.x - q.pos_to.x)*PULL, (Lp.z - q.pos_to.z)*PULL
-      local d = hyp(dx, dz)
-      if d > PULL_MAX then dx, dz = dx*PULL_MAX/d, dz*PULL_MAX/d end
-      WANT.x, WANT.z = WANT.x + dx, WANT.z + dz
+  -- (same day, owner: "There is a game called emojunky where I had a gun emoji follow the player as a familiar, perhaps
+  -- it was another game ... make the lens be more like that instead in terms of its movement") it was emojian (2022,
+  -- Z:\2022-2023\code\emojian\automata.lua: its automatons, "like Isaac's familiars that follow you around and
+  -- shoot"): every 0.4-1.2 s the gun took a new spot near the player (35 px either side, 25-75 px above; the gun 18 px)
+  -- and ARRIVED there: straight at it at up to 150 px/s under a capped force, slowing only within 25 px of it, so it
+  -- darts and settles, darts and settles. The lens does the same about what it follows (FOLLOW: across m either side,
+  -- up m above, max_v m/s (max_v_him after him), max_a m/s^2, slowing within slow_r; at `cut` of the speed while it gathers and cuts, so
+  -- the beam reads). What it follows (LE.FOLLOWS, Q): its place in the shaft leaning to him (PULL, the default), or
+  -- him, above_lich m over his root, as the gun followed the player.
+  local FOLLOW = { every = { 0.4, 1.2 }, across = 1.0, up = { 0.0, 1.1 }, max_v = 3.0, max_v_him = 4.5, max_a = 14.0, slow_r = 0.7, cut = 0.5, above_lich = 2.6 }
+  local follow = 0
+  local function drift(q, dt, busy)
+    q.off_t = (q.off_t or 0) - dt
+    if q.off_t <= 0 or not q.off then
+      q.off_t = frng.float(FOLLOW.every[1], FOLLOW.every[2])
+      q.off = q.off or Vector3.new()
+      q.off:set(frng.spread(FOLLOW.across), frng.float(FOLLOW.up[1], FOLLOW.up[2]), frng.spread(FOLLOW.across))
     end
-    spring(q.pos, q.posv, WANT, POS_W, POS_Z, dt)
+    local Lp = get_L and get_L()
+    if follow == 1 and Lp then WANT:set(Lp.x, Lp.y + FOLLOW.above_lich, Lp.z)
+    else
+      WANT:copy(q.pos_to)
+      if Lp then
+        local dx, dz = (Lp.x - q.pos_to.x)*PULL, (Lp.z - q.pos_to.z)*PULL
+        local d = hyp(dx, dz)
+        if d > PULL_MAX then dx, dz = dx*PULL_MAX/d, dz*PULL_MAX/d end
+        WANT.x, WANT.z = WANT.x + dx, WANT.z + dz
+      end
+    end
+    WANT:add(q.off)
+    -- arrive: the speed it wants (full, or less within slow_r), the change toward it capped, the speed capped
+    local dx, dy, dz = WANT.x - q.pos.x, WANT.y - q.pos.y, WANT.z - q.pos.z
+    local d = sqrt(dx*dx + dy*dy + dz*dz)
+    local vmax = (follow == 1 and FOLLOW.max_v_him or FOLLOW.max_v)*(busy and FOLLOW.cut or 1)   -- (after him: faster than his 2.6 m/s, as the gun was than the player)
+    local want = d < FOLLOW.slow_r and vmax*d/FOLLOW.slow_r or vmax
+    local wx, wy, wz = 0, 0, 0
+    if d > 1e-6 then wx, wy, wz = dx/d*want, dy/d*want, dz/d*want end
+    local v = q.posv
+    local sx, sy, sz = wx - v.x, wy - v.y, wz - v.z
+    local sl, cap = sqrt(sx*sx + sy*sy + sz*sz), FOLLOW.max_a*dt
+    if sl > cap then sx, sy, sz = sx*cap/sl, sy*cap/sl, sz*cap/sl end
+    v.x, v.y, v.z = v.x + sx, v.y + sy, v.z + sz
+    local vl = sqrt(v.x*v.x + v.y*v.y + v.z*v.z)
+    if vl > vmax and vl > 0 then v.x, v.y, v.z = v.x*vmax/vl, v.y*vmax/vl, v.z*vmax/vl end
+    q.pos.x, q.pos.y, q.pos.z = q.pos.x + v.x*dt, q.pos.y + v.y*dt, q.pos.z + v.z*dt
   end
 
   local function cut_fx(s, c)
@@ -420,7 +457,7 @@ function LE.create(ctx)
           if q.dismissed or q.idle_t > (fam_strong and IDLE_MAX_STRONG or IDLE_MAX) or (not fam_strong and q.age >= q.life) then leave(q)
           else float_idle(q, t, dt); goto next_lens end
         end
-        if not q.leaving then drift(q, dt) end
+        if not q.leaving then drift(q, dt, q.t >= FORM) end
       end
       -- (round 52: a lens on its way keeps its snake(s) until its cut has passed)
       if snakes.reclaim and q.t - FORM - CONVERGE <= q.dur then
@@ -704,6 +741,8 @@ function LE.create(ctx)
   function P.set_familiars(n, strong) fam_max = max(1, n); fam_strong = strong and true or false end
   function P.working() for _, q in ipairs(active) do if not q.idle and not q.leaving then return true end end; return false end
   function P.familiars() return fam_count() end
+  function P.get_follow() return follow end
+  function P.set_follow(v) local n = #LE.FOLLOWS; follow = ((v % n) + n) % n end
   -- the lens taken from him: its familiars break (one cutting finishes its cut first)
   function P.dismiss() for _, q in ipairs(active) do if q.fam and not q.leaving then q.dismissed = true end end end
   function P.resting() return familiar and fam_count() == 0 and clock < resummon_at end
