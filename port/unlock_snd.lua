@@ -8,12 +8,12 @@
   game's sound system, so they are picked and tuned in the game's own editor (TAB) and saved in sound_picks.lua with
   the rest:
     unlock_pour    the letters leave the egg (once)
-    unlock_land    a letter reaches its place (every letter, or every 2nd/3rd/4th: the site's UNLOCK_FX.land_every,
-                   L in the test; ~670 letters land over ~3.3 s, up to a dozen in one frame)
+    unlock_land    a letter reaches its place (every 4th of the 673 letters the posts held on 2026-10-15, kept as a
+                   pace: more text, a smaller share; the site's UNLOCK_FX.land_every / land_pace, L in the test)
     unlock_lift    a post's lock is lifted (each post)
     unlock_burst   its glass bursts (each post; pitched up a pentatonic octave across the posts, as a gacha's run)
     unlock_sweep   the warped air sweeps its row (each post, with the burst)
-    unlock_final   the last post is open (once)
+    unlock_final   the last post is open (once, with its burst)
   On the site the unlock calls game_unlock_sound(event, i, n) through the host at the real moments (the game is off
   screen then: these slots play through its mute, unplaced). Here, run on its own, the game plays the same events
   itself when the egg opens, on the site's schedule (US.SITE mirrors unlock_fx.lua's constants for 16 posts), so they
@@ -55,11 +55,11 @@ end
 
 -- The site's schedule (a327ex-site/renderer/unlock_fx.lua, the accepted look of 2026-10-14): rows 0.2 s apart, a
 -- row's letters leaving over 0.35 s and flying 1.0 s (cubic out), so a row is real 1.35 s after its turn; its lock
--- held 0.12 s, lifted 0.46 s (rise, hold, swell), then the burst and the sweep; the final 0.3 s after the last burst.
+-- held 0.12 s, lifted 0.46 s (rise, hold, swell), then the burst and the sweep; the final with the last burst.
 -- The letters' landings: ~42 a row (673 over the 16 measured 2026-10-15), each at its row's turn + a random part of the
 -- spread + the flight, every `land_every`th of them sounding (the site's UNLOCK_FX.land_every).
-US.SITE = { rows = 16, row_dt = 0.2, spread = 0.35, flight = 1.0, hold = 0.12, lift = 0.46, final = 0.3,
-            letters = 42, land_every = 1 }
+US.SITE = { rows = 16, row_dt = 0.2, spread = 0.35, flight = 1.0, hold = 0.12, lift = 0.46, final = 0,
+            letters = 42, land_every = 4 }
 -- a fixed 0..1 for letter j of row i (never the game's rngs)
 local function frac(i, j) local x = math.sin(i*12.9898 + j*78.233)*43758.5453; return x - math.floor(x) end
 local sim = nil

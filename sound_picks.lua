@@ -970,7 +970,18 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/coin_bag_ring_gemstone_item_01.wav",
       "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/chime_bell_positive_ring_01.wav",
     },
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/unlock_burst_3.ogg",
+      "assets/sfx/unlock_burst_4.ogg",
+      "assets/sfx/unlock_burst_5.ogg",
+    },
+    ["sr"] = 4,
+    ["src"] = {
+      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical UI Sounds/Unlock 3.wav",
+      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical UI Sounds/Unlock 2.wav",
+      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical UI Sounds/Unlock.wav",
+    },
+    ["vol"] = 0.7,
   },
   ["unlock_final"] = {
     ["candidates"] = {
@@ -980,7 +991,16 @@ return {
       "Ultimate SFX Bundle (2020)/UI & Item Sounds/Win sound/Win sound 5.wav",
       "SFX_Collection/WAV/Interface Musical Sounds/OrchestralFantasy_FantasyWin_01.wav",
     },
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/unlock_final_3.ogg",
+    },
+    ["pitch_hi"] = 2,
+    ["pitch_lo"] = 1.5,
+    ["sr"] = 4,
+    ["src"] = {
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagicEpic_Transform02v2LongTail.wav",
+    },
+    ["vol"] = 0.75,
   },
   ["unlock_land"] = {
     ["candidates"] = {
@@ -1001,7 +1021,7 @@ return {
     ["src"] = {
       "soundeffect-lab/machine/keyboard1__keyboard-typing.ogg",
     },
-    ["vol"] = 0.6,
+    ["vol"] = 0.5,
   },
   ["unlock_lift"] = {
     ["candidates"] = {
@@ -1011,13 +1031,8 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_whoosh_buildup6.wav",
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_shinny_high_tone_05.wav",
     },
-    ["files"] = {
-      "assets/sfx/unlock_lift_1.ogg",
-    },
+    ["reverb"] = 0.1,
     ["sr"] = 4,
-    ["src"] = {
-      "RPG Magic SFX 2/DucVu_Spells_SFX_[Video_Demo_1]/Plasma_Gravity_Strike_FULL.wav",
-    },
     ["vol"] = 0.7,
   },
   ["unlock_pour"] = {
