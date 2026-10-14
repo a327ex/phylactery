@@ -420,7 +420,17 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     end
     return out, gap
   end
-  local function send_wave(kind)
+  -- 2026-10-15 (owner: "the way snakes spawn make it so that you get moments of burst of activity where the lich uses
+  -- 3+ skills at the same time and things get very hectic in a short period of time ... it should have moments of
+  -- action and moments of calmness"): in the game's flow (snav) waves are paced by when they ARRIVE, not when they
+  -- leave: a wave's arrival where the attacks begin (ACT_R from the egg) is worked out from each point's way to the egg
+  -- (the route field) and its pace; it leaves so that its first comes in a calm (CALM by the last wave's size, now and
+  -- then a lull) after the last wave's arrivals are dealt with (HANDLE), and while snakes are still being dealt with near
+  -- the egg the calm waits (busy_until moves on, and the snakes still hidden at the edge wait with it).
+  local ACT_R, HANDLE, LEAD, ETA_K = 5.5, 1.0, 8.0, 1.0
+  DIR.busy_until, DIR.calm = 0, 0
+  local function eta(e, speed) return max(0, route_at(e.x, e.z) - ACT_R)*ETA_K/speed end
+  local function send_wave(kind, now)
     local pool = pooled()
     if #pool == 0 then return nil end
     if kind == nil then
@@ -436,13 +446,25 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     local need = (kind == 'ONE' and 1) or (kind == 'PAIR' and 2) or (kind == 'STREAM' and 4) or 3
     if #pool < need then return nil end
     if snav then
-      local plan, gap = plan_wave_pts(kind, #pool)
-      for k, a in ipairs(plan) do spawn(pool[k], a[1], { th = a[2].th, x = a[2].x, z = a[2].z, dir = a[2].dir, speed = a[3] }) end
+      local plan = plan_wave_pts(kind, #pool)
+      -- (2026-10-15, paced by arrival) when its first and its last will come in to ACT_R, from now; it leaves so that
+      -- its first comes in a calm after the last wave's (a wave sent for testing goes at once)
+      local w0, w1 = huge, 0
+      for _, a in ipairs(plan) do local e = a[1] + eta(a[2], a[3]); w0 = min(w0, e); w1 = max(w1, e) end
+      local wait = now and 0 or max(0, DIR.busy_until + DIR.calm - (DIR.clock + w0))
+      for k, a in ipairs(plan) do
+        spawn(pool[k], a[1] + wait, { th = a[2].th, x = a[2].x, z = a[2].z, dir = a[2].dir, speed = a[3] })
+        pool[k].eta = DIR.clock + wait + a[1] + eta(a[2], a[3])
+      end
+      DIR.busy_until = max(DIR.busy_until, DIR.clock + wait + w1 + HANDLE)
       DIR.n = DIR.n + 1; DIR.last = kind
-      DIR.log[#DIR.log + 1] = { kind = kind, n = #plan, t = DIR.clock, th = plan[1][2].th }
-      if #DIR.log > 40 then table.remove(DIR.log, 1) end
       DIR.lull = wrng.next() < 0.22
-      return gap + (DIR.lull and wrng.float(3.0, 6.0) or 0)
+      DIR.calm = (kind == 'ONE' and wrng.float(0.3, 1.4)) or (kind == 'PAIR' and wrng.float(0.8, 2.0)) or wrng.float(1.8, 3.4)
+      if DIR.lull then DIR.calm = DIR.calm + wrng.float(3.0, 6.0) end
+      DIR.log[#DIR.log + 1] = { kind = kind, n = #plan, t = DIR.clock, th = plan[1][2].th, wait = wait, at = DIR.clock + wait + w0, to = DIR.clock + wait + w1 }
+      if #DIR.log > 40 then table.remove(DIR.log, 1) end
+      -- the next wave is drawn LEAD s before it is due to come in (so what is happening then still counts)
+      return max(0.5, DIR.busy_until + DIR.calm - DIR.clock - LEAD)
     end
     local plan, gap = plan_wave(kind, #pool)
     for k, a in ipairs(plan) do spawn(pool[k], a[1], { th = a[2], speed = a[3] }) end
@@ -455,8 +477,21 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   local function direct(dt)
     DIR.clock = DIR.clock + dt
     if DIR.force then
-      local g = send_wave(DIR.force)
+      local g = send_wave(DIR.force, true)
       if g then DIR.force = nil; DIR.next = max(DIR.next, g) end
+    end
+    if snav then
+      -- (paced) a snake still free near the egg is still being dealt with: the calm starts after it, and the snakes
+      -- waiting hidden at the edge wait as much longer
+      local hold = 0
+      for _, s in ipairs(S) do
+        if not s.pooled and s.delay <= 0 and s.dying < 0 and not s.burn and s.sink < 0 and not s.fx and not s.coil
+           and js_hypot(s.x - egg.x, s.z - egg.z) < ACT_R then hold = max(hold, DIR.clock + 0.8 - DIR.busy_until) end
+      end
+      if hold > 0 then
+        DIR.busy_until = DIR.busy_until + hold
+        for _, s in ipairs(S) do if not s.pooled and s.delay > 0 and s.delay < POOLED then s.delay = s.delay + hold; if s.eta then s.eta = s.eta + hold end end end
+      end
     end
     DIR.next = DIR.next - dt
     if DIR.next > 0 then return end
@@ -974,7 +1009,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     return sent
   end
   function api.spawn_points() return spawn_points(valid_th) end
-  function api.waves() return { next = DIR.next, n = DIR.n, last = DIR.last, lull = DIR.lull, log = DIR.log, pooled = #pooled() } end
+  function api.waves() return { next = DIR.next, n = DIR.n, last = DIR.last, lull = DIR.lull, log = DIR.log, pooled = #pooled(), clock = DIR.clock, busy_until = DIR.busy_until } end
   return api
 end
 
