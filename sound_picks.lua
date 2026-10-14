@@ -992,10 +992,14 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/points_ticker_bonus_score_reward_single_01.wav",
     },
     ["files"] = {
-      "assets/sfx/unlock_land_1.ogg",
+      "assets/sfx/unlock_land_2.ogg",
     },
+    ["pitch_hi"] = 1.5,
+    ["pitch_lo"] = 0.5,
+    ["reverb"] = 0.1,
+    ["sr"] = 4,
     ["src"] = {
-      "Gamemaster Audio - Pro Sound Collection/Miscellaneous/Typing/typing_keystroke_single_hard_03.wav",
+      "soundeffect-lab/machine/keyboard1__keyboard-typing.ogg",
     },
   },
   ["unlock_lift"] = {
