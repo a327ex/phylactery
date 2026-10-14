@@ -356,7 +356,7 @@ function GO.create(R, cave, snakes, fx, rng)
       d.life = PIECE_LIFE + SINK_T; d.t = 0; d.rest = 0; d.landed = false
       d.rx = rng.float(0, 6); d.ry = rng.float(0, 6); d.rz = rng.float(0, 6)
       d.wx = rng.spread(16); d.wy = rng.spread(16); d.wz = rng.spread(16)
-      d.sx = 1; d.sy = 1; d.sz = 1; d.bleed = 0
+      d.sx = 1; d.sy = 1; d.sz = 1; d.bleed = 0; d.quiet = nil   -- (quiet: a crush's, its landing silent)
       for k, v in pairs(o) do d[k] = v end              -- (a key o lacks keeps the slot's old value, as Object.assign does)
       if coloured and o.c then
         local a = mesh.instance_color.array
@@ -382,7 +382,8 @@ function GO.create(R, cave, snakes, fx, rng)
               d.y = g
               if not d.landed then
                 d.landed = true
-                AU.play('gore_land', { pos = { d.x, d.y, d.z }, volume = 0.5, gap = 0.08 })
+                -- (2026-10-14, owner: gore_land "was playing in the rock one": the lift's gore only, not the rock's crush)
+                if not d.quiet then AU.play('gore_land', { pos = { d.x, d.y, d.z }, volume = 0.5, gap = 0.08 }) end
                 if d.bleed ~= 0 and rng.next() < 0.7 then splash(d.x, d.z, d.s*rng.float(4, 7), 0.15, atan2(-d.vz, d.vx), 1.4) end
               end
               if abs(d.vy) < 1.0 then d.rest = 1e-3; d.vx = 0; d.vy = 0; d.vz = 0
@@ -698,13 +699,14 @@ function GO.create(R, cave, snakes, fx, rng)
       local vz = dir.z*rng.float(1, 3) + rng.spread(1)
       local o = { x = x, y = p.y + 0.02, z = z, vx = vx, vy = vy, vz = vz }
       o.s = rng.float(0.012, 0.03); o.sx = rng.float(0.7, 1.4); o.sy = rng.float(0.5, 1.0); o.sz = rng.float(0.7, 1.5); o.c = meat_c(); o.bleed = 0.25
+      o.quiet = true
       meat.spawn(o)
     end
     for _ = 1, 3 do
       local vx = dir.x*rng.float(1, 2.5) + rng.spread(0.8)
       local vy = rng.float(0.8, 2)
       local vz = dir.z*rng.float(1, 2.5) + rng.spread(0.8)
-      scraps.spawn({ x = p.x, y = p.y + 0.03, z = p.z, vx = vx, vy = vy, vz = vz, s = rng.float(0.03, 0.05), sx = 1, sy = 0.7, sz = 1 })
+      scraps.spawn({ x = p.x, y = p.y + 0.03, z = p.z, vx = vx, vy = vy, vz = vz, s = rng.float(0.03, 0.05), sx = 1, sy = 0.7, sz = 1, quiet = true })
     end
     splash(p.x, p.z, rng.float(0.5, 0.8), 0.4)
     splash(p.x + dir.x*0.45, p.z + dir.z*0.45, rng.float(0.35, 0.5), 0.3, atan2(-dir.z, dir.x), 1.8)
