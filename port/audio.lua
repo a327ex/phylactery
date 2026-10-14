@@ -118,6 +118,8 @@ end
 
 -- (Lich) slots renamed: a file written under the old name (an older game still running saves it so) moves over
 A.RENAMED = { lens_focus = 'lens_charge' }     -- 2026-10-11: the lens's build-up
+-- (Lich) slots that play another's sound, the same in everything (its files, layers and settings: tuning one tunes both)
+A.SAME = { gore_land = 'lift_burst' }           -- 2026-10-14, owner: "gore_land should just be the same as the lift burst sound"
 function A.load_picks()
   A.slots = read_lua(PICKS) or {}
   for old, new in pairs(A.RENAMED) do
@@ -540,6 +542,7 @@ function A.play(name, o)
     if A.last_t[name] and A.now - A.last_t[name] < o.gap then return nil end
     A.last_t[name] = A.now
   end
+  name = A.SAME[name] or name     -- (Lich) a slot that is another's sound (its call's gap stays its own, above)
   o.pos = v3(o.pos)
   local fis = o.fi and { o.fi } or A.choose(name)     -- (Lich) the files this play plays, chosen now
   A.note(name, o.pos, o.delay)

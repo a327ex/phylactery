@@ -105,9 +105,8 @@ SPEC = {
     'gore_crush': dict(files=[UA + 'Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 2.wav', UA + 'Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 3.wav',
         UA + 'Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 5.wav', UA + 'Gore Sounds Pro/Bloody Axe Impact/Bloody Axe Impact 8.wav'], vol=0.8,
         why='a rock crushes a snake: wet heavy impacts'),
-    'gore_land': dict(files=[UNI + 'GORE_SPLATS/GORE_Splat_L_Ground_01_mono.wav', UNI + 'GORE_SPLATS/GORE_Splat_L_Ground_02_mono.wav',
-        UNI + 'GORE_SPLATS/GORE_Splat_Hit_Short_mono.wav'], vol=0.45,
-        why='torn pieces landing on the floor (a few per burst): splats on the ground'),
+    # gore_land: (2026-10-14, owner: "gore_land should just be the same as the lift burst sound") plays lift_burst
+    # (port/audio.lua A.SAME); my pick was GORE_Splat_L_Ground_01/02 + GORE_Splat_Hit_Short (splats on the ground)
     'mass_burst': dict(files=[UA + 'Gore Sounds Pro/Head exploding/Head exploding 1.wav', UA + 'Gore Sounds Pro/Head exploding/Head exploding 2.wav'],
         vol=1.6, why='every snake on the egg bursts as he dies: the biggest wet bursts, once'),
     # ---------------------------------------------------------------- rock
@@ -122,8 +121,8 @@ SPEC = {
     'rock_hit': dict(files=[GM + 'Impacts_Smashable/rock_impact_heavy_slam_01.wav', GM + 'Impacts_Smashable/rock_impact_heavy_slam_02.wav',
         GM + 'Impacts_Smashable/rock_impact_heavy_slam_03.wav', GM + 'Impacts_Smashable/rock_impact_heavy_slam_04.wav'], vol=0.85,
         why='the rock hits a snake: heavy stone slams (93-98% under 200 Hz)'),
-    'rock_land': dict(files=[GM + 'Impacts_Smashable/rock_smashable_hit_impact_01.wav', GM + 'Impacts_Smashable/rock_smashable_hit_impact_02.wav',
-        GM + 'Impacts_Smashable/rock_smashable_hit_impact_03.wav'], vol=0.6, why='the rock lands and bounces: stone on stone'),
+    # rock_land: (2026-10-14, owner: "rock_land isn't necessary as rock_hit is enough") gone; the rock's landings are
+    # silent (my pick was rock_smashable_hit_impact_01-03)
     # ---------------------------------------------------------------- leak
     'leak_whisper': dict(unsure=True, candidates=[R3 + 'Wind Magic/RPG3_WindMagicMisc_Dark', PM + 'PM_ELEM_Dark04_Absorb_P3_Drone.wav'],
         why='the leak around his skull while it is his: warped air, nothing named for it'),
@@ -246,7 +245,6 @@ CAVE = {
     'fire_sweep': dict(reverb=0.2, width=0.5),
     # gore
     'gore_crush': dict(reverb=0.3),
-    'gore_land': dict(reverb=0.15),
     'mass_burst': dict(reverb=0.6, width=0.7),
     # the beam
     'beam_cast': dict(reverb=0.35),
@@ -284,7 +282,6 @@ CAVE = {
     'rock_hold': dict(reverb=0.15),
     'rock_throw': dict(reverb=0.3),
     'rock_hit': dict(reverb=0.45, rolloff=0.7),
-    'rock_land': dict(reverb=0.4),
     # the inventory and the viewer (not in the cave)
     'ui_hover': dict(reverb=0), 'ui_click': dict(reverb=0),
     'viewer_open': dict(reverb=0.05), 'viewer_close': dict(reverb=0.05), 'viewer_next': dict(reverb=0.05),
