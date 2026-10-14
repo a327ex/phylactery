@@ -970,7 +970,18 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/coin_bag_ring_gemstone_item_01.wav",
       "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/chime_bell_positive_ring_01.wav",
     },
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/unlock_burst_3.ogg",
+      "assets/sfx/unlock_burst_4.ogg",
+      "assets/sfx/unlock_burst_5.ogg",
+    },
+    ["sr"] = 4,
+    ["src"] = {
+      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical UI Sounds/Unlock 3.wav",
+      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical UI Sounds/Unlock 2.wav",
+      "Ultimate SFX Bundle (2020)/Magic Sounds Pro/Magical UI Sounds/Unlock.wav",
+    },
+    ["vol"] = 0.7,
   },
   ["unlock_final"] = {
     ["candidates"] = {
@@ -980,7 +991,37 @@ return {
       "Ultimate SFX Bundle (2020)/UI & Item Sounds/Win sound/Win sound 5.wav",
       "SFX_Collection/WAV/Interface Musical Sounds/OrchestralFantasy_FantasyWin_01.wav",
     },
-    ["unsure"] = true,
+    ["files"] = {
+      "assets/sfx/unlock_final_3.ogg",
+    },
+    ["pitch_hi"] = 2,
+    ["pitch_lo"] = 1.5,
+    ["sr"] = 4,
+    ["src"] = {
+      "RPG Magic Sound Effects Pack 3 [ELEMENTAL]/Light Magic/RPG3_LightMagicEpic_Transform02v2LongTail.wav",
+    },
+    ["vol"] = 0.75,
+  },
+  ["unlock_land"] = {
+    ["candidates"] = {
+      "Gamemaster Audio - Pro Sound Collection/Miscellaneous/Typing/typing_keystroke_single_soft_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Miscellaneous/Typing/typing_keystroke_single_hard_03.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/collect_item_sparkle_pop_03.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/chime_tinkle_wood_bell_positive_02.wav",
+      "Gamemaster Audio - Pro Sound Collection/Miscellaneous/Clock/clock_tick_02.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/points_ticker_bonus_score_reward_single_01.wav",
+    },
+    ["files"] = {
+      "assets/sfx/unlock_land_2.ogg",
+    },
+    ["pitch_hi"] = 2,
+    ["pitch_lo"] = 1.5,
+    ["reverb"] = 0.1,
+    ["sr"] = 4,
+    ["src"] = {
+      "soundeffect-lab/machine/keyboard1__keyboard-typing.ogg",
+    },
+    ["vol"] = 0.5,
   },
   ["unlock_lift"] = {
     ["candidates"] = {
@@ -990,7 +1031,9 @@ return {
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/casting_charge_whoosh_buildup6.wav",
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_shinny_high_tone_05.wav",
     },
-    ["unsure"] = true,
+    ["reverb"] = 0.1,
+    ["sr"] = 4,
+    ["vol"] = 0.7,
   },
   ["unlock_pour"] = {
     ["candidates"] = {
@@ -1004,9 +1047,11 @@ return {
     ["files"] = {
       "assets/sfx/unlock_pour_2.ogg",
     },
+    ["sr"] = 4,
     ["src"] = {
       "Gamemaster Audio - Pro Sound Collection/Magic_Spells/magic_pop_open_01.wav",
     },
+    ["vol"] = 0.65,
   },
   ["unlock_sweep"] = {
     ["candidates"] = {
