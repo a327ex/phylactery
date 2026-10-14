@@ -982,6 +982,22 @@ return {
     },
     ["unsure"] = true,
   },
+  ["unlock_land"] = {
+    ["candidates"] = {
+      "Gamemaster Audio - Pro Sound Collection/Miscellaneous/Typing/typing_keystroke_single_soft_01.wav",
+      "Gamemaster Audio - Pro Sound Collection/Miscellaneous/Typing/typing_keystroke_single_hard_03.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/collect_item_sparkle_pop_03.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/chime_tinkle_wood_bell_positive_02.wav",
+      "Gamemaster Audio - Pro Sound Collection/Miscellaneous/Clock/clock_tick_02.wav",
+      "Gamemaster Audio - Pro Sound Collection/Collectibles_Items_Powerup/points_ticker_bonus_score_reward_single_01.wav",
+    },
+    ["files"] = {
+      "assets/sfx/unlock_land_1.ogg",
+    },
+    ["src"] = {
+      "Gamemaster Audio - Pro Sound Collection/Miscellaneous/Typing/typing_keystroke_single_hard_03.wav",
+    },
+  },
   ["unlock_lift"] = {
     ["candidates"] = {
       "Pixel Magic Sound Effects Pack/PM_ELEM_Dark06_Gravity_P1_Cast.wav",
