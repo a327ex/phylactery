@@ -36,6 +36,7 @@ local SL = require('port.silhouette')
 local RG = require('port.ragdoll')
 local EP = require('port.eggphys')
 local GCP = require('port.gcpace')
+local PROF = require('port.prof')       -- (2026-10-15: the benchmark's section timings, port/bench.lua)
 local MAT = require('port.three.materials')
 local UI = require('port.ui_style')
 local AU = require('port.audio')         -- 2026-10-10: the sounds (slots; tools/sfx_spec.py has the picks and why)
@@ -77,12 +78,13 @@ function GM.create(R, hud_layer)
   if os.getenv('LICH_ROOM') or ls == 'fixed' then U.RUN = nil
   elseif ls and tonumber(ls) then U.RUN = math.floor(tonumber(ls)) & 0xFFFFFFFF
   else U.RUN = random_get_seed() & 0xFFFFFFFF end
+  if require('port.bench').active() then U.RUN = require('port.bench').seed() end   -- (2026-10-15: the benchmark, one fixed run)
   local cave = CAVE.build(R)
   local lich = LICH.create(R, { GU = cave.GU })
   -- round 45: the lich's own mask, flat white (port/lichmask.lua; F5 cycles it for comparison)
   local lmask = require('port.lichmask').create(lich, cave.GU, R)
   local EGG = cave.egg.position
-  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = not HOSTED, dark = 1, surface = 2,
+  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = false, dark = 1, surface = 2,     -- (hud: the testing text, H; off from the start since 2026-10-15)
     static = { eye = { -3.6, 9.8, -10.4 }, tgt = { 0.4, 0.1, 2.4 } },
     free = { yaw = 200, pitch = 18, dist = 4.5 }, egg_view = { yaw = 195, pitch = 32, dist = 3.4 } }
   G.R = R; G.cave = cave; G.lich = lich; G.lmask = lmask
@@ -111,6 +113,7 @@ function GM.create(R, hud_layer)
   local L = mover.p
   local fire = FIRE.create(R, cave)
   local VARIED = not os.getenv('LICH_ROOM')
+  if VARIED then R.renderer.transmission_copy = true end   -- (2026-10-15: the glass sees a copy of the world, not a second render; three/renderer.lua)
   -- (round 50 fix: the snakes' own grid of the rocks: no frame, no egg, only rock too tall to crawl over)
   local snake_nav = VARIED and NAV.build({ geo = cave.rock_geo, ground_y = cave.ground_y, block_h = 0.2 }).finish() or nil
   local snakes = SN.create(R, cave, function() return L end, fire, nil, nil, { varied = VARIED, nav = snake_nav })
@@ -939,7 +942,10 @@ function GM.create(R, hud_layer)
 
   -- ------------------------------------------------------------------ sim + render
   local function tick()
+    local lap = PROF.on and perf_time()      -- (2026-10-15: port/prof.lua, for the benchmark)
+    if lap then PROF.tick() end
     GCP.tick()                         -- (round 64: the collector, a little every tick)
+    lap = PROF.lap('gc', lap, true)
     if EGG_WAIT then return end        -- (the site's egg start, before its click: held)
     if END.won and not SEQ.on then END.over = END.over + DT; if over_black() then return end end
     if inspect_active() then inspect.tick(DT); return end
@@ -956,27 +962,38 @@ function GM.create(R, hud_layer)
     if INTRO.state == 'walk' and not INTRO.go and goal == nil and mover.speed() < 0.05 then
       INTRO.state = 'done'; mover.free = false; snakes.hold = false
     end
+    lap = PROF.lap('mover', lap, true)
     powers.tick(G.t, DT)
+    lap = PROF.lap('powers', lap, true)
     ending_tick(DT)
     seq_tick(DT)
+    lap = PROF.lap('ending', lap, true)
     lich.pose(G.t, DT, mover.motion)
     if SEQ.rag then SEQ.rag.step(DT); SEQ.rag.apply() end          -- (round 59: dead, a rag doll)
     powers.after_pose(G.t)
     lich.update(G.t)
     lmask.tick(DT)
+    lap = PROF.lap('lich', lap, true)
     cave.update(G.t, DT)
+    lap = PROF.lap('cave', lap, true)
     snakes.set_ember(fire.ember_colour())
     snakes.update(G.t, DT)
+    lap = PROF.lap('snakes', lap, true)
     fire.update(G.t, DT)
+    lap = PROF.lap('fire', lap, true)
     fx.update(G.t, DT)
+    lap = PROF.lap('fx', lap, true)
     gore.update(G.t, DT)
+    lap = PROF.lap('gore', lap, true)
     warp.update(G.t, DT)
+    lap = PROF.lap('warp', lap, true)
     if items then
       items.update(G.t, DT)
       -- a thrown object he walks back to is his again (round 48)
       local back = items.near(L)
       if back and not powers.is_on(powers.ALL[back + 1]) then powers.toggle(back); items.take(back) end
     end
+    PROF.lap('items', lap, true)
   end
   -- 2026-10-10, the sounds that follow the room each drawn frame: the snakes crawling (ONE loop, at the crawling snake
   -- nearest the egg, louder the more there are, not one per snake) and the coils squeezing the egg (louder as they
@@ -1032,13 +1049,17 @@ function GM.create(R, hud_layer)
   end
 
   local function render(dt)
+    local lap = PROF.on and perf_time()
+    if lap then PROF.frame() end
     US.tick(dt)
     if not (inspect and inspect.render_setup()) then R.params.world_override = nil end
     place_camera(0)
+    lap = PROF.lap('camera', lap)
     if SU.mode() == 'play' then
       AU.update(dt, ear_of(R.world_camera))   -- the listener: the ear above (voices' ears, loops, delays, the cave's reverb)
       snd_frame()
     end
+    lap = PROF.lap('audio', lap)
     -- (2026-10-13, the site's unlock animation: where the opened egg is in the frame, 0..1 across and down; the
     -- letters of the posts it unlocks leave from there. Every frame while it is open, the camera moving in on it)
     if HOSTED and SEQ.opened and site_unlock_from then
@@ -1059,11 +1080,16 @@ function GM.create(R, hud_layer)
     fx.set_camera(R.world_camera, R.H)
     gore.set_camera(R.world_camera, R.H)
     warp.set_camera(R.world_camera, R.H)
+    lap = PROF.lap('set_camera', lap)
     draw_hud()
     draw_over()
-    if not HOSTED or EDITOR then SU.draw(HUD, R.world_camera) end   -- every sound as its name where it happens (his tool: not on the site)
+    -- every sound as its name where it happens (his tool: not on the site). 2026-10-15 (owner: "You can hide UI elements
+    -- by default (except top right ones), including the sounds that appear visually"): while playing only with the
+    -- testing text (H); always while the sound tool is open (TAB / ESC: the names are what he clicks)
+    if (not HOSTED or EDITOR) and (G.hud or SU.mode() ~= 'play') then SU.draw(HUD, R.world_camera) end
     HUD.flush(hud_layer)                -- the HUD into its layer, which the final pass composites
     layer_render(hud_layer)
+    lap = PROF.lap('hud', lap)
     R.render(dt)
   end
 

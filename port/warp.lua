@@ -28,29 +28,40 @@ function W.create(R)
 
   -- ---------------------------------------------------------------- streaks
   local NS = 200
-  local NV = NS*K*2
-  local posA, prvA, nxtA = T.float_attr(NV, 3), T.float_attr(NV, 3), T.float_attr(NV, 3)
-  local sideA, alongA, prmA, fadeA = T.float_attr(NV, 1), T.float_attr(NV, 1), T.float_attr(NV, 4), T.float_attr(NV, 1)
-  local pos, prv, nxt, side, along, prm, fade = posA.array, prvA.array, nxtA.array, sideA.array, alongA.array, prmA.array, fadeA.array
-  for s = 0, NS - 1 do for k = 0, K - 1 do for e = 0, 1 do local v = (s*K + k)*2 + e; side[v + 1] = e == 1 and 1 or -1; along[v + 1] = k/(K - 1) end end end
+  -- (2026-10-15, the web's performance) the streaks in meshes of CH: a mesh's buffers are sent again only when one of
+  -- its streaks moved or went off, and a mesh with none on is not drawn. They were one mesh of all 200 (9600 vertices,
+  -- ~134k floats sent every frame while any one streak was on; ~11 are on at a time, the lowest free slots, so they
+  -- sit in the first meshes). Drawn in the same order, additively: the same image.
+  local CH = 10
+  local NC = NS//CH
+  local CV = CH*K*2
   local idx = {}
-  for s = 0, NS - 1 do for k = 0, K - 2 do
+  for s = 0, CH - 1 do for k = 0, K - 2 do
     local a = (s*K + k)*2
     local o = #idx
     idx[o + 1], idx[o + 2], idx[o + 3], idx[o + 4], idx[o + 5], idx[o + 6] = a, a + 1, a + 3, a, a + 3, a + 2
   end end
-  local sg = T.BufferGeometry.new()
-  sg:set_attribute('position', posA)
-  sg:set_attribute('aPrev', prvA)
-  sg:set_attribute('aNext', nxtA)
-  sg:set_attribute('aSide', sideA)
-  sg:set_attribute('aU', alongA)
-  sg:set_attribute('aP', prmA)
-  sg:set_attribute('aA', fadeA)
-  sg:set_index(idx)
   local smat = blend('warp.streaks')
-  local smesh = T.Mesh.new(sg, smat); smesh.frustum_culled = false
-  R.warp_scene:add(smesh)
+  local chunks = {}
+  for c = 1, NC do
+    local posA, prvA, nxtA = T.float_attr(CV, 3), T.float_attr(CV, 3), T.float_attr(CV, 3)
+    local sideA, alongA, prmA, fadeA = T.float_attr(CV, 1), T.float_attr(CV, 1), T.float_attr(CV, 4), T.float_attr(CV, 1)
+    local side, along = sideA.array, alongA.array
+    for s = 0, CH - 1 do for k = 0, K - 1 do for e = 0, 1 do local v = (s*K + k)*2 + e; side[v + 1] = e == 1 and 1 or -1; along[v + 1] = k/(K - 1) end end end
+    local sg = T.BufferGeometry.new()
+    sg:set_attribute('position', posA)
+    sg:set_attribute('aPrev', prvA)
+    sg:set_attribute('aNext', nxtA)
+    sg:set_attribute('aSide', sideA)
+    sg:set_attribute('aU', alongA)
+    sg:set_attribute('aP', prmA)
+    sg:set_attribute('aA', fadeA)
+    sg:set_index(idx)
+    local smesh = T.Mesh.new(sg, smat); smesh.frustum_culled = false; smesh.visible = false
+    R.warp_scene:add(smesh)
+    chunks[c] = { mesh = smesh, attrs = { posA, prvA, nxtA, prmA, fadeA },
+                  pos = posA.array, prv = prvA.array, nxt = nxtA.array, prm = prmA.array, fade = fadeA.array }
+  end
   local S = {}
   for i = 1, NS do
     local pts = {}
@@ -70,6 +81,7 @@ function W.create(R)
   R.warp_scene:add(pts)
   local P = {}
   for i = 1, NP do P[i] = { life = 0 } end
+  local active = false
   local pnext = 0
 
   -- ---------------------------------------------------------------- flung streaks
@@ -133,19 +145,24 @@ function W.create(R)
   function warp.update(t, dt)
     UN.uTime.value = t
     update_flings(dt)
-    -- (a streak that is off draws nothing whatever its points hold: written once as off, then left)
-    local any = false
+    -- (a streak that is off draws nothing whatever its points hold: written once as off, then left; a mesh with none
+    -- on is not drawn, and its buffers go out again only when one of its streaks changed)
+    for c = 1, NC do local ch = chunks[c]; ch.on = false; ch.dirty = false end
     for i = 0, NS - 1 do
       local s = S[i + 1]
+      local ch = chunks[i//CH + 1]
+      if s.on then ch.on = true end
       local sp = s.pts
       local f = s.on and s.a or 0
       if s.on or not s.written_off then
-      any = true
+      ch.dirty = true
       s.written_off = not s.on
+      local pos, prv, nxt, prm, fade = ch.pos, ch.prv, ch.nxt, ch.prm, ch.fade
+      local li = i % CH
       for k = 0, K - 1 do
         local p, a, b = sp[k + 1], sp[max(0, k - 1) + 1], sp[min(K - 1, k + 1) + 1]
         for e = 0, 1 do
-          local v = (i*K + k)*2 + e
+          local v = (li*K + k)*2 + e
           local v3, v4 = v*3, v*4
           pos[v3 + 1], pos[v3 + 2], pos[v3 + 3] = p.x, p.y, p.z
           prv[v3 + 1], prv[v3 + 2], prv[v3 + 3] = a.x, a.y, a.z
@@ -156,11 +173,20 @@ function W.create(R)
       end
       end
     end
-    if any then posA.needs_update = true; prvA.needs_update = true; nxtA.needs_update = true; prmA.needs_update = true; fadeA.needs_update = true end
+    local any_on = false
+    for c = 1, NC do
+      local ch = chunks[c]
+      ch.mesh.visible = ch.on
+      if ch.on then any_on = true end
+      if ch.dirty then for _, a in ipairs(ch.attrs) do a.needs_update = true end end
+    end
+    local alive, changed = false, false
     for i = 0, NP - 1 do
       local p = P[i + 1]
-      if p.life <= 0 then pprm[i*4 + 4] = 0
+      if p.life <= 0 then
+        if pprm[i*4 + 4] ~= 0 then pprm[i*4 + 4] = 0; changed = true end
       else
+        alive, changed = true, true
         p.life = p.life - dt
         local u = 1 - p.life/p.max
         local d = 1 - p.drag*dt
@@ -171,8 +197,13 @@ function W.create(R)
         pprm[i*4 + 4] = smoothstep(0, 0.15, u)*(1 - smoothstep(0.45, 1, u))
       end
     end
-    pposA.needs_update = true; pprmA.needs_update = true
+    -- (2026-10-15: sent only when something moved or died; none alive: not drawn)
+    if changed then pposA.needs_update = true; pprmA.needs_update = true end
+    pts.visible = alive
+    active = any_on or alive
   end
+  -- (2026-10-15) is anything bending the light: post.lua leaves the warp target cleared and skips its render if not
+  R.warp_active = function() return active end
   function warp.set_camera(cam, H) UN.uProj.value = cam.projection_matrix.elements[6]*H*0.5 end
   function warp.debug()
     local n, pn, list = 0, 0, {}

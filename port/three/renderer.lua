@@ -14,6 +14,7 @@
   renderer.trace = {} records every draw (program key, uniforms) for comparison with a capture.
 ]]
 local TM = require('port.three.math')
+local PROF = require('port.prof')       -- (2026-10-15: the benchmark's sections)
 local T = require('port.three.core')
 local MAT = require('port.three.materials')
 local Vector3, Matrix4, Matrix3, Color = TM.Vector3, TM.Matrix4, TM.Matrix3, TM.Color
@@ -64,7 +65,7 @@ function RD.new(opts)
     auto_clear = true, sort_objects = true,
     target = nil, height = opts.height or 360, pixel_ratio = 1,
     shadow_map_enabled = true,
-    transmission_targets = {},
+    transmission_targets = {}, transmission_copies = {},
     trace = nil,
     info = { draws = 0, programs = 0 },
   }, Renderer)
@@ -180,8 +181,14 @@ local function up(m, sizes, name, a, divisor)
     gpu_mesh_attr(m, name, a.item_size, a.array or a.blob, divisor, a.dynamic)
     sizes[name] = n; a.needs_update = false
   elseif a.needs_update then
+    local t0 = PROF.fine and perf_time()
     gpu_mesh_update(m, name, a.array)
     a.needs_update = false
+    if t0 then
+      local k = '~' .. tostring(PROF.cur_obj) .. '.' .. name
+      PROF.t[k] = (PROF.t[k] or 0) + (perf_time() - t0)
+      PROF.t['#floats_up'] = (PROF.t['#floats_up'] or 0) + n/1000
+    end
   end
 end
 local function gpu_mesh_of(object, geometry)
@@ -282,8 +289,10 @@ function Renderer:draw(camera, scene_tag, object, geometry, material, group, sid
   local inst = object.is_instanced_mesh and 'i' or '-'
   -- (the program is the material's side's: a transparent double-sided one draws its back and front
   -- faces with it; the library holds one program per material side)
+  local lap = PROF.fine and perf_time()
   local key = key_override or key_of(material, scene_tag, material.side, inst)
   local prog = self:program(key)
+  lap = PROF.lap('d.prog', lap)
   if not prog then return end
   -- draw range (renderBufferDirect)
   local dr = geometry.draw_range
@@ -293,7 +302,9 @@ function Renderer:draw(camera, scene_tag, object, geometry, material, group, sid
   draw_start = math.max(draw_start, 0); draw_end = math.min(draw_end, total)
   local count = draw_end - draw_start
   if count <= 0 or count == math.huge then return end
+  if PROF.fine then PROF.cur_obj = object.name ~= '' and object.name or (material.name or '?') end
   local mesh = gpu_mesh_of(object, geometry)
+  lap = PROF.lap('d.mesh', lap)
   -- uniforms, as WebGLRenderer.setProgram sends them: the camera's when the program or the camera
   -- changes, the lights' when the program changes, the material's when the program or the material
   -- changes (a program keeps its uniforms and its textures between draws); the object's always.
@@ -327,17 +338,22 @@ function Renderer:draw(camera, scene_tag, object, geometry, material, group, sid
     _env.environment_intensity = self.environment_intensity
     MAT.write_uniforms(material, set, _env)
   end
+  lap = PROF.lap('d.uni_cam_mat', lap)
   set('receiveShadow', object.receive_shadow)
   set('modelViewMatrix', object.model_view_matrix.elements)
   set('normalMatrix', object.normal_matrix.elements)
   set('modelMatrix', object.matrix_world.elements)
+  lap = PROF.lap('d.uni_obj', lap)
   -- state and the call
   local front_cw = object.is_mesh and object.matrix_world:determinant() < 0
   local o = draw_state(material, side, front_cw, tr and {} or _o)
   o.first, o.count = draw_start, count
   if object.is_points then o.mode = 'points' else o.mode = 'triangles' end
   o.instances = object.is_instanced_mesh and object.count or nil
+  lap = PROF.lap('d.state', lap)
   gpu_draw(prog, mesh, o)
+  lap = PROF.lap('d.gpu_draw', lap)
+  if PROF.fine then PROF.t['#draws'] = (PROF.t['#draws'] or 0) + 0.001; if refresh_mat then PROF.t['#mat_refresh'] = (PROF.t['#mat_refresh'] or 0) + 0.001 end end
   self.info.draws = self.info.draws + 1
   if tr then self.trace[#self.trace + 1] = { op = 'draw', key = key, pass = pass, object = object.name, uniforms = tr, state = o } end
 end
@@ -562,20 +578,35 @@ end
 -- ---------------------------------------------------------------------------- render
 local _psm = Matrix4.new()
 function Renderer:render(scene, camera)
+  local lap = PROF.on and perf_time()       -- (2026-10-15: port/prof.lua, the benchmark's sections)
   self.cur_mat_id, self.cur_cam = -1, nil
   self.environment, self.environment_intensity = scene.environment, scene.environment_intensity or 1
   scene:update_matrix_world()
   if camera.parent == nil then camera:update_matrix_world() end
+  lap = PROF.lap('r3.matrices', lap)
   _psm:multiply_matrices(camera.projection_matrix, camera.matrix_world_inverse)
   local lights, casters = collect(scene)
   local opaque, transmissive, transparent = project(scene, camera, _psm)
+  lap = PROF.lap('r3.project', lap)
   self:shadow_pass(scene, camera, casters)
+  lap = PROF.lap('r3.shadow', lap)
   self._L = light_state(lights, camera, self._L)
   local L = self._L
   local tag = scene.program_scene or 'world'
   local target = self.target
   self.current_transmission = nil
-  if #transmissive > 0 then self:transmission_pass(scene, camera, tag, L, opaque, transmissive) end
+  -- (2026-10-15, the web's performance) `transmission_copy` (the game's flow sets it): what the glass sees through it
+  -- is the opaque world as this target has it once the opaque objects are drawn, copied (gpu_blit) instead of drawn a
+  -- second time into a target of its own (three.js's transmission pass: every opaque object again, CPU and GPU, each
+  -- frame a lens is out, and the lens now stays out). The pass stays for a double-sided glass (whose back faces it
+  -- also draws) and with no target to copy from.
+  local copy_tr = false
+  if #transmissive > 0 then
+    copy_tr = self.transmission_copy and target ~= nil and not target.msaa
+    if copy_tr then for _, it in ipairs(transmissive) do if it.material.side == MAT.DoubleSide then copy_tr = false; break end end end
+    if not copy_tr then self:transmission_pass(scene, camera, tag, L, opaque, transmissive) end
+  end
+  lap = PROF.lap('r3.transmission', lap)
   -- background
   self:set_render_target(target)
   local bg = scene.background
@@ -589,9 +620,28 @@ function Renderer:render(scene, camera)
   end
   if target then gpu_viewport(0, 0, target.width, target.height) end
   for _, it in ipairs(opaque) do self:render_object(camera, tag, it.object, it.geometry, it.material, it.group, L, 'opaque') end
+  if copy_tr then
+    local tl = PROF.on and perf_time()
+    local w, h = target.width, target.height
+    local rt = self.transmission_copies[camera]
+    if not rt then
+      rt = RenderTarget.new(w, h, { type = target.opts.type, format = target.opts.format, min_filter = 'linear_mipmap_linear', mag_filter = 'linear', depth = false })
+      self.transmission_copies[camera] = rt
+    end
+    rt:set_size(w, h)
+    gpu_blit(target.gpu, rt.gpu, 'nearest')
+    self:finish_target(rt)
+    self.current_transmission = { texture = rt.texture.gpu, w = rt.width, h = rt.height }
+    self:set_render_target(target)
+    gpu_viewport(0, 0, w, h)
+    self.cur_prog, self.cur_mat_id, self.cur_cam = nil, -1, nil
+    if tl then PROF.add('r3.transmission', tl) end
+  end
   for _, it in ipairs(transmissive) do self:render_object(camera, tag, it.object, it.geometry, it.material, it.group, L, 'transmissive') end
   for _, it in ipairs(transparent) do self:render_object(camera, tag, it.object, it.geometry, it.material, it.group, L, 'transparent') end
+  lap = PROF.lap('r3.draw', lap)
   self:finish_target(target)
+  PROF.lap('r3.finish', lap)
 end
 
 function Renderer:transmission_pass(scene, camera, tag, L, opaque, transmissive)

@@ -73,6 +73,26 @@ Static check before every handover:
 
     anchor check .
 
+## Performance (2026-10-15, RECORD.md round 81)
+
+One benchmark scenario (port/bench.lua: fixed seed, his walk in, all six, a fixed schedule of waves, 8 s warm-up,
+30 s measured) with the section profiler (port/prof.lua), the same on the desktop and in a browser:
+
+    LICH_BENCH=1 anchor drive start .
+    anchor drive eval . 'record_stop(); local B = require("port.bench"); while not B.done do engine_step(1) end; return B.result'
+    anchor drive stop .
+
+    python tools/webbench/build.py          # ONE self-contained page: the web engine + every game file, base64 (~130 MB)
+    node tools/webbench/run.mjs             # headless Chrome on the GPU, file://, every request failed inside Chrome
+
+Never serve the game or load the site in a headless browser: his download manager catches any binary a browser
+fetches. The webbench page is the only way in. `WEBBENCH_UNCAPPED=1` takes vsync off (frames as fast as they go;
+the fixed 120 Hz update then makes some callbacks draw nothing, so read its long frames with care). Set
+`require("port.prof").fine = true` before a desktop run for the per-draw and per-buffer sections. Render changes
+are checked frame by frame: tools/frames_probe.lua (stepped by hand; OUT = a folder; LICH_SEED fixed) before and after +
+tools/cmp_frames.py <before> <after>. On the live site, `?perf` in the URL shows fps and the site's update/draw ms per frame
+(the hosted game included).
+
 ## Layout
 
 - `main.lua` — definitions only (it reloads on save); the init table names

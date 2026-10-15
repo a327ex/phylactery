@@ -9,6 +9,7 @@
   bottom-up), so the window scaling and engine_snapshot are Anchor's own.
 ]]
 local TM = require('port.three.math')
+local PROF = require('port.prof')       -- (2026-10-15: the benchmark's sections)
 local T = require('port.three.core')
 local MAT = require('port.three.materials')
 local RD = require('port.three.renderer')
@@ -112,24 +113,35 @@ function P.create(opts)
   function R.freeze() pass(copy_mat, rt_freeze); return rt_freeze.texture end
 
   local time = 0
+  local warp_blank, view_blank = false, false
   function R.render(dt)
     dt = dt or 1/60
     time = time + dt
     local p = params
     local ov = p.world_override
     local ws, wc = ov and ov.scene or world_scene, ov and ov.camera or world_camera
+    local lap = PROF.on and perf_time()       -- (2026-10-15: port/prof.lua; the passes, the renderer's own inside them)
     wc:update_matrix_world()
     renderer:set_render_target(rt_world)
     renderer:set_clear_color(ws.background or Color.new(0, 0, 0), 1)
     renderer:render(ws, wc)
-    -- what bends the light
+    lap = PROF.lap('pass.world', lap)
+    -- what bends the light. (2026-10-15, the web's performance: with nothing bending it (warp.lua's R.warp_active) the
+    -- target would come out clear: it is cleared once and the render skipped; the viewmodel scene, empty in this game,
+    -- the same; ~1.8 ms a frame on the web)
     renderer:set_render_target(rt_warp)
     renderer:set_clear_color(0x000000, 0)
-    if ov then renderer:clear() else renderer:render(warp_scene, world_camera) end
+    if ov or (R.warp_active and not R.warp_active()) then
+      if not warp_blank then renderer:clear(); warp_blank = true end
+    else renderer:render(warp_scene, world_camera); warp_blank = false end
     -- viewmodel
-    renderer:set_render_target(rt_view)
-    renderer:set_clear_color(0x000000, 0)
-    renderer:render(view_scene, view_camera)
+    if #view_scene.children > 0 or not view_blank then
+      renderer:set_render_target(rt_view)
+      renderer:set_clear_color(0x000000, 0)
+      renderer:render(view_scene, view_camera)
+      view_blank = #view_scene.children == 0
+    end
+    lap = PROF.lap('pass.warp+view', lap)
     -- bloom
     local bloom_on = p.bloom.strength > 0
     if bloom_on then
@@ -174,6 +186,7 @@ function P.create(opts)
     U.uFlash.value:from_array(p.flash); U.uHurtColor.value:from_array(p.hurt_color); U.uHurt.value = p.hurt; U.uDesat.value = p.desat
     U.uHud.value = p.hud; U.uWarpView.value = p.warp_view and 1 or 0
     pass(final_mat, rt_final)
+    lap = PROF.lap('pass.bloom+final', lap)
     -- round 57 (port/silhouette.lua): toward darkness, the egg and the lich as two flat shapes, by R.sil.e
     R.out = rt_final
     local sl = R.sil
