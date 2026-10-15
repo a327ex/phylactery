@@ -121,6 +121,7 @@ function GM.create(R, hud_layer)
 
   local fx = FXM.create(R, cave)
   local gore = GORE.create(R, cave, snakes, fx, U.run_rng(41))
+  if VARIED then gore.set_settle(true) end     -- (2026-10-15: what comes to rest tips onto its side, gore.lua)
   local warp = WARP.create(R)
   local powers = PW.create({ R = R, cave = cave, snakes = snakes, fx = fx, gore = gore, warp = warp, fire = fire, lich = lich, mover = mover, egg = EGG,
     get_L = function() return L end, rng = U.run_rng(29), varied = VARIED })
@@ -247,7 +248,10 @@ function GM.create(R, hud_layer)
   -- the dark between `gore_fade` s after it. Round 62 (owner: "as the egg is moving and breaking, fade everything in
   -- the background out to the website's background color, so that only the egg remains visible"): from the first
   -- knock to `fade_after` s after it opens, everything but the egg and its pieces goes to the site's page colour
-  local DIE = { hold = 4.0, back = 0.5, out = 0.0, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 },
+  -- (2026-10-15, owner: "the amount of time the snakes stay around the egg before it breaks is 2 seconds too long":
+  -- `hold`, from the two silhouettes' full fade to his death, when they burst and the egg's part begins: 4.0 -> 2.0;
+  -- LICH_ROOM keeps 4.0, its digests run through the ending)
+  local DIE = { hold = VARIED and 2.0 or 4.0, back = 0.5, out = 0.0, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 },
     fade_after = 1.0 }
   SEQ.label_n = 0
   G.SHOT = SHOT

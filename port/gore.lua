@@ -43,6 +43,17 @@ function GO.create(R, cave, snakes, fx, rng)
     return TUG:multiply_scalar(PULL_A*(pl/PULL_T)/l)
   end
   local UP = Vector3.new(0, 1, 0)
+  -- 2026-10-15 (owner: "The way the snake bits land after the egg breaks can't have them be standing up in a way that
+  -- feels incorrect physically"): what comes to rest TIPS OVER onto its side as a thing would, slow at first and then
+  -- falling (TIP_T s, eased in), settling on its broadest face: a torn piece of the tube, curved like the coil it was,
+  -- lays the plane of its curve flat (it could stand on its two ends like a hoop: only its chord was laid level); a
+  -- long or flat bit of debris (a rib, a scrap of skin, a lump drawn out) lies on its thinnest side (it rested in
+  -- whatever turn its spin left it, a rib on its end, a scrap on its edge); a roundish one is left as it fell.
+  -- `gore.settle` (the game's flow sets it; LICH_ROOM leaves them as before).
+  local GO_API = { settle = false }
+  local TIP_T = 0.22
+  local QA, QT = Quaternion.new(), Quaternion.new()
+  local AX = Vector3.new()
 
   -- ---------------------------------------------------------------- blood on the floor
   local DEC_N, decals = 90, {}
@@ -262,7 +273,7 @@ function GO.create(R, cave, snakes, fx, rng)
     P.samples[#P.samples + 1] = Vector3.new():sub_vectors(s.spine[b + 1], c)
     P.r = max(0.02, s.radii[jround((a + b)/2) + 1]*0.8)
     P.m.position:copy(c); P.m.quaternion:identity(); P.m.scale:set(1, 1, 1); P.m.visible = true
-    P.on = true; P.t = 0; P.rest = 0; P.landed = false; P.tw = rng.float(0, 6)
+    P.on = true; P.t = 0; P.rest = 0; P.landed = false; P.tw = rng.float(0, 6); P.lay = nil
     V:sub_vectors(s.spine[b + 1], s.spine[a + 1])
     if V:length_sq() > 1e-6 then P.ax:copy(V:normalize()) else P.ax:copy(V:set(1, 0, 0)) end
     return P
@@ -305,9 +316,57 @@ function GO.create(R, cave, snakes, fx, rng)
           end
         else
           P.rest = P.rest + dt
+          if GO_API.settle and P.lay == nil then
+            -- (the plane of its curve: its chord across the bulge of its middle; a near-straight piece has none)
+            P.lay = false
+            local ns = #P.samples
+            if ns >= 3 then
+              local a, b, c = P.samples[1], P.samples[ns], P.samples[(ns + 1)//2]
+              V:sub_vectors(b, a)
+              local cl = V:length()
+              V2:copy(a):add(b):multiply_scalar(0.5)
+              V2:sub_vectors(c, V2)
+              if cl > 1e-4 and V2:length() > 0.18*cl then
+                AX:cross_vectors(V, V2):normalize():apply_quaternion(m.quaternion)
+                if abs(AX.y) < 0.94 then
+                  QA:set_from_unit_vectors(AX, V:set(0, AX.y >= 0 and 1 or -1, 0))
+                  P.q0 = P.q0 or Quaternion.new(); P.q1 = P.q1 or Quaternion.new()
+                  P.q0:copy(m.quaternion); P.q1:copy(QA):multiply(m.quaternion)
+                  P.tip = 0; P.lay = true
+                end
+              end
+            end
+            if not P.lay then
+              -- (a straight one: its chord laid level, tipping the same way. One standing straight up has no side to
+              -- fall to (its chord across UP is nothing: the old lay-down below never moved it, the coil's pieces stood
+              -- like posts): it falls to a side of its own, from its twitch's phase, drawn at its birth)
+              AX:copy(P.ax):apply_quaternion(m.quaternion)
+              if abs(AX.y) > 0.2 then
+                local hx, hz = AX.x, AX.z
+                local hl = sqrt(hx*hx + hz*hz)
+                if hl < 1e-3 then hx, hz, hl = cos(P.tw), sin(P.tw), 1 end
+                QA:set_from_unit_vectors(AX, V:set(hx/hl, 0, hz/hl))
+                P.q0 = P.q0 or Quaternion.new(); P.q1 = P.q1 or Quaternion.new()
+                P.q0:copy(m.quaternion); P.q1:copy(QA):multiply(m.quaternion)
+                P.tip = 0; P.lay = true
+              end
+            end
+          end
+          if P.lay then
+            P.tip = min(1, P.tip + dt/TIP_T)
+            m.quaternion:slerp_quaternions(P.q0, P.q1, P.tip*P.tip)
+            local pen = 0
+            for _, sm in ipairs(P.samples) do V:copy(sm):apply_quaternion(m.quaternion):add(m.position); pen = max(pen, gy(V.x, V.z) + P.r - V.y) end
+            m.position.y = m.position.y + pen
+            local low = 1e9
+            for _, sm in ipairs(P.samples) do V:copy(sm):apply_quaternion(m.quaternion):add(m.position); low = min(low, V.y - gy(V.x, V.z) - P.r) end
+            if low > 0.005 then m.position.y = m.position.y - low end
+            if P.tip >= 1 then P.lay = 'done' end
+          end
           V:copy(P.ax):apply_quaternion(m.quaternion)
-          if abs(V.y) > 0.2 then
+          if P.lay ~= true and abs(V.y) > 0.2 then
             V2:cross_vectors(V, UP)
+            if V2:length_sq() <= 1e-6 and GO_API.settle then V2:set(-sin(P.tw), 0, cos(P.tw)) end   -- (straight up: a side of its own)
             if V2:length_sq() > 1e-6 then V2:normalize(); Q:set_from_axis_angle(V2, sign(V.y)*min(abs(V.y), 5*dt)); m.quaternion:premultiply(Q) end
             local pen = 0
             for _, sm in ipairs(P.samples) do V:copy(sm):apply_quaternion(m.quaternion):add(m.position); pen = max(pen, gy(V.x, V.z) + P.r - V.y) end
@@ -317,7 +376,7 @@ function GO.create(R, cave, snakes, fx, rng)
             if low > 0.005 then m.position.y = m.position.y - min(low, 1.5*dt) end
           end
           local tw = exp(-P.rest*1.6)*sin(P.rest*(13 + P.tw) + P.tw)*0.9*dt
-          if P.rest < 2.2 then V:copy(P.ax):apply_quaternion(m.quaternion); Q:set_from_axis_angle(V, tw); m.quaternion:premultiply(Q) end
+          if P.rest < 2.2 and P.lay ~= true then V:copy(P.ax):apply_quaternion(m.quaternion); Q:set_from_axis_angle(V, tw); m.quaternion:premultiply(Q) end
           if P.rest < 1.0 then
             for _, e in ipairs(P.ends) do
               if rng.next() < 0.08 then
@@ -347,9 +406,43 @@ function GO.create(R, cave, snakes, fx, rng)
     end
     local D = {}
     for i = 0, n - 1 do D[i + 1] = { life = 0 }; mesh:set_matrix_at(i, ZERO) end
+    -- (its half extents, read from the loaded float32 bytes as they are: no Lua copy of its vertices is kept)
+    local HX, HY, HZ
+    do
+      local p = geo.attributes.position
+      local mnx, mny, mnz, mxx, mxy, mxz = 1e9, 1e9, 1e9, -1e9, -1e9, -1e9
+      local k, cnt = p.item_size or 3, p.count or 0
+      for i = 0, cnt - 1 do
+        local x, y, z
+        if p.array then x, y, z = p.array[i*k + 1], p.array[i*k + 2], p.array[i*k + 3]
+        else x, y, z = string.unpack('<fff', p.blob, i*k*4 + 1) end
+        mnx, mny, mnz = min(mnx, x), min(mny, y), min(mnz, z)
+        mxx, mxy, mxz = max(mxx, x), max(mxy, y), max(mxz, z)
+      end
+      HX, HY, HZ = (mxx - mnx)/2, (mxy - mny)/2, (mxz - mnz)/2
+    end
+    local function lay(d)
+      local ex, ey, ez = HX*d.sx, HY*d.sy, HZ*d.sz
+      local lo, hi = min(ex, ey, ez), max(ex, ey, ez)
+      if hi < lo*1.3 then return end                                     -- (roundish: any face will do)
+      E:set(d.rx, d.ry, d.rz); QT:set_from_euler(E)
+      AX:set(lo == ex and 1 or 0, (lo ~= ex and lo == ey) and 1 or 0, (lo ~= ex and lo ~= ey) and 1 or 0):apply_quaternion(QT)
+      if abs(AX.y) > 0.97 then return end                                -- (already on its side)
+      QA:set_from_unit_vectors(AX, V:set(0, AX.y >= 0 and 1 or -1, 0))
+      d.q0 = d.q0 or Quaternion.new(); d.q1 = d.q1 or Quaternion.new()
+      d.q0:copy(QT); d.q1:copy(QA):multiply(QT)
+      d.tip, d.y0, d.y1 = 0, d.y, gy(d.x, d.z) + d.s*lo
+    end
     R.world_scene:add(mesh)
     local nxt = 0
-    local pool = { mesh = mesh }
+    local pool = { mesh = mesh, D = D }
+    -- (testing, gore.lying) is it long or flat, and its thinnest local axis
+    function pool.long(d) local ex, ey, ez = HX*d.sx, HY*d.sy, HZ*d.sz; return max(ex, ey, ez) >= min(ex, ey, ez)*1.3 end
+    function pool.thin(d)
+      local ex, ey, ez = HX*d.sx, HY*d.sy, HZ*d.sz
+      local lo = min(ex, ey, ez)
+      return Vector3.new(lo == ex and 1 or 0, (lo ~= ex and lo == ey) and 1 or 0, (lo ~= ex and lo ~= ey) and 1 or 0)
+    end
     function pool.spawn(o)
       local d, i = D[nxt + 1], nxt
       nxt = (nxt + 1) % n
@@ -357,6 +450,7 @@ function GO.create(R, cave, snakes, fx, rng)
       d.rx = rng.float(0, 6); d.ry = rng.float(0, 6); d.rz = rng.float(0, 6)
       d.wx = rng.spread(16); d.wy = rng.spread(16); d.wz = rng.spread(16)
       d.sx = 1; d.sy = 1; d.sz = 1; d.bleed = 0; d.quiet = nil   -- (quiet: a crush's, its landing silent)
+      d.tip = nil; d.laid = nil
       for k, v in pairs(o) do d[k] = v end              -- (a key o lacks keeps the slot's old value, as Object.assign does)
       if coloured and o.c then
         local a = mesh.instance_color.array
@@ -386,7 +480,7 @@ function GO.create(R, cave, snakes, fx, rng)
                 if not d.quiet then AU.play('gore_land', { pos = { d.x, d.y, d.z }, volume = 0.5, gap = 0.08 }) end
                 if d.bleed ~= 0 and rng.next() < 0.7 then splash(d.x, d.z, d.s*rng.float(4, 7), 0.15, atan2(-d.vz, d.vx), 1.4) end
               end
-              if abs(d.vy) < 1.0 then d.rest = 1e-3; d.vx = 0; d.vy = 0; d.vz = 0
+              if abs(d.vy) < 1.0 then d.rest = 1e-3; d.vx = 0; d.vy = 0; d.vz = 0; if GO_API.settle then lay(d) end
               else d.vy = -d.vy*0.22; d.vx = d.vx*0.5; d.vz = d.vz*0.5; d.wx = d.wx*0.4; d.wy = d.wy*0.4; d.wz = d.wz*0.4 end
             end
             if d.bleed ~= 0 and rng.next() < d.bleed then
@@ -397,11 +491,18 @@ function GO.create(R, cave, snakes, fx, rng)
             end
           else
             d.rest = d.rest + dt
+            if d.tip then                                -- (tipping over onto its side)
+              d.tip = min(1, d.tip + dt/TIP_T)
+              local u = d.tip*d.tip
+              d.y = d.y0 + (d.y1 - d.y0)*u
+              if d.tip >= 1 then d.tip = nil; d.laid = true end
             -- (lying still: posed as it came to rest, left so until it sinks)
-            if d.life < SINK_T then d.y = d.y - 0.12*dt else pose = false end
+            elseif d.life < SINK_T then d.y = d.y - 0.12*dt else pose = false end
           end
           if pose then
-            E:set(d.rx, d.ry, d.rz); Q:set_from_euler(E)
+            if d.tip then Q:slerp_quaternions(d.q0, d.q1, d.tip*d.tip)
+            elseif d.laid then Q:copy(d.q1)
+            else E:set(d.rx, d.ry, d.rz); Q:set_from_euler(E) end
             local k = d.life < 0.3 and d.life/0.3 or 1
             M:compose(V:set(d.x, d.y, d.z), Q, SC:set(d.s*d.sx*k, d.s*d.sy*k, d.s*d.sz*k))
             mesh:set_matrix_at(i, M)
@@ -774,6 +875,54 @@ function GO.create(R, cave, snakes, fx, rng)
     return out
   end
   function gore.follow(fn) follow = fn end
+  function gore.set_settle(v) GO_API.settle = v and true or false end
+  -- (testing) every piece out: its rest time, its lay state, how upright its chord is, how curved it is, its height
+  function gore.debug_pieces()
+    local out = {}
+    for i, P in ipairs(PIECES) do
+      if P.on then
+        local ns = #P.samples
+        local a, b, c = P.samples[1], P.samples[ns], P.samples[(ns + 1)//2]
+        V:sub_vectors(b, a); V2:copy(a):add(b):multiply_scalar(0.5); V2:sub_vectors(c, V2)
+        local curv = V:length() > 0 and V2:length()/V:length() or 0
+        AX:copy(P.ax):apply_quaternion(P.m.quaternion)
+        out[#out + 1] = string.format('#%d t %.2f rest %.2f lay %s chord_y %.2f curve %.2f n %d y %.2f vy %.2f', i, P.t, P.rest, tostring(P.lay), AX.y, curv, ns,
+          P.m.position.y - gy(P.m.position.x, P.m.position.z), P.v.y)
+      end
+    end
+    return out
+  end
+  -- (testing) what lies still: curved pieces whose curve stands (its plane more than 45 degrees off level), long or flat
+  -- debris whose thinnest side is not down (more than 45 degrees), out of how many of each lie still
+  function gore.lying()
+    local o = { pieces = 0, curved = 0, standing_pieces = 0, debris = 0, standing_debris = 0 }
+    for _, P in ipairs(PIECES) do
+      if P.on and P.rest > 0.5 then
+        o.pieces = o.pieces + 1
+        local ns = #P.samples
+        if ns >= 3 then
+          local a, b, c = P.samples[1], P.samples[ns], P.samples[(ns + 1)//2]
+          V:sub_vectors(b, a); V2:copy(a):add(b):multiply_scalar(0.5); V2:sub_vectors(c, V2)
+          if V:length() > 1e-4 and V2:length() > 0.18*V:length() then
+            o.curved = o.curved + 1
+            AX:cross_vectors(V, V2):normalize():apply_quaternion(P.m.quaternion)
+            if abs(AX.y) < 0.707 then o.standing_pieces = o.standing_pieces + 1 end
+          end
+        end
+      end
+    end
+    for _, pool in ipairs({ meat, ribs, scraps }) do
+      for _, d in ipairs(pool.D) do
+        if d.life > 0 and d.rest > 0.5 and pool.long(d) then
+          o.debris = o.debris + 1
+          if d.laid then QT:copy(d.q1) else E:set(d.rx, d.ry, d.rz); QT:set_from_euler(E) end
+          AX:copy(pool.thin(d)):apply_quaternion(QT)
+          if abs(AX.y) < 0.707 then o.standing_debris = o.standing_debris + 1 end
+        end
+      end
+    end
+    return o
+  end
   function gore.pieces()
     local out = {}
     for i, p in ipairs(PIECES) do if p.on then out[#out + 1] = { i = i - 1, t = p.t, p = p.m.position:clone() } end end
