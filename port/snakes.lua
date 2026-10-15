@@ -993,8 +993,9 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     return n
   end
   -- round 56 (the ending's start, owner: "Start the game for me with snakes near the egg"): n of the pool
-  -- sent from clear spots r0..r1 m out round the egg (not the camera's side), `spread` s apart, heading in
-  function api.gather(n, r0, r1, spread)
+  -- sent from clear spots r0..r1 m out round the egg (not the camera's side), `spread` s apart, heading in.
+  -- ok(x, z), when given, must also accept the spot (2026-10-15, the ending: one out of the camera's sight)
+  function api.gather(n, r0, r1, spread, ok)
     if not snav then return 0 end
     local pool = pooled()
     local sent = 0
@@ -1005,7 +1006,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
       local r = r0
       while r <= r1 do
         local x, z = egg.x + cos(th)*r, egg.z + sin(th)*r
-        if spawn_clear(x, z) then
+        if spawn_clear(x, z) and (not ok or ok(x, z)) then
           sent = sent + 1
           spawn(pool[sent], (sent - 1)*spread + wrng.float(0, spread*0.5), { th = th, x = x, z = z, dir = route_dir(x, z) })
           break

@@ -11,11 +11,20 @@
   of `k` times the KB allocated since the last tick; when a cycle ends, a pause until the heap has grown by `grow`
   times what the cycle left (plus `slack` MB), with no work at all meanwhile. Far from that (the heap past `runaway`
   times it), steps of `catch_up` times as much.
+  2026-10-15, session 17 (owner: "Game seems to be stuttering whenever some events happen"): that pacing ran a whole
+  cycle in ONE step. While the collector is stopped Lua keeps counting what is allocated as its debt, so the first step
+  after the wait paid for everything since the last cycle: 18 steps in a 78 s run, 3 of them 21-30 ms on the desktop
+  (more on the web), sooner after a burst of allocation (gore, a group attack), so they fell on the busy moments.
+  Measured over the same run (scratch/s17/gc_mode_probe.lua, steps over 30 ms / p99.9): this pacing 12 / 31.5 ms, the
+  debt dropped at the wait's end 17 / 34.2, Lua 5.4's generational collector 15 / 32.8, its automatic incremental
+  collector with its defaults 7 / 26-28 ms (and a smaller heap). With round 64's garbage gone (232 -> 40 KB a frame)
+  Lua's own pacing is the best of them: AUTO = true hands the collector back to it; tick() then does nothing.
 ]]
-local GP = { k = 4, grow = 1.5, slack = 8, runaway = 2.5, catch_up = 4 }
+local GP = { k = 4, grow = 1.5, slack = 8, runaway = 2.5, catch_up = 4, AUTO = true }
 
 local live_kb, last_kb, waiting = nil, nil, false
 function GP.start()
+  if GP.AUTO then collectgarbage('incremental', 200, 100, 13); collectgarbage('restart'); return end
   collectgarbage('collect')
   collectgarbage('incremental', 100, 100, 10)
   collectgarbage('stop')
@@ -26,13 +35,13 @@ end
 -- screen or gone its ticks stop, so the automatic collector comes back, as the site runs it (Lua 5.4's defaults);
 -- back on screen, the game paces it again. (main.lua: game_hosted_visible / game_hosted_stop.)
 function GP.pause()
-  if not live_kb then return end
+  if GP.AUTO or not live_kb then return end
   live_kb = nil
   collectgarbage('incremental', 200, 100, 13)
   collectgarbage('restart')
 end
 function GP.resume()
-  if live_kb then return end
+  if GP.AUTO or live_kb then return end
   collectgarbage('incremental', 100, 100, 10)
   collectgarbage('stop')
   live_kb = collectgarbage('count'); last_kb = live_kb; waiting = false

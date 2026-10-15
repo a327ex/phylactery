@@ -729,6 +729,15 @@ function GM.create(R, hud_layer)
       -- keyup: this direction is let go (if its other key is not still down it stays off, as main.js)
       held[mk[2]] = nil
     end end
+    -- (2026-10-15, session 17, the owner: "using WASD seems to lock movement to one direction way too often ... I'll
+    -- stop holding the key, it will still move in that direction and I have to press it again") a direction stays held
+    -- only while one of its keys is down: on the site the keys are the page's while the cursor is off the game, so a
+    -- key let go out there was a release we never saw
+    for dir in pairs(held) do
+      local down = false
+      for _, mk in ipairs(MOVE_KEYS) do if mk[2] == dir and key_is_down(mk[1]) then down = true; break end end
+      if not down then held[dir] = nil end
+    end
     mouse_input()
   end
 
@@ -933,9 +942,29 @@ function GM.create(R, hud_layer)
         mover.place(SEQ.spot.x, SEQ.spot.z, atan2(EGG.x - SEQ.spot.x, EGG.z - SEQ.spot.z))
         F:copy(L)
         SEQ.k = 1; SEQ.sil_t0 = -SIL.dur; sil.e = 1; SEQ.e1 = -DIE.hold
+        SEQ.egg_start = true      -- (no snakes sent in: he dies at once)
       end
     end
     SEQ.t = SEQ.t + dt
+    -- (2026-10-15, session 17, the owner: "this time it ended but not enough snakes existed to surround it and more
+    -- didn't seem to come, I'd like the egg to be mostly covered when it happens, without having to have the player wait
+    -- too much ... perhaps spawning snakes offscreen so they come quickly if there aren't enough?") the waves stop at the
+    -- first grip (snakes.hold), so the snakes then dead in the pool never came back and the coil could stall at half
+    -- while the sequence played on. Now every pooled snake is sent in from the nearest clear spot just out of the
+    -- camera's sight, at the start and each second until the shell is covered or he dies.
+    if not END.won and not SEQ.dead and not SEQ.egg_start and SEQ.t >= (SEQ.send_t or 0) then
+      SEQ.send_t = SEQ.t + 1.0
+      local cam, q = R.world_camera, SEQ.q or Vector3.new()
+      SEQ.q = q
+      local alive = 0                -- (out, or on their way: the round-36 coil wants ~8 to cover the shell)
+      for _, s in ipairs(snakes.S) do if not s.pooled and s.dying < 0 then alive = alive + 1 end end
+      if alive < 8 then snakes.gather(8 - alive, 3.0, 13.0, 0.45, function(x, z)
+        q:set(x, cave.ground_y(x, z) + 0.3, z):project(cam)
+        return q.z >= 1 or abs(q.x) > 1.06 or abs(q.y) > 1.06
+      end) end
+    end
+    -- (session 17) the egg's nest for its physics, worked out a piece a tick before he dies (eggphys.lua api.prepare)
+    if ep and not SEQ.dead and not SEQ.egg_start then ep.prepare() end
     -- the camera follows the covering (never back, never faster than SHOT.rate of the way a second)
     local want = END.won and 1 or clamp(END.level/0.97, 0, 1)
     SEQ.k = min(1, SEQ.k + clamp(want - SEQ.k, 0, SHOT.rate*dt))
@@ -985,9 +1014,11 @@ function GM.create(R, hud_layer)
     if EGG_WAIT then return end        -- (the site's egg start, before its click: held)
     if END.won and not SEQ.on then END.over = END.over + DT; if over_black() then return end end
     if LATE and not inspect and ITEMS_M and game_pack_ready('items') then
-      items.make_late()                -- (the objects made first: the viewer shows them)
-      make_inspect()
-      if ask_late and not (END.won or SEQ.on) then local i = ask_late; ask_late = nil; ask_remove(i) end
+      -- (the objects made first, one a tick, the viewer on the tick after the last: the viewer shows them)
+      if not items.make_late() then
+        make_inspect()
+        if ask_late and not (END.won or SEQ.on) then local i = ask_late; ask_late = nil; ask_remove(i) end
+      end
     end
     if inspect_active() then inspect.tick(DT); return end
     -- the model viewer put away with THROW: he throws it (round 48)
