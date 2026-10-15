@@ -20,6 +20,7 @@ if require('port.bench').active() then
   function BOOT_MARK(name) local now = perf_time(); BOOT_MARKS[#BOOT_MARKS + 1] = string.format('%s %.0f', name, (now - last)*1000); last = now end
 end
 require('port.bench').host_emulation()     -- (the benchmark as the site hosts the game: tools/webbench WEBBENCH_SITE=1)
+require('port.bench').audio_switches()     -- (WEBBENCH_PLAIN=1: plain voices)
 local POST = require('port.post')
 local LD = require('port.three.loader')
 local GM = require('port.game')

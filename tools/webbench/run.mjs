@@ -82,9 +82,18 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: pageUrl });
   const t0 = Date.now();
-  let done = false;
+  let done = false, keyed = false;
   while (!done && Date.now() - t0 < timeout*1000) {
     await sleep(1000);
+    // (2026-10-15) the engine starts its audio only on a user's input (audio_try_unlock): one key nothing is bound to,
+    // so the audio device runs (muted: --mute-audio) and audio_stats sees its callbacks
+    if (!keyed && Date.now() - t0 > 3000 && process.env.WEBBENCH_NOAUDIO !== '1') {
+      keyed = true;
+      try {
+        await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'F13', code: 'F13', windowsVirtualKeyCode: 124, nativeVirtualKeyCode: 124 });
+        await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'F13', code: 'F13', windowsVirtualKeyCode: 124, nativeVirtualKeyCode: 124 });
+      } catch (e) { console.log('webbench: key for the audio failed: ' + e.message); }
+    }
     try {
       const r = await send('Runtime.evaluate', { expression: 'window.BENCH && window.BENCH.done', returnByValue: true });
       done = !!(r.result && r.result.value);

@@ -40,6 +40,9 @@ if os.environ.get('BENCH_OFF') != '1':
     # (2026-10-15) WEBBENCH_SITE=1: the boot as the site hosts it (port/bench.lua B.host_emulation)
     if os.environ.get('WEBBENCH_SITE') == '1':
         parts.append(('bench_site', base64.b64encode(b'1').decode('ascii')))
+    # WEBBENCH_PLAIN=1: plain voices, no FX voices (port/bench.lua audio_switches)
+    if os.environ.get('WEBBENCH_PLAIN') == '1':
+        parts.append(('bench_plain', base64.b64encode(b'1').decode('ascii')))
     # WEBBENCH_ENDING=1: after the measured span the ending is played (every power given up, his death, the hatch)
     if os.environ.get('WEBBENCH_ENDING') == '1':
         parts.append(('bench_ending', base64.b64encode(b'1').decode('ascii')))
