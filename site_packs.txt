@@ -1,0 +1,33 @@
+# How the site fetches Phylactery (2026-10-15, session 17): a few PACKS instead of ~800 files, which took a minute at
+# ~0.6 s to each file's first byte (the owner: "I want the game to be playable immediately and things get loaded as
+# they're needed"). a327ex-site/renderer/tools/pack_games.py builds them into the package's manifest; the site's game
+# host fetches the first before the game starts and the rest, in this order, while it plays (game_host.lua "Packs").
+# The game asks game_pack_ready(name) / game_file_ready(path) for what comes later (port/items.lua, port/game.lua,
+# port/audio.lua); off the site both are always true.
+#
+# [name] starts a pack. A line under it takes the files whose path starts with it (a folder ends with /), or every
+# file of a type (*.lua). A file goes to the FIRST pack with a line that takes it; files no line takes go to the last.
+
+[boot]
+# the code, the shaders, the cave, the lich, the HUD; and the orbs, which hover round him from the start
+*.lua
+assets/port/programs/
+assets/port/cave/
+assets/port/statics/
+assets/port/lich/
+assets/ui/
+assets/port/items/geo/obj_geo_3.
+assets/port/items/tex/obj_cube_0.
+
+[ambient]
+# what sounds before any snake comes: the cave, the leakage's ripple round him, the inventory
+assets/sfx/cave_amb_
+assets/sfx/leak_ripple_
+assets/sfx/ui_
+
+[sounds]
+assets/sfx/
+
+[items]
+# the five other objects and the viewer (opened from the inventory: a slot clicked before this pack is in opens it then)
+assets/port/items/

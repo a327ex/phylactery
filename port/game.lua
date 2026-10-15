@@ -69,6 +69,7 @@ local GM = {}
 function GM.create(R, hud_layer)
   -- 2026-10-10: the sounds' picks (sound_picks.lua) and the cave's own sound under everything
   AU.load_picks()
+  if BOOT_MARK then BOOT_MARK('sounds') end
   AU.hooks.zone = function() return 'cave' end          -- (one cave: its reverb; no walls to hear through)
   AU.loop('cave_amb')
   AU.loop('shaft_hum', { pos = { 0.33, 3.0, 0.15 } })     -- (in the sun shaft over the egg, cave.lua)
@@ -80,7 +81,9 @@ function GM.create(R, hud_layer)
   else U.RUN = random_get_seed() & 0xFFFFFFFF end
   if require('port.bench').active() then U.RUN = require('port.bench').seed() end   -- (2026-10-15: the benchmark, one fixed run)
   local cave = CAVE.build(R)
+  if BOOT_MARK then BOOT_MARK('cave') end
   local lich = LICH.create(R, { GU = cave.GU })
+  if BOOT_MARK then BOOT_MARK('lich') end
   -- round 45: the lich's own mask, flat white (port/lichmask.lua; F5 cycles it for comparison)
   local lmask = require('port.lichmask').create(lich, cave.GU, R)
   local EGG = cave.egg.position
@@ -95,7 +98,9 @@ function GM.create(R, hud_layer)
   local room_cam = T.PerspectiveCamera.new(50, R.W/R.H, 0.1, 200)
   room_cam.position:set(G.static.eye[1], G.static.eye[2], G.static.eye[3]); room_cam:look_at(G.static.tgt[1], G.static.tgt[2], G.static.tgt[3])
   room_cam:update_matrix_world(); room_cam:update_projection_matrix()
+  if BOOT_MARK then BOOT_MARK('before nav') end
   local nav = NAV.build({ geo = cave.rock_geo, ground_y = cave.ground_y })
+  if BOOT_MARK then BOOT_MARK('nav') end
   do
     local q = Vector3.new()
     local function in_frame(x, y, z) q:set(x, y, z):project(room_cam); return q.z < 1 and abs(q.x) < 0.92 and q.y > -0.9 and q.y < 0.86 end
@@ -154,11 +159,22 @@ function GM.create(R, hud_layer)
   -- (hosted, the site's require finds the game's own files: package.path is the site's, so it is not asked)
   local ITEMS_M = (HOSTED or package.searchpath('port.items', package.path)) and require('port.items') or nil
   local items, inspect
+  -- (2026-10-15, session 17: on the site the objects' files and the viewer's come in a pack after the game has started
+  -- (game_pack_ready, the site's game host). The objects not yet made wait in items.lua; the viewer is made in tick the
+  -- moment the pack is here, and a slot clicked before that opens it then. The inventory's icons are the EMBER files on
+  -- the site, never the viewer's renders.)
+  local LATE = HOSTED and type(game_pack_ready) == 'function'
+  local ask_late = nil
+  local function make_inspect()
+    inspect = require('port.inspect').create({ R = R, items = items, ITEMS = ITEMS_M.ITEMS })
+    G.inspect = inspect
+  end
   if ITEMS_M then
     items = ITEMS_M.create({ R = R, cave = cave, fx = fx, warp = warp, nav = nav, lich = lich, mover = mover, get_L = function() return L end,
-      glance = function(p) powers.glance(p) end, varied = VARIED })
-    local INSPECT_M = require('port.inspect')
-    inspect = INSPECT_M.create({ R = R, items = items, ITEMS = ITEMS_M.ITEMS })
+      glance = function(p) powers.glance(p) end, varied = VARIED, late = LATE })
+    if BOOT_MARK then BOOT_MARK('between nav and the objects') end
+    if not LATE then make_inspect() end
+    if BOOT_MARK then BOOT_MARK('objects + viewer') end
   end
   G.items = items; G.inspect = inspect
   local function inspect_active() return inspect and inspect.S.active end
@@ -172,9 +188,23 @@ function GM.create(R, hud_layer)
   end
   -- round 48: giving one up goes through the model viewer's one button, THROW (he throws it the way
   -- he faces); one already given up comes back at once (keys 5-0, testing only)
+  -- (2026-10-15, session 17) on the site an object's programs are not compiled before the game shows (boot.lua): they
+  -- are compiled as its viewer opens, a pause anyway, so neither the viewer's first frame nor THROW waits on one later
+  local OBJ_PROGRAMS = { [0] = { 'item.mask' }, { 'item.hand' }, { 'item.lodestone' }, { 'item.orbs' }, { 'item.gem' },
+    { 'item.lens_glass', 'item.lens_frost' } }
+  local function warm_object(i)
+    if not (HOSTED and R.renderer) then return end
+    local index = require('assets.port.programs.programs')
+    for _, name in ipairs(OBJ_PROGRAMS[i] or {}) do
+      for key in pairs(index) do if key:sub(1, #name + 1) == name .. '|' then R.renderer:program(key) end end
+    end
+    if index['inspect.backdrop|inspect|0|-'] then R.renderer:program('inspect.backdrop|inspect|0|-') end
+  end
   local function ask_remove(i)
+    if LATE and not inspect then ask_late = i; return end   -- (its pack still on the way: opened when it lands)
     if not inspect then return toggle_power(i) end
     if not powers.is_on(powers.ALL[i + 1]) then return toggle_power(i) end
+    warm_object(i)
     inspect.open(i, { remove = true })
   end
   local function throw_power(i)
@@ -804,7 +834,9 @@ function GM.create(R, hud_layer)
 
 
   -- each object's icon for the inventory (rendered once, now, outside any frame's draw)
+  if BOOT_MARK then BOOT_MARK('before icons') end
   if inspect then for i = 0, 5 do icons[i] = inspect.icon(i, INV.px) end end
+  if BOOT_MARK then BOOT_MARK('icons') end
   -- (his mask takes its place on its first tick)
 
   -- ------------------------------------------------------------------ the ending's sequence (round 56)
@@ -952,6 +984,11 @@ function GM.create(R, hud_layer)
     lap = PROF.lap('gc', lap, true)
     if EGG_WAIT then return end        -- (the site's egg start, before its click: held)
     if END.won and not SEQ.on then END.over = END.over + DT; if over_black() then return end end
+    if LATE and not inspect and ITEMS_M and game_pack_ready('items') then
+      items.make_late()                -- (the objects made first: the viewer shows them)
+      make_inspect()
+      if ask_late and not (END.won or SEQ.on) then local i = ask_late; ask_late = nil; ask_remove(i) end
+    end
     if inspect_active() then inspect.tick(DT); return end
     -- the model viewer put away with THROW: he throws it (round 48)
     if inspect and inspect.S.result then
