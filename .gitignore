@@ -13,3 +13,4 @@ reference/*/clips/*.mp4
 # Shun orbs research: the downloaded clip and its raw frames stay local (the stills + sheets are kept)
 reference/objects/leak-shun/*.mkv
 reference/objects/leak-shun/frames/
+store/steam/
