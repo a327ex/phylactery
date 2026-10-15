@@ -43,6 +43,9 @@ if os.environ.get('BENCH_OFF') != '1':
     # WEBBENCH_PLAIN=1: plain voices, no FX voices (port/bench.lua audio_switches)
     if os.environ.get('WEBBENCH_PLAIN') == '1':
         parts.append(('bench_plain', base64.b64encode(b'1').decode('ascii')))
+    # WEBBENCH_SOUNDLOG=1: every play logged with its main-thread time (port/bench.lua; tools/webbench/start_jitter.py)
+    if os.environ.get('WEBBENCH_SOUNDLOG') == '1':
+        parts.append(('bench_soundlog', base64.b64encode(b'1').decode('ascii')))
     # WEBBENCH_ENDING=1: after the measured span the ending is played (every power given up, his death, the hatch)
     if os.environ.get('WEBBENCH_ENDING') == '1':
         parts.append(('bench_ending', base64.b64encode(b'1').decode('ascii')))
@@ -87,6 +90,8 @@ with open(OUT, 'w', encoding='utf-8', newline='\n') as o:
   };
   function pct(a, p) { var s = a.slice().sort(function (x, y) { return x - y; }); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length*p))] : 0; }
   function log(t) {
+    // (Phylactery 19) a play's log line gets the page's clock (perf_time is the epoch's on the web)
+    if (typeof t === 'string' && t.indexOf('SNDLOG ') === 0) t += ' ' + performance.now().toFixed(3);
     console.log(t);
     if (typeof t === 'string' && t.indexOf('BENCH') === 0) {
       window.BENCH.lines.push(t);
