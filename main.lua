@@ -53,9 +53,19 @@ end
 
 function draw()
   if G.intro then
-    G.R.renderer:program(table.remove(G.warm))
-    G.intro = G.intro - 1
-    if G.intro <= 0 then G.intro = nil; G.render_acc = 1/60 end   -- (the scene drawn on the next frame)
+    local R = G.R.renderer
+    if G.warm_async then                 -- (compiling in the background: the next one in line done yet?)
+      while G.intro and #G.warm > 0 and R:program_ready(G.warm[#G.warm]) do
+        table.remove(G.warm)
+        G.intro = G.intro - 1
+        if G.intro <= 0 then G.intro = nil end
+      end
+    else
+      R:program(table.remove(G.warm))
+      G.intro = G.intro - 1
+      if G.intro <= 0 then G.intro = nil end
+    end
+    if not G.intro then G.render_acc = 1/60 end   -- (the scene drawn on the next frame)
     return
   end
   local PROF = require('port.prof')

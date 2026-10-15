@@ -109,6 +109,14 @@ if GAME_HOSTED then
   G.intro = 0
   for _, k in ipairs(G.warm) do if rank[k] < 400 then G.intro = G.intro + 1 end end
   if G.intro == 0 then G.intro = nil end
+  -- (session 17, later) an engine that compiles in the background (gpu_program_async, KHR_parallel_shader_compile
+  -- on the web): every program is started now, the most wanted first, and the intro ends once the scene's, the walk
+  -- in's and the fight's are done (main.lua draw); the objects' finish meanwhile. The live site's engine before it
+  -- has no gpu_program_async: one a frame, as above.
+  if type(gpu_program_async) == 'function' then
+    G.warm_async = true
+    for i = #G.warm, 1, -1 do G.R.renderer:program_async(G.warm[i]) end
+  end
 else
   local index = require('assets.port.programs.programs')
   local each = require('port.bench').active() and {} or nil

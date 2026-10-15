@@ -87,6 +87,22 @@ function Renderer:program(key)
   self.info.programs = self.info.programs + 1
   return p
 end
+-- (2026-10-15, session 17) a program compiled without waiting (the engine's gpu_program_async: on the web in the
+-- background, KHR_parallel_shader_compile); program() hands it out as any other, and its first use waits for it if
+-- it is not done (the engine). program_ready(key) says whether it is done.
+function Renderer:program_async(key)
+  if self.compiled[key] then return self.compiled[key] end
+  local src = self.library[key]
+  if not src then return nil end
+  local p = gpu_program_async(src.vs, src.fs, key)
+  self.compiled[key] = p
+  self.info.programs = self.info.programs + 1
+  return p
+end
+function Renderer:program_ready(key)
+  local p = self.compiled[key]
+  return p ~= nil and gpu_program_ready(p)
+end
 
 function Renderer:set_clear_color(c, a) if type(c) == 'number' then self.clear_color:set_hex(c) else self.clear_color:copy(c) end; self.clear_alpha = a == nil and 1 or a end
 function Renderer:get_render_target() return self.target end
