@@ -154,12 +154,28 @@ function LE.create(ctx)
   -- shoot"): every 0.4-1.2 s the gun took a new spot near the player (35 px either side, 25-75 px above; the gun 18 px)
   -- and ARRIVED there: straight at it at up to 150 px/s under a capped force, slowing only within 25 px of it, so it
   -- darts and settles, darts and settles. The lens does the same about what it follows (FOLLOW: across m either side,
-  -- up m above, max_v m/s (max_v_him after him), max_a m/s^2, slowing within slow_r; at `cut` of the speed while it gathers and cuts, so
-  -- the beam reads). What it follows (LE.FOLLOWS, Q): its place in the shaft leaning to him (PULL, the default), or
-  -- him, above_lich m over his root, as the gun followed the player.
-  local FOLLOW = { every = { 0.4, 1.2 }, across = 1.0, up = { 0.0, 1.1 }, max_v = 3.0, max_v_him = 4.5, max_a = 14.0, slow_r = 0.7, cut = 0.5, above_lich = 2.6 }
+  -- up m above, max_v m/s (max_v_him after him), max_a m/s^2, slowing within slow_r). What it follows (LE.FOLLOWS, Q):
+  -- its place in the shaft leaning to him (PULL, the default), or him, above_lich m over his root, as the gun followed
+  -- the player. (Same day, owner: "When firing the lens stop moving, this stop has to be realistic and not abrupt, but
+  -- it has to stop seeking new positions and so on") from the moment it starts gathering the light until its cut is
+  -- over (`hold`) it seeks nothing and comes to rest, its speed dying away as under drag (brake /s), never braking
+  -- harder than it accelerates (max_a): from 3 m/s near still in ~0.6 s, from 4.5 in ~0.75 s, so it is still by the
+  -- fire (0.8 s of gathering); its hover's bob eases down to bob_hold of itself.
+  local FOLLOW = { every = { 0.4, 1.2 }, across = 1.0, up = { 0.0, 1.1 }, max_v = 3.0, max_v_him = 4.5, max_a = 14.0, slow_r = 0.7, above_lich = 2.6,
+                   brake = 6.0, bob_hold = 0.15 }
   local follow = 0
-  local function drift(q, dt, busy)
+  local function drift(q, dt, hold)
+    local v = q.posv
+    if hold then
+      -- (dying away as under drag, but never braking harder than it can push: max_a)
+      local vl = sqrt(v.x*v.x + v.y*v.y + v.z*v.z)
+      local dv = min(vl*min(1, FOLLOW.brake*dt), FOLLOW.max_a*dt)
+      local k = vl > 0 and (vl - dv)/vl or 0
+      v.x, v.y, v.z = v.x*k, v.y*k, v.z*k
+      if vl - dv < 0.01 then v.x, v.y, v.z = 0, 0, 0 end
+      q.pos.x, q.pos.y, q.pos.z = q.pos.x + v.x*dt, q.pos.y + v.y*dt, q.pos.z + v.z*dt
+      return
+    end
     q.off_t = (q.off_t or 0) - dt
     if q.off_t <= 0 or not q.off then
       q.off_t = frng.float(FOLLOW.every[1], FOLLOW.every[2])
@@ -181,11 +197,10 @@ function LE.create(ctx)
     -- arrive: the speed it wants (full, or less within slow_r), the change toward it capped, the speed capped
     local dx, dy, dz = WANT.x - q.pos.x, WANT.y - q.pos.y, WANT.z - q.pos.z
     local d = sqrt(dx*dx + dy*dy + dz*dz)
-    local vmax = (follow == 1 and FOLLOW.max_v_him or FOLLOW.max_v)*(busy and FOLLOW.cut or 1)   -- (after him: faster than his 2.6 m/s, as the gun was than the player)
+    local vmax = follow == 1 and FOLLOW.max_v_him or FOLLOW.max_v   -- (after him: faster than his 2.6 m/s, as the gun was than the player)
     local want = d < FOLLOW.slow_r and vmax*d/FOLLOW.slow_r or vmax
     local wx, wy, wz = 0, 0, 0
     if d > 1e-6 then wx, wy, wz = dx/d*want, dy/d*want, dz/d*want end
-    local v = q.posv
     local sx, sy, sz = wx - v.x, wy - v.y, wz - v.z
     local sl, cap = sqrt(sx*sx + sy*sy + sz*sz), FOLLOW.max_a*dt
     if sl > cap then sx, sy, sz = sx*cap/sl, sy*cap/sl, sz*cap/sl end
@@ -408,7 +423,8 @@ function LE.create(ctx)
   local function float_idle(q, t, dt)
     local L, m = q.L, q.L.m
     drift(q, dt)
-    IDLE_BOB:set(sin(t*0.9 + q.ph)*0.06, sin(t*1.3 + q.ph*2)*0.08, cos(t*0.8 + q.ph)*0.06)
+    q.bobk = (q.bobk or 1) + (1 - (q.bobk or 1))*(1 - exp(-dt*3))
+    IDLE_BOB:set(sin(t*0.9 + q.ph)*0.06*q.bobk, sin(t*1.3 + q.ph*2)*0.08*q.bobk, cos(t*0.8 + q.ph)*0.06*q.bobk)
     m.position:copy(q.pos):add(IDLE_BOB)
     spring(q.look, q.lookv, EGG_LOOK, LOOK_W*0.6, LOOK_Z, dt)
     m:look_at(q.look); m:rotate_x(pi/2)
@@ -480,7 +496,12 @@ function LE.create(ctx)
       q.flare = max(0, q.flare - dt/0.25)
       UU.uRim.value = (0.3 + 2.2*q.flare*q.flare)*grow*(1 - gone)
       local ph = q.fam and q.ph or i
-      m.position:copy(q.pos):add(Vector3.new(sin(t*0.9 + ph)*0.04, sin(t*1.3 + ph*2)*0.05, cos(t*0.8 + ph)*0.04))
+      if q.fam then
+        local hold = q.t >= FORM and not q.leaving
+        q.bobk = (q.bobk or 1) + ((hold and FOLLOW.bob_hold or 0.7) - (q.bobk or 1))*(1 - exp(-dt*4))
+        IDLE_BOB:set(sin(t*0.9 + ph)*0.06*q.bobk, sin(t*1.3 + ph*2)*0.08*q.bobk, cos(t*0.8 + ph)*0.06*q.bobk)
+        m.position:copy(q.pos):add(IDLE_BOB)
+      else m.position:copy(q.pos):add(Vector3.new(sin(t*0.9 + ph)*0.04, sin(t*1.3 + ph*2)*0.05, cos(t*0.8 + ph)*0.04)) end
       local lp = m.position:clone()
       -- round 69: done, it breaks: gone in one frame, its glass in shards (facing the spot it burned, as it looked)
       if shards and gone > 0 and not q.broke then
