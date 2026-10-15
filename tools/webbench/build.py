@@ -36,6 +36,9 @@ for rel in sorted(files):
     parts.append((rel.replace(os.sep, '/'), base64.b64encode(data).decode('ascii')))
 if os.environ.get('BENCH_OFF') != '1':
     parts.append(('bench_on', base64.b64encode(b'1').decode('ascii')))
+    # (2026-10-15) WEBBENCH_SITE=1: the boot as the site hosts it (port/bench.lua B.host_emulation)
+    if os.environ.get('WEBBENCH_SITE') == '1':
+        parts.append(('bench_site', base64.b64encode(b'1').decode('ascii')))
 
 with open(os.path.join(ENGINE, 'anchor.js'), encoding='utf-8') as fh:
     anchor_js = fh.read()

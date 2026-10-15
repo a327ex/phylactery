@@ -23,18 +23,41 @@ require('anchor')({
 })
 
 -- input, then the game's 60 Hz ticks (the engine updates at 120 Hz)
+-- (2026-10-15, session 17) on the site, until the scene's programs are compiled (boot.lua G.intro): nothing moves and
+-- nothing is drawn (the site's game host shows the game's name over the empty frame meanwhile), one program a frame.
+-- A click made meanwhile (his, on the name; or the one the desktop's unlock test injects on R) is held and is his
+-- first click the moment the scene shows: every mouse_is_pressed(1) of that update answers it.
+function game_intro() return G.intro ~= nil end
+MOUSE_PRESSED_HOST = MOUSE_PRESSED_HOST or mouse_is_pressed
+function mouse_is_pressed(n)
+  if n == 1 and G.click_now then return true end
+  return MOUSE_PRESSED_HOST(n)
+end
+
 function update(dt)
   local PROF = require('port.prof')
   local t0 = PROF.on and perf_time()   -- (2026-10-15: the benchmark's totals, port/bench.lua)
   sync_engine_globals()
+  if G.intro then
+    if MOUSE_PRESSED_HOST(1) then G.intro_click = true end
+    return
+  end
+  if G.intro_click then G.intro_click = nil; G.click_now = true end
   G.game.input_update()
   G.game.frame(dt)
+  G.click_now = nil
   G.render_acc = G.render_acc + dt
   process_destroy_queue()
   if t0 then PROF.add('UPDATE (all)', t0) end
 end
 
 function draw()
+  if G.intro then
+    G.R.renderer:program(table.remove(G.warm))
+    G.intro = G.intro - 1
+    if G.intro <= 0 then G.intro = nil; G.render_acc = 1/60 end   -- (the scene drawn on the next frame)
+    return
+  end
   local PROF = require('port.prof')
   local B = require('port.bench')
   if B.on then B.frame(GAME) end         -- (2026-10-15: the benchmark's schedule and report, port/bench.lua)

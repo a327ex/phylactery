@@ -297,14 +297,22 @@ function A.set(name, key, v)
   A.slots[name] = s
 end
 
+-- (Lich, 2026-10-15, session 17: on the site the sounds come in packs after the game has started (game_file_ready, the
+-- site's game host; the owner: "I want the game to be playable immediately"). A file not here yet is not loaded; its
+-- slot waits in A.waiting and is loaded again once all its files are here (A.update), its loop started then.)
+A.waiting = {}
+local function here(f) return type(game_file_ready) ~= 'function' or game_file_ready(f) end
 -- (re)load a slot's files
 function A.reload(name)
   local s = A.slots[name]
   local list, ix = {}, {}
+  A.waiting[name] = nil
   if s and s.files then
     for fi, f in ipairs(s.files) do
-      local ok, snd = pcall(sound_load, f)      -- a pick whose file went missing stays silent instead of stopping the game
-      if ok and snd then list[#list + 1] = snd; ix[#list] = fi end
+      if here(f) then
+        local ok, snd = pcall(sound_load, f)    -- a pick whose file went missing stays silent instead of stopping the game
+        if ok and snd then list[#list + 1] = snd; ix[#list] = fi end
+      else A.waiting[name] = true end
     end
   end
   A.sounds[name] = list
@@ -744,6 +752,16 @@ function A.room_now() return cur_room end
 -- per game frame: time, delayed plays, voices, the room
 function A.update(dt, cam)
   A.now = A.now + dt
+  if next(A.waiting) and A.now >= (A.waiting_t or 0) then     -- (the slots whose files were still on their way)
+    A.waiting_t = A.now + 0.25
+    local ready = {}
+    for name in pairs(A.waiting) do
+      local s, all = A.slots[name], true
+      for _, f in ipairs(s and s.files or {}) do if not here(f) then all = false; break end end
+      if all then ready[#ready + 1] = name end
+    end
+    for _, name in ipairs(ready) do A.reload(name) end
+  end
   set_listener(cam, dt)
   local keep = {}
   for _, p in ipairs(A.pending) do

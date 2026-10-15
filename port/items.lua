@@ -126,10 +126,20 @@ function IT.create(ctx)
     if i == 4 then for k, ix in ipairs(X.world[i].orbs) do local m = g.children[ix + 1]; m.user_data.mark = k - 1; IT.trace_hook(m, m.material, sun, true) end end
     return g
   end
+  -- (2026-10-15, session 17, the owner: "I want the game to be playable immediately and things get loaded as they're
+  -- needed") hosted on the site (ctx.late), the objects' files come in their own pack after the game has started: the
+  -- five that stay hidden until one is thrown start as empty stand-ins and are made in update the moment
+  -- game_pack_ready('items') says the pack is here (rebuild keeps where and whether the stand-in was shown). The orbs,
+  -- which hover round him from the start, come with the boot pack.
+  local late = ctx.late
+  local late_left = false
   local W = {}
   for i, it in ipairs(IT.ITEMS) do
-    if i == 2 then IT.set_hand_material(opts.hand_mat) end
-    local w = { it = it, i = i - 1, g = make_world(i), body = nil, state = 'away', t = 0, scale = 1, r0 = X.world[i].r0 }
+    local wait = late and not it.balls
+    if wait then late_left = true end
+    if i == 2 and not wait then IT.set_hand_material(opts.hand_mat) end
+    local w = { it = it, i = i - 1, g = wait and T.Group.new() or make_world(i), body = nil, state = 'away', t = 0, scale = 1,
+      r0 = X.world[i].r0, late = wait or nil }
     w.make = function() return make_world(i) end
     if it.balls then
       w.orbs = {}
@@ -604,7 +614,19 @@ function IT.create(ctx)
     end
   end
 
+  local rebuild
+  local function make_late()
+    if not (late_left and game_pack_ready('items')) then return end
+    late_left = false
+    for i, w in ipairs(W) do
+      if w.late then
+        if i == 2 then IT.set_hand_material(opts.hand_mat) end
+        rebuild(i - 1); w.late = nil
+      end
+    end
+  end
   local function update(t, dt)
+    make_late()
     for _, w in ipairs(W) do
       if w.state ~= 'away' then
         w.t = w.t + dt
@@ -640,7 +662,7 @@ function IT.create(ctx)
     end
   end
 
-  local function rebuild(i)
+  function rebuild(i)
     local w = W[i + 1]
     local vis, pos, q = w.g.visible, w.g.position:clone(), w.g.quaternion:clone()
     R.world_scene:remove(w.g)
@@ -681,7 +703,10 @@ function IT.create(ctx)
     return out
   end
   if varied then for _, w in ipairs(W) do if w.it.balls then hold_orbs(w) end end end
-  return { W = W, opts = opts, drop = drop, throw = throw, near = near, take = take, update = update, set_hand_mat = set_hand_mat, set_size = set_size, state = state }
+  -- (ready: its files are here and it is made: always, but on the site until the objects' pack lands)
+  local function ready(i) local w = W[i + 1]; return w ~= nil and not w.late end
+  return { W = W, opts = opts, drop = drop, throw = throw, near = near, take = take, update = update, set_hand_mat = set_hand_mat, set_size = set_size, state = state,
+    ready = ready, make_late = make_late }
 end
 
 return IT

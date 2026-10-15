@@ -28,6 +28,27 @@ function B.active()
 end
 function B.seed() return SEED end
 
+-- (2026-10-15, session 17) the benchmark as the site hosts the game: a file bench_site beside bench_on (tools/webbench,
+-- WEBBENCH_SITE=1) makes the boot a hosted one (GAME_HOSTED) with the site's packs emulated: the sounds 3 s after the
+-- boot starts, the objects and the viewer 8 s after (game_host.lua "Packs"). What the boot costs then is what a
+-- visitor waits for once the boot pack is in.
+function B.host_emulation()
+  if not B.active() then return end
+  local f = io.open('bench_site', 'r')
+  if not f then return end
+  f:close()
+  GAME_HOSTED = true
+  local t0 = perf_time()
+  local at = { ambient = 0.5, sounds = 3, items = 8 }
+  function game_pack_ready(name) return perf_time() - t0 >= (at[name] or 0) end
+  function game_file_ready(path)
+    if path:find('^assets/sfx/') then return game_pack_ready('sounds') end
+    if path:find('^assets/port/items/') then return game_pack_ready('items') end
+    return true
+  end
+  print('BENCH as the site hosts it (packs emulated)')
+end
+
 local t, wi, last, started = 0, 1, nil, false
 local frames = {}
 local function pct(sorted, p) if #sorted == 0 then return 0 end; return sorted[math.max(1, math.min(#sorted, math.floor(#sorted*p + 0.5)))] end
@@ -36,8 +57,25 @@ local function pct(sorted, p) if #sorted == 0 then return 0 end; return sorted[m
 function B.frame(GAME)
   if not B.on or B.done then return end
   local now = perf_time()
+  if not B.first_frame then              -- (2026-10-15, session 17: the first drawn frame, after the boot's own work)
+    B.first_frame = true
+    if BOOT_END then print(string.format('BENCH first frame drawn %.0f ms after the boot', (now - BOOT_END)*1000)) end
+  end
   local dt = last and (now - last) or 0
   last = now
+  -- (session 17) the frames before the measured span: the first ones (the first frame's compiles) and the worst (the
+  -- hosted boot's programs, compiled one a frame)
+  if t < WARM then
+    B.early = B.early or {}
+    if #B.early < 6 then B.early[#B.early + 1] = string.format('%.0f', dt*1000) end
+    if dt*1000 > (B.early_worst or 0) then B.early_worst, B.early_worst_t = dt*1000, t end
+    B.early_long = (B.early_long or 0) + ((dt > 0.05) and 1 or 0)
+    B.early_n = (B.early_n or 0) + 1
+  elseif not B.early_said then
+    B.early_said = true
+    print(string.format('BENCH early frames: the first %s ms; the worst %.0f ms at %.1f s; %d of %d over 50 ms', table.concat(B.early or {}, ', '),
+      B.early_worst or 0, B.early_worst_t or 0, B.early_long or 0, B.early_n or 0))
+  end
   t = t + math.min(dt, 0.25)
   if not started then
     started = true
