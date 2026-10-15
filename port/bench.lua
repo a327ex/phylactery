@@ -53,6 +53,10 @@ end
 local function aud_line(label)
   if not audio_stats then return 'BENCH audio ' .. label .. ': no audio_stats in this engine' end
   local a = audio_stats(true)
+  if a.path == 'worklet' or a.path == 'script' then   -- (Phylactery 19) the engine's own web output: pumps into a queue
+    return string.format('BENCH audio %s: %s output, %d pumps, lead %.0f ms; gaps heard %d (%.1f ms); least queued %.1f ms; worst pump gap %.1f ms; mix %.2f ms avg, %.2f max; voices max %d (FX %d)',
+      label, a.path, a.callbacks, a.period_ms, a.gaps, a.gap_ms, a.queue_ms_min, a.gap_ms_max, a.cb_ms_avg, a.cb_ms_max, a.voices_max, a.fx_max)
+  end
   return string.format('BENCH audio %s: %d callbacks of %.1f ms; late %d, very late (a block replayed) %d, worst gap %.1f ms; mix %.2f ms avg, %.2f max, over half a block %d; voices max %d (FX %d)%s',
     label, a.callbacks, a.period_ms, a.late, a.very_late, a.gap_ms_max, a.cb_ms_avg, a.cb_ms_max, a.over_budget, a.voices_max, a.fx_max,
     B.aud_ev and #B.aud_ev > 0 and ('; very late at ' .. table.concat(B.aud_ev, ' ')) or '')
@@ -62,6 +66,25 @@ function B.audio_switches()
   if not B.active() then return end
   local f = io.open('bench_plain', 'r')
   if f then f:close(); require('port.audio').PLAIN = true; print('BENCH plain voices (no FX voices)') end
+  -- (Phylactery 19) bench_soundlog: every play the game asks of the engine, with the main thread's clock (perf_time:
+  -- performance.now on the web), as SNDLOG lines; tools/webbench/start_jitter.py sets them against when the engine
+  -- mixed (the tap's chunk times) to see how far each sound's start moved
+  f = io.open('bench_soundlog', 'r')
+  if f then
+    f:close()
+    local id, n = {}, 0
+    local function key(s) local k = id[s]; if not k then n = n + 1; k = n; id[s] = k end; return k end
+    for _, fn in ipairs({ 'sound_play_fx', 'sound_play_handle', 'sound_play' }) do
+      local orig = _G[fn]
+      if orig then
+        _G[fn] = function(s, ...)
+          print(string.format('SNDLOG %.3f %d', perf_time()*1000, key(s)))
+          return orig(s, ...)
+        end
+      end
+    end
+    print('BENCH sound log on')
+  end
 end
 
 local t, wi, last, started = 0, 1, nil, false

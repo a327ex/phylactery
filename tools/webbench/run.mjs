@@ -85,9 +85,24 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: pageUrl });
   const t0 = Date.now();
-  let done = false, keyed = false;
+  let done = false, keyed = false, tapped = process.env.WEBBENCH_TAP !== '1';
   while (!done && Date.now() - t0 < timeout*1000) {
     await sleep(1000);
+    // (2026-10-15, Phylactery 19) WEBBENCH_TAP=1: what the browser really plays, sample for sample (tap.js: an
+    // AudioWorklet after the ScriptProcessorNode) next to every block the engine mixed; saved at the end for
+    // tools/webbench/tap_check.py
+    if (!tapped) {
+      try {
+        const r = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true,
+          expression: fs.readFileSync(path.join(HERE, 'tap.js'), 'utf8') });
+        const v = r.result && r.result.value;
+        if (r.exceptionDetails) {
+          tapped = true;
+          const d = r.exceptionDetails;
+          console.log('webbench: tap failed: ' + ((d.exception && d.exception.description) || d.text));
+        } else if (v && v !== 'no device') { tapped = true; console.log('webbench: tap ' + v); }
+      } catch (e) { tapped = true; console.log('webbench: tap failed: ' + e.message); }
+    }
     // (2026-10-15) the engine starts its audio only on a user's input (audio_try_unlock): one key nothing is bound to,
     // so the audio device runs (muted: --mute-audio) and audio_stats sees its callbacks
     if (!keyed && Date.now() - t0 > 3000 && process.env.WEBBENCH_NOAUDIO !== '1') {
@@ -108,10 +123,31 @@ try {
   }
   const gl = await send('Runtime.evaluate', { expression: `(function(){ try { var g = document.createElement('canvas').getContext('webgl2'); var e = g.getExtension('WEBGL_debug_renderer_info'); return e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER); } catch (x) { return String(x) } })()`, returnByValue: true });
   console.log('webbench: GL ' + (gl.result && gl.result.value));
-  const au = await send('Runtime.evaluate', { expression: `(function(){ try { var m = window.miniaudio; if (!m) return 'no miniaudio'; var o = []; for (var i = 0; i < m.devices.length; i++) { var d = m.devices[i]; if (d) o.push('device ' + i + ': state ' + d.state + ', context ' + (d.webaudio && d.webaudio.state) + ' at ' + (d.webaudio && d.webaudio.sampleRate) + ' Hz, base latency ' + (d.webaudio && d.webaudio.baseLatency)); } return o.join('; ') || 'no devices'; } catch (x) { return String(x) } })()`, returnByValue: true });
+  const au = await send('Runtime.evaluate', { expression: `(function(){ try { var A = window.Module && Module.__aud; if (A) return 'engine output ' + A.mode + ', context ' + A.ctx.state + ' at ' + A.ctx.sampleRate + ' Hz, base latency ' + A.ctx.baseLatency + ', lead ' + (A.lead*1000/A.rate).toFixed(0) + ' ms, gaps heard ' + A.heardRuns; var m = window.miniaudio; if (!m) return 'no miniaudio'; var o = []; for (var i = 0; i < m.devices.length; i++) { var d = m.devices[i]; if (d) o.push('device ' + i + ': state ' + d.state + ', context ' + (d.webaudio && d.webaudio.state) + ' at ' + (d.webaudio && d.webaudio.sampleRate) + ' Hz, base latency ' + (d.webaudio && d.webaudio.baseLatency)); } return o.join('; ') || 'no devices'; } catch (x) { return String(x) } })()`, returnByValue: true });
   console.log('webbench: audio ' + (au.result && au.result.value));
   const ct = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: `new Promise(function(res){ try { var d = window.miniaudio.devices[0]; var a = d.webaudio.currentTime, n0 = d.webaudio_cb_n || 0; var orig = d.scriptNode.onaudioprocess; var k = 0; d.scriptNode.onaudioprocess = function(e){ k++; return orig(e); }; setTimeout(function(){ res('currentTime +' + (d.webaudio.currentTime - a).toFixed(3) + ' s in 1 s; onaudioprocess fired ' + k + ' times; buffer ' + d.scriptNode.bufferSize); }, 1000); } catch (x) { res(String(x)); } })` });
   console.log('webbench: audio clock ' + (ct.result && ct.result.value));
+  if (process.env.WEBBENCH_TAP === '1') {
+    // the tap's two streams, packed in the page (window.__TAP.pack) and pulled over in base64 slices
+    const tapDir = path.join(path.dirname(page), 'tap');
+    fs.mkdirSync(tapDir, { recursive: true });
+    const meta = await send('Runtime.evaluate', { returnByValue: true, expression: 'window.__TAP ? window.__TAP.pack() : null' });
+    const m = meta.result && meta.result.value;
+    if (meta.exceptionDetails) console.log('webbench: tap pack failed: ' + (meta.exceptionDetails.exception && meta.exceptionDetails.exception.description));
+    if (!m) console.log('webbench: tap: nothing recorded');
+    else {
+      for (const name of ['eng', 'out']) {
+        const chunks = [];
+        for (let off = 0; off < m[name + '_bytes']; off += 3 << 20) {
+          const r = await send('Runtime.evaluate', { returnByValue: true, expression: `window.__TAP.slice(${JSON.stringify(name)}, ${off}, ${3 << 20})` });
+          chunks.push(Buffer.from(r.result.value, 'base64'));
+        }
+        fs.writeFileSync(path.join(tapDir, name + '.f32'), Buffer.concat(chunks));
+      }
+      fs.writeFileSync(path.join(tapDir, 'meta.json'), JSON.stringify(m));
+      console.log(`webbench: tap saved to ${tapDir}: ${m.path}, ${m.eng_chunks} engine chunks, ${m.out_quanta} output quanta at ${m.rate} Hz`);
+    }
+  }
   if (!done) { console.log('webbench: no BENCH DONE within ' + timeout + ' s'); code = 1; }
 } catch (e) {
   console.log('webbench FATAL: ' + (e && e.stack || e));

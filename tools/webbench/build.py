@@ -43,6 +43,9 @@ if os.environ.get('BENCH_OFF') != '1':
     # WEBBENCH_PLAIN=1: plain voices, no FX voices (port/bench.lua audio_switches)
     if os.environ.get('WEBBENCH_PLAIN') == '1':
         parts.append(('bench_plain', base64.b64encode(b'1').decode('ascii')))
+    # WEBBENCH_SOUNDLOG=1: every play logged with its main-thread time (port/bench.lua; tools/webbench/start_jitter.py)
+    if os.environ.get('WEBBENCH_SOUNDLOG') == '1':
+        parts.append(('bench_soundlog', base64.b64encode(b'1').decode('ascii')))
     # WEBBENCH_ENDING=1: after the measured span the ending is played (every power given up, his death, the hatch)
     if os.environ.get('WEBBENCH_ENDING') == '1':
         parts.append(('bench_ending', base64.b64encode(b'1').decode('ascii')))
@@ -58,7 +61,7 @@ with open(OUT, 'w', encoding='utf-8', newline='\n') as o:
     o.write('<style>html,body{margin:0;background:#000;overflow:hidden}#canvas{width:1280px;height:720px;display:block}</style>\n')
     o.write('</head><body><canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>\n')
     # the files: one <script type="text/plain"> per file keeps each base64 string out of the JS parser
-    o.write('<script>window.__FILES = [];</script>\n')
+    o.write('<script>window.__FILES = [];%s</script>\n' % (' window.__AUDIO_SCRIPT = true;' if os.environ.get('WEBBENCH_AUDIO_SCRIPT') == '1' else ''))
     for i, (rel, b64) in enumerate(parts):
         o.write('<script type="text/plain" id="f%d" data-path=%s>' % (i, json.dumps(rel)))
         o.write(b64)
@@ -87,6 +90,8 @@ with open(OUT, 'w', encoding='utf-8', newline='\n') as o:
   };
   function pct(a, p) { var s = a.slice().sort(function (x, y) { return x - y; }); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length*p))] : 0; }
   function log(t) {
+    // (Phylactery 19) a play's log line gets the page's clock (perf_time is the epoch's on the web)
+    if (typeof t === 'string' && t.indexOf('SNDLOG ') === 0) t += ' ' + performance.now().toFixed(3);
     console.log(t);
     if (typeof t === 'string' && t.indexOf('BENCH') === 0) {
       window.BENCH.lines.push(t);
@@ -114,6 +119,9 @@ with open(OUT, 'w', encoding='utf-8', newline='\n') as o:
     print: log,
     printErr: function (t) { console.warn(t); },
     preRun: [function () {
+      // (Phylactery 19) WEBBENCH_AUDIO_SCRIPT=1: no worklet source, so the engine's output falls back to the
+      // ScriptProcessor playing its queue (what a page whose CSP blocks the worklet gets)
+      if (window.__AUDIO_SCRIPT) Module.anchorAudioWorkletSrc = '';
       var t = performance.now();
       var n = 0, bytes = 0;
       document.querySelectorAll('script[data-path]').forEach(function (el) {
