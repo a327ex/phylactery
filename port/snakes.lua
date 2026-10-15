@@ -844,9 +844,12 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     end
   end
 
+  local PROF = require('port.prof')
   local function update(t, dt)
     uSnakeT.value = t
+    local lap0 = PROF.fine and perf_time()
     if varied and not api.won and not api.hold then direct(dt) end      -- (round 56: hold = no new waves, the ending's sequence)
+    if lap0 then PROF.add('s.direct', lap0) end
     local n = #S
     local k = 1
     while k <= #S do
@@ -912,11 +915,13 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
             snav.resolve(PUSH, PUSH_V, BODY)
             s.x, s.z = PUSH.x, PUSH.z
           end
+          local lt = PROF.fine and perf_time()
           local last = s.trail[1]
           if js_hypot(s.x - last[1], s.z - last[2]) > 0.01 then
             table.insert(s.trail, 1, { s.x, s.z, js_hypot(last[1] - s.x, last[2] - s.z) })
           end
           if #s.trail > 600 then for q = #s.trail, 601, -1 do s.trail[q] = nil end end
+          if lt then PROF.add('s.trail', lt) end
           if s.stuck_out then
             s.stuck_out = nil; api.unstuck = (api.unstuck or 0) + 1
             api.stuck_log[#api.stuck_log + 1] = string.format('%.1f,%.1f', s.x, s.z)
@@ -936,7 +941,9 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
           if api.on_dissolve then api.on_dissolve(s) end     -- (its sound plays as the leak takes hold: leak.lua)
           respawn(s)
         else
+          local lb = PROF.fine and perf_time()
           build(s)
+          if lb then PROF.add('s.build', lb); PROF.t['#builds'] = (PROF.t['#builds'] or 0) + 0.001 end
         end
       end
       k = k + 1
