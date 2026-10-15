@@ -27,7 +27,10 @@ const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'webbench-'));
 const chrome = spawn(CHROME, [
   '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
   ...(process.env.WEBBENCH_GL === 'swiftshader' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--use-angle=d3d11', '--enable-gpu']),
-  '--ignore-gpu-blocklist', '--mute-audio', '--autoplay-policy=no-user-gesture-required', '--no-first-run',
+  // (2026-10-15) audio: --mute-audio left the page's audio unpulled (no callbacks at all); a fake output stream (no
+  // sound out of the speakers) pulls it on a real-time clock, as a device would; WEBBENCH_AUDIO=mute for the old way
+  '--ignore-gpu-blocklist', ...(process.env.WEBBENCH_AUDIO === 'mute' ? ['--mute-audio'] : ['--disable-audio-output']),
+  '--autoplay-policy=no-user-gesture-required', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
   '--js-flags=--max-old-space-size=4096', '--window-size=1280,720',
   // WEBBENCH_UNCAPPED=1: no vsync, no frame-rate cap: frames come as fast as the CPU and the GPU allow, so the frame
@@ -105,6 +108,10 @@ try {
   }
   const gl = await send('Runtime.evaluate', { expression: `(function(){ try { var g = document.createElement('canvas').getContext('webgl2'); var e = g.getExtension('WEBGL_debug_renderer_info'); return e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER); } catch (x) { return String(x) } })()`, returnByValue: true });
   console.log('webbench: GL ' + (gl.result && gl.result.value));
+  const au = await send('Runtime.evaluate', { expression: `(function(){ try { var m = window.miniaudio; if (!m) return 'no miniaudio'; var o = []; for (var i = 0; i < m.devices.length; i++) { var d = m.devices[i]; if (d) o.push('device ' + i + ': state ' + d.state + ', context ' + (d.webaudio && d.webaudio.state) + ' at ' + (d.webaudio && d.webaudio.sampleRate) + ' Hz, base latency ' + (d.webaudio && d.webaudio.baseLatency)); } return o.join('; ') || 'no devices'; } catch (x) { return String(x) } })()`, returnByValue: true });
+  console.log('webbench: audio ' + (au.result && au.result.value));
+  const ct = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: `new Promise(function(res){ try { var d = window.miniaudio.devices[0]; var a = d.webaudio.currentTime, n0 = d.webaudio_cb_n || 0; var orig = d.scriptNode.onaudioprocess; var k = 0; d.scriptNode.onaudioprocess = function(e){ k++; return orig(e); }; setTimeout(function(){ res('currentTime +' + (d.webaudio.currentTime - a).toFixed(3) + ' s in 1 s; onaudioprocess fired ' + k + ' times; buffer ' + d.scriptNode.bufferSize); }, 1000); } catch (x) { res(String(x)); } })` });
+  console.log('webbench: audio clock ' + (ct.result && ct.result.value));
   if (!done) { console.log('webbench: no BENCH DONE within ' + timeout + ' s'); code = 1; }
 } catch (e) {
   console.log('webbench FATAL: ' + (e && e.stack || e));
