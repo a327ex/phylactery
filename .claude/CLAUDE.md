@@ -2,6 +2,10 @@
 
 Guidelines for Claude Code instances working in this project.
 
+**The game is called PHYLACTERY** (renamed from Lich Survivors on 2026-10-15). Sessions are "Phylactery N" (17 was
+the first under the new name). Only titles changed: the folder, the repo, the site's game id `lich-survivors` and the
+old logs' URLs (/logs/lich-survivors-N) keep the old name, so code and paths still say lich-survivors.
+
 **Read `RECORD.md` first** (purpose, owner's settled decisions, rounds, pending choices).
 
 **The Anchor port is done (2026-09-30)**: `main.lua` + `boot.lua` + `port/*.lua` run the whole

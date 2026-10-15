@@ -1,5 +1,5 @@
 --[[
-  Lich Survivors -- the Anchor build (the port from three.js, started 2026-09-30).
+  Phylactery (named Lich Survivors until 2026-10-15) -- the Anchor build (the port from three.js, started 2026-09-30).
 
   The three.js build (web/) is the reference; this one must draw and play exactly as it does
   (ANCHOR_PORT.md section 5). Rendering runs three.js's own compiled programs on the engine's gpu
@@ -17,7 +17,7 @@ require('anchor')({
   width  = 640,
   height = 360,
   scale  = 2,
-  title  = 'Lich Survivors',
+  title  = 'Phylactery',
   filter = 'rough',
   boot   = {'boot.lua'},
 })
