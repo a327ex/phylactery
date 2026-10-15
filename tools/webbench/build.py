@@ -19,6 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.normpath(os.path.join(HERE, '..', '..'))
 A327 = os.path.normpath(os.path.join(GAME, '..'))
 ENGINE = os.path.join(A327, 'Anchor', 'engine', 'engine', 'build-web-engine')
+ENGINE = os.environ.get('WEBBENCH_ENGINE') or ENGINE    # (2026-10-15) another web engine build's folder (anchor.js + anchor.wasm), e.g. the one the live site runs
 SYNC = os.path.join(A327, 'a327ex-site', 'renderer', 'tools', 'sync_lich_survivors.py')
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(GAME, 'scratch', 'webbench', 'bench.html')
 
