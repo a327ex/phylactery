@@ -12,6 +12,10 @@ math.sin, math.cos, math.tan, math.asin, math.acos, math.atan, math.exp = js_sin
 -- of bits no pixel shows; recordings ~64% smaller. Game state is untouched (only the GPU's copies).
 gpu_precision(14)
 
+-- (2026-10-15, Phylactery 18) a STORE build: steam-release/package.py puts .anchor-build in the package (store=steam),
+-- and port/game.lua then plays it as a player's copy (GAME_STORE): no testing keys, no sound tool, no site
+do local b = file_read_string('.anchor-build'); GAME_STORE = b and b:match('store=(%w+)') or nil end
+
 local BOOT_T = { perf_time() }       -- (2026-10-15, session 17: where the boot's time goes, printed under the benchmark)
 -- (and inside the game's create: BOOT_MARK(name) notes the time since the last mark, under the benchmark only)
 local BOOT_MARKS = {}

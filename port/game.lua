@@ -52,6 +52,9 @@ local HOSTED = GAME_HOSTED == true     -- inside the site's game host (a327ex.co
 -- (2026-10-14) hosted by the desktop's unlock test with the sound editor on (the site's game host sets it there only):
 -- the unlock's sounds tuned while the whole unlock plays; never on the website
 local EDITOR = GAME_EDITOR == true
+-- (2026-10-15, Phylactery 18) a store build (boot.lua GAME_STORE: the package says so): a player's copy, played as the
+-- site plays it (no testing keys, no sound tool, no sound names) but on its own: the walk in starts at once, no unlock
+local PLAYER = HOSTED or GAME_STORE ~= nil
 -- (the desktop unlock test's TAB, with the game out of view: the editor's list)
 function game_sound_editor() if EDITOR and SU.mode() == 'play' then SU.open_list() end end
 -- (2026-10-15, owner: "Scrolling down to look for sounds doesn't work because it scrolls down the page.") the site's
@@ -558,7 +561,7 @@ function GM.create(R, hud_layer)
   local function hit(k) return key_is_pressed(k) or key_is_repeated(k) end
   local MOVE_KEYS = { { 'w', 'w' }, { 'up', 'w' }, { 's', 's' }, { 'down', 's' }, { 'a', 'a' }, { 'left', 'a' }, { 'd', 'd' }, { 'right', 'd' } }
   local function keys_input()
-    if HOSTED then
+    if PLAYER then
       -- on the site: moving, and the viewer's own keys; every testing key stays home
       if SEQ.on or END.won then return end
       if inspect_active() then
@@ -676,7 +679,7 @@ function GM.create(R, hud_layer)
     end
     -- (2026-10-11, his testing key; not on the site) right-click on an object up there: thrown at once, as THROW in
     -- the viewer does, without the viewer
-    if not HOSTED and mouse_is_pressed(2) and not (inspect_active() or END.won or SEQ.on or intro_on()) then
+    if not PLAYER and mouse_is_pressed(2) and not (inspect_active() or END.won or SEQ.on or intro_on()) then
       local sl = slot_at(mx, my)
       if sl and powers.is_on(powers.ALL[sl + 1]) then held = {}; mouse.down = false; AU.play('ui_click'); throw_power(sl); return end
     end
@@ -708,7 +711,7 @@ function GM.create(R, hud_layer)
     -- the sound tool (2026-10-10, megablock's: port/soundui.lua): TAB lists what is sounding now and every red slot,
     -- ESC (with no viewer up) every slot; the game stands still while it is up; a click outside it plays again.
     -- His tool only: never on the site (but in the desktop's unlock test, EDITOR).
-    if not HOSTED or EDITOR then
+    if not PLAYER or EDITOR then
       local m = SU.mode()
       if m == 'play' then
         if key_is_pressed('tab') then SU.open_list(); return end
@@ -989,7 +992,7 @@ function GM.create(R, hud_layer)
         if ht >= H.crack_t and not SEQ.opened then
           SEQ.opened = true; open_egg()
           -- (2026-10-14) on our own: the site's unlock sounds on the site's schedule, to tune them here (TAB)
-          if not HOSTED then US.start() end
+          if not PLAYER then US.start() end
           if HOSTED and site_unlock_posts then
             local left = 0
             for _, a in ipairs(powers.ALL) do if powers.is_on(a) then left = left + 1 end end
@@ -1158,7 +1161,7 @@ function GM.create(R, hud_layer)
     -- every sound as its name where it happens (his tool: not on the site). 2026-10-15 (owner: "You can hide UI elements
     -- by default (except top right ones), including the sounds that appear visually"): while playing only with the
     -- testing text (H); always while the sound tool is open (TAB / ESC: the names are what he clicks)
-    if (not HOSTED or EDITOR) and (G.hud or SU.mode() ~= 'play') then SU.draw(HUD, R.world_camera) end
+    if (not PLAYER or EDITOR) and (G.hud or SU.mode() ~= 'play') then SU.draw(HUD, R.world_camera) end
     HUD.flush(hud_layer)                -- the HUD into its layer, which the final pass composites
     layer_render(hud_layer)
     lap = PROF.lap('hud', lap)
