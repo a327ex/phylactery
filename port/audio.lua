@@ -538,7 +538,8 @@ local function voice(name, o, loop)
   fx.bits, fx.sr_div, fx.start = A.get(name, 'bits', fi), A.get(name, 'sr', fi), del < 0 and -del or 0
   local vol = (o.volume or 1) * A.get(name, 'vol', fi) * A.master
   local h
-  if sound_play_fx then h = sound_play_fx(snd, min(vol, 4), base_pitch * pf, fx)
+  -- (2026-10-15, session 17: A.PLAIN plays plain voices even where the engine has FX voices: the web's audio test)
+  if sound_play_fx and not A.PLAIN then h = sound_play_fx(snd, min(vol, 4), base_pitch * pf, fx)
   else   -- (Lich) an engine without FX voices (the site's, for now): loudness only, no ears, no room
     h = sound_play_handle(snd, min(vol * fx.dry * 0.5 * (fx.gain_l + fx.gain_r), 4), base_pitch * pf, fx.bits, fx.sr_div, fx.start)
   end

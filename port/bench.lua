@@ -48,6 +48,21 @@ function B.host_emulation()
   end
   print('BENCH as the site hosts it (packs emulated)')
 end
+-- (session 17) the audio device's callbacks (engine audio_stats: on the web the mix runs on the main thread, and a
+-- callback late by more than a block replays the one before), per phase; bench_plain = plain voices, no FX voices
+local function aud_line(label)
+  if not audio_stats then return 'BENCH audio ' .. label .. ': no audio_stats in this engine' end
+  local a = audio_stats(true)
+  return string.format('BENCH audio %s: %d callbacks of %.1f ms; late %d, very late (a block replayed) %d, worst gap %.1f ms; mix %.2f ms avg, %.2f max, over half a block %d; voices max %d (FX %d)%s',
+    label, a.callbacks, a.period_ms, a.late, a.very_late, a.gap_ms_max, a.cb_ms_avg, a.cb_ms_max, a.over_budget, a.voices_max, a.fx_max,
+    B.aud_ev and #B.aud_ev > 0 and ('; very late at ' .. table.concat(B.aud_ev, ' ')) or '')
+end
+B.aud_line = aud_line
+function B.audio_switches()
+  if not B.active() then return end
+  local f = io.open('bench_plain', 'r')
+  if f then f:close(); require('port.audio').PLAIN = true; print('BENCH plain voices (no FX voices)') end
+end
 
 local t, wi, last, started = 0, 1, nil, false
 local frames = {}
@@ -77,6 +92,11 @@ function B.frame(GAME)
       B.early_worst or 0, B.early_worst_t or 0, B.early_long or 0, B.early_n or 0))
   end
   t = t + math.min(dt, 0.25)
+  if audio_stats and started then
+    local vl = audio_stats().very_late
+    if vl > (B.aud_vl or 0) then B.aud_ev = B.aud_ev or {}; B.aud_ev[#B.aud_ev + 1] = string.format('%.1f', t) end
+    B.aud_vl = vl
+  end
   -- (session 17) the frames over 50 ms, when; and with bench_ending (tools/webbench WEBBENCH_ENDING=1) the ending
   -- played after the measured span: every power given up, the coil, his death, the hatch
   if dt > 0.05 and started then B.spikes = B.spikes or {}; B.spikes[#B.spikes + 1] = string.format('%.0f@%.1f', dt*1000, t) end
@@ -86,6 +106,7 @@ function B.frame(GAME)
     if (B.ending.dead and t >= B.ending.dead + 12) or t >= B.ending.t0 + 70 then
       print(string.format('BENCH ending: gave up at %.1f s, died at %s s; frames over 50 ms after giving up (ms@s, d = dead): %s',
         B.ending.t0, B.ending.dead and string.format('%.1f', B.ending.dead) or 'never', table.concat(B.ending.spikes, ' ')))
+      print(aud_line('ending'))
       print('BENCH DONE')
       B.done = true
     elseif dt > 0.05 then
@@ -99,7 +120,7 @@ function B.frame(GAME)
     GAME.powers({ true, true, true, true, true, true })
   end
   while WAVES[wi] and t >= WAVES[wi][1] do GAME.wave(WAVES[wi][2]); wi = wi + 1 end
-  if t >= WARM and not PROF.on then PROF.reset(); PROF.on = true; frames = {} end
+  if t >= WARM and not PROF.on then PROF.reset(); PROF.on = true; frames = {}; if audio_stats then audio_stats(true); B.aud_vl = 0; B.aud_ev = {} end end
   if PROF.on and dt > 0 then
     frames[#frames + 1] = dt*1000
     local kb = collectgarbage('count')
@@ -141,6 +162,7 @@ function B.frame(GAME)
     end
     for line in PROF.report():gmatch('[^\n]+') do lines[#lines + 1] = 'BENCH ' .. line end
     lines[#lines + 1] = 'BENCH frames over 50 ms (ms@s): ' .. table.concat(B.spikes or {}, ' ')
+    lines[#lines + 1] = aud_line('fight'); B.aud_vl = 0; B.aud_ev = {}
     local f = io.open('bench_ending', 'r')
     if f then
       f:close()
