@@ -82,7 +82,7 @@ function GM.create(R, hud_layer)
   -- round 45: the lich's own mask, flat white (port/lichmask.lua; F5 cycles it for comparison)
   local lmask = require('port.lichmask').create(lich, cave.GU, R)
   local EGG = cave.egg.position
-  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = not HOSTED, dark = 1, surface = 2,
+  local G = { t = 0, tick = 0, cam = 0, manual = false, hud = false, dark = 1, surface = 2,     -- (hud: the testing text, H; off from the start since 2026-10-15)
     static = { eye = { -3.6, 9.8, -10.4 }, tgt = { 0.4, 0.1, 2.4 } },
     free = { yaw = 200, pitch = 18, dist = 4.5 }, egg_view = { yaw = 195, pitch = 32, dist = 3.4 } }
   G.R = R; G.cave = cave; G.lich = lich; G.lmask = lmask
@@ -1061,7 +1061,10 @@ function GM.create(R, hud_layer)
     warp.set_camera(R.world_camera, R.H)
     draw_hud()
     draw_over()
-    if not HOSTED or EDITOR then SU.draw(HUD, R.world_camera) end   -- every sound as its name where it happens (his tool: not on the site)
+    -- every sound as its name where it happens (his tool: not on the site). 2026-10-15 (owner: "You can hide UI elements
+    -- by default (except top right ones), including the sounds that appear visually"): while playing only with the
+    -- testing text (H); always while the sound tool is open (TAB / ESC: the names are what he clicks)
+    if (not HOSTED or EDITOR) and (G.hud or SU.mode() ~= 'play') then SU.draw(HUD, R.world_camera) end
     HUD.flush(hud_layer)                -- the HUD into its layer, which the final pass composites
     layer_render(hud_layer)
     R.render(dt)
