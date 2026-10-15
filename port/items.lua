@@ -181,19 +181,13 @@ function IT.create(ctx)
         while d <= 1.9 + r do
           local a = base + sg*side*da*pi/180
           local x, z = L.x + cos(a)*d, L.z + sin(a)*d
+          -- (2026-10-15, session 17: each spot's floor samples were counted in full, ~7000 floor, rock and nav queries a
+          -- drop, a hitch when he gave a power up. A spot's score only grows with `bad`, so the egg's and the others'
+          -- penalties come first and its samples are counted only while it can still beat the best so far, the bound
+          -- and the score being the same expression: the same spot is chosen, to the bit.)
+          local d0 = (w.it.balls and 0.7 or 0.95) + r
+          local function score_of(n) return n*10 + da*0.01 + abs(d - d0)*0.8 end
           local bad = 0
-          local dz = -r
-          while dz <= r do
-            local dx = -r
-            while dx <= r do
-              if not (dx*dx + dz*dz > r*r) then
-                local px, pz = x + dx, z + dz
-                if nav.is_blocked(px, pz) or nav.rock_top(px, pz) > floor_y(px, pz) + 0.02 then bad = bad + 1 end
-              end
-              dx = dx + 0.1
-            end
-            dz = dz + 0.1
-          end
           if js_hypot(x - egg.x, z - egg.z) < egg.r + r + 0.1 then bad = bad + 50 end
           for _, o in ipairs(W) do
             if o ~= w and (o.state == 'lying' or o.state == 'falling' or o.state == 'forming') then
@@ -208,7 +202,19 @@ function IT.create(ctx)
               if js_hypot(x - ox, z - oz) < r + lying_r(o) + 0.08 then bad = bad + 50 end
             end
           end
-          local score = bad*10 + da*0.01 + abs(d - ((w.it.balls and 0.7 or 0.95) + r))*0.8
+          local dz = -r
+          while dz <= r and score_of(bad) < bs do
+            local dx = -r
+            while dx <= r do
+              if not (dx*dx + dz*dz > r*r) then
+                local px, pz = x + dx, z + dz
+                if nav.is_blocked(px, pz) or nav.rock_top(px, pz) > floor_y(px, pz) + 0.02 then bad = bad + 1 end
+              end
+              dx = dx + 0.1
+            end
+            dz = dz + 0.1
+          end
+          local score = score_of(bad)
           if score < bs then bs = score; best = Vector2.new(x, z) end
           d = d + 0.15
         end
@@ -615,15 +621,18 @@ function IT.create(ctx)
   end
 
   local rebuild
+  -- (one object a call: five at once was one long frame as the pack landed; -> true while some are still to make)
   local function make_late()
-    if not (late_left and game_pack_ready('items')) then return end
-    late_left = false
+    if not (late_left and game_pack_ready('items')) then return false end
     for i, w in ipairs(W) do
       if w.late then
         if i == 2 then IT.set_hand_material(opts.hand_mat) end
         rebuild(i - 1); w.late = nil
+        return true
       end
     end
+    late_left = false
+    return false
   end
   local function update(t, dt)
     make_late()
@@ -656,7 +665,7 @@ function IT.create(ctx)
       end
     end
     local gw = W[5]
-    if gw and gw.g.visible then
+    if gw and gw.g.visible and not gw.late then      -- (a stand-in, thrown by the ending's tests before it is made, has no mesh)
       local m = gw.g.children[1]
       m.material.user_data.U.uLit.value = in_sun(gw.g.position)
     end

@@ -77,6 +77,22 @@ function B.frame(GAME)
       B.early_worst or 0, B.early_worst_t or 0, B.early_long or 0, B.early_n or 0))
   end
   t = t + math.min(dt, 0.25)
+  -- (session 17) the frames over 50 ms, when; and with bench_ending (tools/webbench WEBBENCH_ENDING=1) the ending
+  -- played after the measured span: every power given up, the coil, his death, the hatch
+  if dt > 0.05 and started then B.spikes = B.spikes or {}; B.spikes[#B.spikes + 1] = string.format('%.0f@%.1f', dt*1000, t) end
+  if B.ending then
+    local q = GAME.seq()
+    if q.dead and not B.ending.dead then B.ending.dead = t end
+    if (B.ending.dead and t >= B.ending.dead + 12) or t >= B.ending.t0 + 70 then
+      print(string.format('BENCH ending: gave up at %.1f s, died at %s s; frames over 50 ms after giving up (ms@s, d = dead): %s',
+        B.ending.t0, B.ending.dead and string.format('%.1f', B.ending.dead) or 'never', table.concat(B.ending.spikes, ' ')))
+      print('BENCH DONE')
+      B.done = true
+    elseif dt > 0.05 then
+      B.ending.spikes[#B.ending.spikes + 1] = string.format('%.0f@%.1f%s', dt*1000, t, q.dead and 'd' or '')
+    end
+    return
+  end
   if not started then
     started = true
     GAME.begin()
@@ -124,9 +140,17 @@ function B.frame(GAME)
       if c then lines[#lines + 1] = string.format('BENCH frames %-9s %5d: %.1f ms each, of it Lua %.1f', k, c.n, c.dt/c.n, c.cpu/c.n) end
     end
     for line in PROF.report():gmatch('[^\n]+') do lines[#lines + 1] = 'BENCH ' .. line end
-    lines[#lines + 1] = 'BENCH DONE'
+    lines[#lines + 1] = 'BENCH frames over 50 ms (ms@s): ' .. table.concat(B.spikes or {}, ' ')
+    local f = io.open('bench_ending', 'r')
+    if f then
+      f:close()
+      B.ending = { t0 = t, spikes = {} }
+      GAME.remove_all()
+    else
+      lines[#lines + 1] = 'BENCH DONE'
+      B.done = true
+    end
     B.result = table.concat(lines, '\n')
-    B.done = true
     for _, l in ipairs(lines) do print(l) end
   end
 end

@@ -54,18 +54,21 @@ end
 function draw()
   if G.intro then
     local R = G.R.renderer
-    if G.warm_async then                 -- (compiling in the background: the next one in line done yet?)
-      while G.intro and #G.warm > 0 and R:program_ready(G.warm[#G.warm]) do
-        table.remove(G.warm)
+    if G.intro > 0 then
+      if G.warm_async then               -- (compiling in the background: the next one in line done yet?)
+        while G.intro > 0 and #G.warm > 0 and R:program_ready(G.warm[#G.warm]) do table.remove(G.warm); G.intro = G.intro - 1 end
+      else
+        R:program(table.remove(G.warm))
         G.intro = G.intro - 1
-        if G.intro <= 0 then G.intro = nil end
       end
     else
-      R:program(table.remove(G.warm))
-      G.intro = G.intro - 1
-      if G.intro <= 0 then G.intro = nil end
+      -- (session 17, later) then the scene's meshes, every one (in frame or not), ~3 MB a frame: no first draw waits
+      G.uploads = G.uploads or R:upload_list(G.R.world_scene)
+      local budget = 3e6
+      while budget > 0 and #G.uploads > 0 do budget = budget - R:upload(table.remove(G.uploads)) end
+      gpu_end()
+      if #G.uploads == 0 then G.intro = nil; G.uploads = nil; G.render_acc = 1/60 end   -- (the scene drawn on the next frame)
     end
-    if not G.intro then G.render_acc = 1/60 end   -- (the scene drawn on the next frame)
     return
   end
   local PROF = require('port.prof')

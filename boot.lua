@@ -87,6 +87,10 @@ local SCENE = { 'cave.dome|world|2|-', 'cave.dust|world|0|-', 'cave.egg|world|0|
   'item.orbs|world|0|-', 'leak.flakes|world|2|i', 'lich.gem|world|0|-', 'post.blur|post|0|-', 'post.bright|post|0|-',
   'post.final|post|0|-', 'warp.streaks|warp|2|-' }
 local WALK = { 'item.mask|world|2|-', 'snakes.body|world|0|-', 'snakes.eye|world|0|-', 'warp.puffs|warp|2|-' }
+-- (session 17, later) the programs not in three.js's export, made at the ending: the silhouettes' (port/silhouette.lua)
+-- and the cracked egg's two-sided one. Compiled the first time they drew, they made the stutters "at the very end"
+-- (his death's step: 83 ms on the desktop); now compiled with the rest (after the intro on the site).
+local EXTRA = { 'sil.flat|sil|2|-', 'sil.comp|post|0|-', 'sil.flat|sil|2|i', 'sil.clip|sil|2|-', 'cave.egg|world|2|-' }
 local WARM_ORDER = { '^snakes%.', '^lens%.', '^fx%.', '^warp%.', '^rock%.', '^leak%.', '^gore%.', '^cave%.', '^depth', '^post%.', '' }
 local function later(key) return key:find('|inspect|', 1, true) or key:find('^inspect%.') or key:find('^item%.[^|]*|world') end
 if GAME_HOSTED then
@@ -102,6 +106,7 @@ if GAME_HOSTED then
   end
   G.warm = {}
   for key in pairs(index) do G.warm[#G.warm + 1] = key end
+  for _, key in ipairs(EXTRA) do if not index[key] and G.programs[key] then rank[key] = 400; G.warm[#G.warm + 1] = key end end
   table.sort(G.warm, function(a, b)                 -- (taken from the end: the first wanted last in the list)
     if rank[a] ~= rank[b] then return rank[a] > rank[b] end
     return a > b
@@ -125,6 +130,7 @@ else
     G.R.renderer:program(key)
     if each then each[#each + 1] = { key, (perf_time() - t)*1000 } end
   end
+  for _, key in ipairs(EXTRA) do if not index[key] and G.programs[key] then G.R.renderer:program(key) end end
   if each then
     table.sort(each, function(a, b) return a[2] > b[2] end)
     local top = {}

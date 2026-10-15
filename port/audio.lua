@@ -753,6 +753,7 @@ function A.room_now() return cur_room end
 function A.update(dt, cam)
   A.now = A.now + dt
   if next(A.waiting) and A.now >= (A.waiting_t or 0) then     -- (the slots whose files were still on their way)
+    -- (a pack brings ~50 slots at once: loaded 3 at a time, 20 times a second, not all in one frame)
     A.waiting_t = A.now + 0.25
     local ready = {}
     for name in pairs(A.waiting) do
@@ -760,7 +761,9 @@ function A.update(dt, cam)
       for _, f in ipairs(s and s.files or {}) do if not here(f) then all = false; break end end
       if all then ready[#ready + 1] = name end
     end
-    for _, name in ipairs(ready) do A.reload(name) end
+    table.sort(ready)
+    for k = 1, math.min(3, #ready) do A.reload(ready[k]) end
+    if #ready > 3 then A.waiting_t = A.now + 0.05 end
   end
   set_listener(cam, dt)
   local keep = {}

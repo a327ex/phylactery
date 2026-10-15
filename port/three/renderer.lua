@@ -236,6 +236,25 @@ local function gpu_mesh_of(object, geometry)
   return m
 end
 
+-- (2026-10-15, session 17) every mesh of a scene, drawn or not yet (out of frame, hidden), for uploading ahead: the
+-- site's intro does it a few MB a frame, so no first draw waits on its buffers (the first frames after the intro and
+-- the lich coming into frame were 90-145 ms on the web). upload(o) is what a draw does first; -> the bytes it sent.
+function Renderer:upload_list(scene)
+  local list = {}
+  scene:traverse(function(o)
+    local g = o.geometry
+    if (o.is_mesh or o.is_points) and g and g.attribute_order and not (g.gpu_mesh or o.gpu_mesh) then list[#list + 1] = o end
+  end)
+  return list
+end
+function Renderer:upload(o)
+  local g = o.geometry
+  local bytes = 0
+  for _, name in ipairs(g.attribute_order) do local a = g.attributes[name]; bytes = bytes + (a.array and #a.array*4 or #a.blob) end
+  gpu_mesh_of(o, g)
+  return bytes
+end
+
 -- ---------------------------------------------------------------------------- state
 local FACTOR = {
   [MAT.ZeroFactor] = 'zero', [MAT.OneFactor] = 'one', [MAT.SrcColorFactor] = 'src_color', [MAT.OneMinusSrcColorFactor] = 'one_minus_src_color',

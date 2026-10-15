@@ -142,20 +142,22 @@ function EP.create(opts)
   local function centre(b) return to_world(b, physics3_get_local_center(b)) end
 
   -- ---------------------------------------------------------------- the ground
-  local function build_ground(cx, cz, base)
-    physics3_register_tag('ground'); physics3_register_tag('shell')
-    physics3_enable_collision('shell', 'ground'); physics3_enable_collision('shell', 'shell')
-    -- (2026-10-10: the pieces' landings are heard: hit events report, they don't change the simulation)
-    physics3_enable_hit('shell', 'ground'); physics3_enable_hit('shell', 'shell')
-    local gb = physics3_create_body('static', 0, 0, 0)
+  -- (2026-10-15, session 17, the owner: "Game seems to be stuttering ... it also happened at the very end") working
+  -- the nest's ground out took ~47 ms of his death's step on the desktop (~150 on the web): the whole floor's and the
+  -- rocks' triangles walked in Lua. It depends only on where the egg sits, so prepare_ground works it out ahead, a
+  -- piece at a time (api.prepare, every tick of the ending's sequence: a coroutine, yielding every so many triangles,
+  -- cells or vertices), and at his death apply_ground makes only the Box3D calls, the same hulls in the same order
+  -- (api.start finishes a preparation not done yet first: the same either way).
+  local function prepare_ground(cx, cz, base, yield)
     local GR = EP.GROUND
     local R2, F2, D = GR.r^2, GR.fine^2, GR.depth
     local f = opts.floor_geo.attributes.position:ensure_array()
-    local nf, ns = 0, 0
-    local function add(pts) local ok, sh = pcall(physics3_add_hull, gb, 'ground', pts); if ok then physics3_shape_set_friction(sh, GR.friction); nf = nf + 1 end end
+    local floors, stones = {}, {}
+    local function add(pts) floors[#floors + 1] = pts end
     -- the drawn triangles: those reaching past `fine` as prisms; those near enough to sample for the grid
     local near = {}
     for t = 0, #f//9 - 1 do
+      if t % 600 == 599 then yield() end
       local b = t*9
       local inside, outside, close = false, false, false
       for k = 0, 2 do
@@ -190,6 +192,7 @@ function EP.create(opts)
     local N, C = ceil(GR.fine/GR.cell), GR.cell
     local h = {}
     for i = -N, N do
+      yield()
       h[i] = {}
       for j = -N, N do
         local x, z = cx + i*C, cz + j*C
@@ -227,6 +230,7 @@ function EP.create(opts)
     local function root(a) while parent[a] ~= a do parent[a] = parent[parent[a]]; a = parent[a] end; return a end
     local R2s = (EP.GROUND.r + 1)^2
     for t = 0, #r//9 - 1 do
+      if t % 1500 == 1499 then yield() end
       local b = t*9
       local mx, mz = (r[b + 1] + r[b + 4] + r[b + 7])/3 - cx, (r[b + 3] + r[b + 6] + r[b + 9])/3 - cz
       if mx*mx + mz*mz < R2s then
@@ -246,11 +250,36 @@ function EP.create(opts)
       if up and #L >= 4 and sx*sx + sz*sz < R2 then
         local pts, step = {}, max(1, ceil(#L/36))
         for i = 1, #L, step do local p = L[i]; pts[#pts + 1] = p[1]; pts[#pts + 1] = p[2]; pts[#pts + 1] = p[3] end
-        local ok, sh = pcall(physics3_add_hull, gb, 'ground', pts)
-        if ok then physics3_shape_set_friction(sh, EP.GROUND.friction); ns = ns + 1 end
+        stones[#stones + 1] = pts
       end
     end
+    return { floors = floors, stones = stones }
+  end
+  local function apply_ground(prep)
+    physics3_register_tag('ground'); physics3_register_tag('shell')
+    physics3_enable_collision('shell', 'ground'); physics3_enable_collision('shell', 'shell')
+    -- (2026-10-10: the pieces' landings are heard: hit events report, they don't change the simulation)
+    physics3_enable_hit('shell', 'ground'); physics3_enable_hit('shell', 'shell')
+    local gb = physics3_create_body('static', 0, 0, 0)
+    local nf, ns = 0, 0
+    for _, pts in ipairs(prep.floors) do
+      local ok, sh = pcall(physics3_add_hull, gb, 'ground', pts); if ok then physics3_shape_set_friction(sh, EP.GROUND.friction); nf = nf + 1 end
+    end
+    for _, pts in ipairs(prep.stones) do
+      local ok, sh = pcall(physics3_add_hull, gb, 'ground', pts); if ok then physics3_shape_set_friction(sh, EP.GROUND.friction); ns = ns + 1 end
+    end
     api.ground = { floor = nf, stones = ns }
+  end
+  local prep, prep_co = nil, nil
+  local function prep_args() local p = egg.position; return p.x, p.z, p.y end
+  function api.prepare()
+    if prep or api.started then return prep ~= nil end
+    if not prep_co then
+      prep_co = coroutine.create(function() local x, z, y = prep_args(); prep = prepare_ground(x, z, y, coroutine.yield) end)
+    end
+    local ok, err = coroutine.resume(prep_co)
+    if not ok then error(err) end
+    return prep ~= nil
   end
 
   -- ---------------------------------------------------------------- bodies
@@ -297,7 +326,11 @@ function EP.create(opts)
     physics3_init()
     local p = egg.position
     -- (it sits in its nest where it was drawn)
-    build_ground(p.x, p.z, p.y)
+    if not prep then
+      if prep_co then while not prep do local ok, err = coroutine.resume(prep_co); if not ok then error(err) end end
+      else local x, z, y = prep_args(); prep = prepare_ground(x, z, y, function() end) end
+    end
+    apply_ground(prep)
     local y = p.y + 0.002
     local E = EP.EGG
     local parts = {}
