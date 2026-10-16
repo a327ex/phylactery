@@ -253,7 +253,7 @@ function L.create(R, opts)
     -- his force into it"): m.force, his whole body behind the blow (game.lua GEST): below 0 he draws himself up and back
     -- (the wind-up), 1 thrown forward and down over the arm he brings down, his knees giving, the other arm flung back.
     -- A fast spring that overshoots a little (the blow's follow-through); nil = 0 (never set outside the ending)
-    spring(S.fo, m.force or 0, 3.4, 0.42, 0, dt)
+    spring(S.fo, m.force or 0, 3.4, 0.6, 0, dt)
     local fo = S.fo.x
     local fd = max(0, fo)
     local JAW0 = H(0.07 + max(0, sin(t*0.45))*0.04, 0.26 + 0.1*lv + 0.04*wr3)
@@ -296,6 +296,9 @@ function L.create(R, opts)
       local pt = (m.point and m.point.arm == k0) and m.point.w or 0
       -- (2026-10-16, the ending's gesture: m.point.f, how much faster than usual the arm follows its aim; nil = as before)
       local pf = (pt > 0 and m.point.f) or 1
+      -- (sped up, the arm's springs are stepped in thirds: at 7-8 Hz and damping 0.75 one 60 Hz step flips their sign every
+      -- tick, and his hand jumped 20-80 cm a tick as the down-stroke landed. pf 1: one step, as ever)
+      local nsub = pf > 1 and 3 or 1
       local aim_p, aim_r = 0, 0
       if pt > 0 then
         chest:update_world_matrix(true, false)
@@ -308,10 +311,10 @@ function L.create(R, opts)
       local base_r = (s < 0 and 0.12 or 0.22)*s
       local drive = (az*0.85 + ay*sin(-Q.p.x) + (S.cp.a + S.bp.a)*0.5 - s*(S.cy.a + ya)*0.3)*(1 - pt)
       local hang = k0 == 0 and hw or 0
-      spring(Q.p, H(mix(mix(R0.p, ARM_TRAIL.p, trail), aim_p, pt), hang ~= 0 and 0.3 + 0.1*wr1 or aim_p + 0.16*lv*pt), mix(0.55*df, 2.3*pf, pt), mix(0.34, 0.75, pt), drive*g + air(tt, sd, 0.55, 0.1*g*(1 - pt)), dt)
-      spring(Q.r, H(mix((-0.25*side + s*0.1*fwd)*gt, aim_r - base_r, pt), hang ~= 0 and s*(0.42 + 0.08*wr2) or aim_r - base_r), mix(0.6*df, 2.3*pf, pt), mix(0.3, 0.75, pt), (-ax + (S.cr.a + S.br.a)*0.4)*g*(1 - pt) + air(tt, sd + 3, 0.6, 0.07*g*(1 - pt)), dt)
+      for _ = 1, nsub do spring(Q.p, H(mix(mix(R0.p, ARM_TRAIL.p, trail), aim_p, pt), hang ~= 0 and 0.3 + 0.1*wr1 or aim_p + 0.16*lv*pt), mix(0.55*df, 2.3*pf, pt), mix(0.34, 0.75, pt), drive*g + air(tt, sd, 0.55, 0.1*g*(1 - pt)), dt/nsub) end
+      for _ = 1, nsub do spring(Q.r, H(mix((-0.25*side + s*0.1*fwd)*gt, aim_r - base_r, pt), hang ~= 0 and s*(0.42 + 0.08*wr2) or aim_r - base_r), mix(0.6*df, 2.3*pf, pt), mix(0.3, 0.75, pt), (-ax + (S.cr.a + S.br.a)*0.4)*g*(1 - pt) + air(tt, sd + 3, 0.6, 0.07*g*(1 - pt)), dt/nsub) end
       spring(Q.t, 0, 0.7*df, 0.4, air(tt, sd + 5, 0.7, 0.12*g*(1 - pt)), dt)
-      spring(Q.e, H(mix(mix(R0.e, ARM_TRAIL.e, trail), -0.1, pt), hang ~= 0 and -0.5 - 0.1*wr3 or -0.12 - 0.38*lv*pt), mix(1.0*df, 2.6*pf, pt), mix(0.3, 0.75, pt), (az*0.8 - Q.p.a*0.35)*g*(1 - pt) + air(tt, sd + 7, 1.0, 0.1*g*(1 - pt)), dt)
+      for _ = 1, nsub do spring(Q.e, H(mix(mix(R0.e, ARM_TRAIL.e, trail), -0.1, pt), hang ~= 0 and -0.5 - 0.1*wr3 or -0.12 - 0.38*lv*pt), mix(1.0*df, 2.6*pf, pt), mix(0.3, 0.75, pt), (az*0.8 - Q.p.a*0.35)*g*(1 - pt) + air(tt, sd + 7, 1.0, 0.1*g*(1 - pt)), dt/nsub) end
       spring(Q.w, H(mix(mix(R0.w, ARM_TRAIL.w, trail), 0.05, pt), hang ~= 0 and 0.6 or 0.05), mix(1.5*df, 3.0, pt), mix(0.3, 0.75, pt), (az*0.5 - Q.e.a*0.3)*g*(1 - pt) + air(tt, sd + 9, 1.5, 0.08*g*(1 - pt)), dt)
       spring(Q.f, (ARM_TRAIL.curl - R0.curl)*trail, 2.0*df, 0.3, (az*0.6 - Q.w.a*0.2)*g + air(tt, sd + 11, 2.0, 0.06*g), dt)
       local roll = s*max(mix(-0.08, -0.45, pt), s*Q.r.x)
@@ -342,8 +345,8 @@ function L.create(R, opts)
     body.position.y = (hw ~= 0 and (-hw*(0.07 + 0.2*lv) + HURT.drop.x + hw*0.025*wr2) or 0) - 0.09*fd + 0.035*max(0, -fo)
     body.rotation:set(0.1 + S.bp.x + 0.2*fo, 0, S.br.x)
     pelvis.rotation:set(0, S.py.x, 0)
-    spine.rotation:set(0.04 + S.cp.x*0.5 + 0.6*fo, -S.py.x*0.75 + S.cy.x*0.45, S.cr.x*0.5)
-    chest.rotation:set(0.03 + S.cp.x*0.5 + 0.4*fo, S.cy.x*0.55, S.cr.x*0.5)
+    spine.rotation:set(0.04 + S.cp.x*0.5 + 0.75*fo, -S.py.x*0.75 + S.cy.x*0.45, S.cr.x*0.5)
+    chest.rotation:set(0.03 + S.cp.x*0.5 + 0.1*fo, S.cy.x*0.55, S.cr.x*0.5)
     neck.rotation:set(0.04 + S.hp.x*0.3 + 0.15*fo, S.hy.x*0.3, S.hr.x*0.3)
     head.rotation:set(-0.02 + S.hp.x*0.7 + trem(20) + 0.3*fo, S.hy.x*0.7 + trem(21)*0.7, S.hr.x*0.7)
     jaw.rotation.x = JAW0 + S.jw.x
