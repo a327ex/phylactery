@@ -27,6 +27,7 @@ local FIRE = require('port.fire')
 local FXM = require('port.fx')
 local GORE = require('port.gore')
 local WARP = require('port.warp')
+local SLAMFX = require('port.slam')     -- 2026-10-16: the ending's blast in warped air
 local PW = require('port.powers')
 local BEAM = require('port.beam')
 local LENS = require('port.lens')
@@ -131,6 +132,7 @@ function GM.create(R, hud_layer)
   local gore = GORE.create(R, cave, snakes, fx, U.run_rng(41))
   if VARIED then gore.set_settle(true) end     -- (2026-10-15: what comes to rest tips onto its side, gore.lua)
   local warp = WARP.create(R)
+  local slamfx = SLAMFX.create({ warp = warp, cave = cave })
   local powers = PW.create({ R = R, cave = cave, snakes = snakes, fx = fx, gore = gore, warp = warp, fire = fire, lich = lich, mover = mover, egg = EGG,
     get_L = function() return L end, rng = U.run_rng(29), varied = VARIED })
   G.powers = powers; G.fx = fx; G.gore = gore; G.warp = warp
@@ -144,7 +146,7 @@ function GM.create(R, hud_layer)
     if G.eggphys then for _, r in ipairs(G.eggphys.roots) do egg[#egg + 1] = r end end
     -- (round 58: the snakes' burst, pale, then fading, from his death on: before it any gore is the dark's)
     return { egg = egg, lich = { lich.root, lmask.mesh }, shell = cave.egg.user_data.shell, cap = G.eggphys and G.eggphys.cap and G.eggphys.cap.mesh,
-      gore = (G.SEQ and G.SEQ.dead) and gore.meshes() or nil }
+      gore = (G.SEQ and G.SEQ.burst) and gore.meshes() or nil }
   end
   G.sil = sil
   -- round 61: the egg as a physics object from his death on, its knocks and its break (port/eggphys.lua)
@@ -260,6 +262,7 @@ function GM.create(R, hud_layer)
   -- lower"): the camera looks at the point `mid` of the way from the egg to him, look_y over the floor, from `back` m
   -- along the room camera's heading, `pitch` degrees down onto it
   local SHOT = { edge = 2.2, back_deg = 30, edge_h = 1.4, mid = 0.5, back = 10.0, pitch = 3, look_y = 1.0, fov = 40, pace = 0.5, rate = 1/6 }
+  local SEQ_K = 0.42           -- (2026-10-16: his approach's speed per metre left, under the mover's critical 1/(4 tau); wanted_velocity)
   -- round 57 (owner, 2026-10-07: "we get close to this final shot, we need some kind of shader or effect where the
   -- only the egg and lich are visible but they become not textured, like flat colors, so the final shot is darkness
   -- + two sillouettes ... The visual effect should start slowly in the middle of the movement towards the final shot,
@@ -286,6 +289,20 @@ function GM.create(R, hud_layer)
   -- LICH_ROOM keeps 4.0, its digests run through the ending)
   local DIE = { hold = VARIED and 2.0 or 4.0, back = 0.5, out = 0.0, wobble_at = 1.3, zoom_at = 2.2, zoom = 7.0, hatch_k = 0.86, close = 2.1, close_y = 0.42, gore_fade = { 1.0, 2.6 },
     fade_after = 1.0 }
+  -- (2026-10-16, owner: "The final explosion of snakes around the egg needs to be made clear that it's happening from the
+  -- lich, so I want him to slowly raise his hand that's outwards towards the egg, like very slowly and in pain, and then
+  -- in a final gesture he brings it down, as though bringing down gravity/psychic force on all the snakes, they all
+  -- explode (with downwards force), the telekinesis visual effect should also be somewhat visible as a downward force
+  -- (that then hits the ground and moves to the sides) too. He then stands there for a beat and falls too."): `start` s
+  -- after the two silhouettes are whole his pointing hand (arm 1, aimed at the egg all through the ending) rises over
+  -- `raise` s, slowly and unevenly (it sags back now and then, `sag` of the way, and shakes, `shake` m, more the higher it
+  -- is), to aim `up` m over the egg; it holds there `top` s while the warped air gathers over the egg; then in `down` s he
+  -- brings it down onto the floor before the egg (the arm `snap` times its usual speed); as it lands the snakes burst,
+  -- thrown down and out (gore.burst's slam: `slam` m/s), the warped air hits the floor and runs out along it
+  -- (port/slam.lua) and the egg's part begins (DIE's times count from here); he stands `beat` s, spent, and falls.
+  local GEST = { start = 0.3, raise = 4.0, top = 0.35, down = 0.2, beat = 1.1, up = 3.6, snap = 3.2, sag = 0.07, shake = 0.05, reach = 0.55,
+    slam = { down = 4.0, out = 1.6 } }
+  local function gest_to_blast() return GEST.start + GEST.raise + GEST.top + GEST.down end
   SEQ.label_n = 0
   G.SHOT = SHOT
   -- round 56: where the game starts. 'ENDING' (owner, 2026-10-07: "Start the game for me with snakes near the
@@ -341,14 +358,15 @@ function GM.create(R, hud_layer)
     if END.w <= 0 then return end
     -- (2026-10-14, owner: "lich should stop being hurt after he dies, the frequency of his hurting should also increase
     -- the closer it gets to the explosion") dead: no more spasms (the ending's sequence; LICH_ROOM has none)
-    if SEQ.dead then return end
+    if SEQ.burst then return end            -- (2026-10-16: none from the blast on: the snakes are gone)
     END.spasm = END.spasm - dt
     if END.spasm <= 0 then
       lich.hit(END.w*(0.18 + 0.4*END.level))
+      SEQ.falter = 1                        -- (2026-10-16: on his way to his spot a spasm stops him short for a moment)
       -- the nearer his death (the snakes' burst), the sooner the next: half of it as the silhouettes come in, the rest
       -- over the hold before he dies (DIE.hold), the gap down to a fifth and steadier (its spread narrowing: one draw)
       local near = 0
-      if SEQ.on then near = SEQ.e1 and 0.5 + 0.5*clamp((SEQ.t - SEQ.e1)/DIE.hold, 0, 1) or 0.5*sil.e end
+      if SEQ.on then near = SEQ.e1 and 0.5 + 0.5*clamp((SEQ.t - SEQ.e1)/gest_to_blast(), 0, 1) or 0.5*sil.e end
       END.spasm = end_rng.float(1.1, 3.2 - 1.5*near)*(1 - 0.4*END.level)*(1 - 0.8*near^1.3)
     end
     mover.face.on = true
@@ -512,8 +530,14 @@ function GM.create(R, hud_layer)
     if SEQ.on then
       local dx, dz = SEQ.spot.x - L.x, SEQ.spot.z - L.z
       local d = js_hypot(dx, dz)
-      if d < 0.03 then return { x = 0, z = 0 } end
-      local s = min(SHOT.pace, sqrt(2*MV.MOVE.dec*max(0, d - 0.02))*0.5)
+      -- (2026-10-16, owner: "as the lich gets in position for the final shot, it will often overshoot where it needs to
+      -- be and then correct, which makes the moment look less realistic and like it's on rails instead of him being in
+      -- actual pain"): the mover follows a wanted speed late (mover.lua tau_dec 0.38 s, then its jerk filter), so a
+      -- braking curve that only reaches zero at the spot left him coasting past it and pulled back. Now the speed asked
+      -- for is proportional to what is left (SEQ_K per second, under the critical 1/(4 tau)): he slows all the way in
+      -- and settles without passing it; each spasm stops him short for a moment (SEQ.falter), so he goes in by efforts
+      if d < 0.005 then return { x = 0, z = 0 } end
+      local s = min(SHOT.pace, SEQ_K*d)*(1 - 0.75*(SEQ.falter or 0))
       local rx, rz = L.x - SEQ.c.x, L.z - SEQ.c.z
       local r = js_hypot(rx, rz)
       local th = atan2(rz, rx)
@@ -854,8 +878,44 @@ function GM.create(R, hud_layer)
   -- ------------------------------------------------------------------ the ending's sequence (round 56)
   -- round 58/59: he dies: he falls as a rag doll (port/ragdoll.lua) on the cave's floor, toward the egg, the arm that
   -- pointed at it reaching for it; his mask drops; every snake bursts; the egg will rock on its base
+  -- (2026-10-16) the blast he brings down (GEST): every snake bursts, thrown down and out from the egg; the warped air
+  -- hits the floor and runs out along it; his body goes down with the blow; the egg's part begins (it is free now)
+  local function blast()
+    SEQ.burst = SEQ.t; SEQ.k2 = 0
+    local nb = snakes.burst_all(gore.burst, { x = EGG.x, z = EGG.z, down = GEST.slam.down, out = GEST.slam.out })
+    if nb > 0 then AU.play('mass_burst', { pos = { EGG.x, EGG.y + 0.4, EGG.z }, volume = min(1, 0.55 + 0.08*nb) }) end
+    slamfx.hit(v(EGG.x, cave.ground_y(EGG.x, EGG.z), EGG.z))
+    lich.slam(1)
+    ep.start()                -- (round 61: from here the egg is a physics object)
+  end
+  -- where his hand aims through the gesture (GEST), and how fast his arm follows it: up over the egg, slowly and unevenly,
+  -- held there shaking, then brought down onto the floor before the egg; no draws (his unevenness is fixed waves)
+  local function gest_aim(tr)
+    local fx, fz = EGG.x + (L.x - EGG.x)*GEST.reach, EGG.z + (L.z - EGG.z)*GEST.reach   -- (the floor half way to the egg)
+    local fy = cave.ground_y(fx, fz)
+    local y0, y1 = EGG.y + 0.42, EGG.y + GEST.up
+    local R, T, D = GEST.raise, GEST.top, GEST.down
+    local function shake(k, amp) return amp*(sin(tr*41 + k)*0.55 + sin(tr*57.3 + 2*k)*0.3 + sin(tr*23.1 + 3*k)*0.15) end
+    if tr < R then
+      local u = tr/R
+      local e = u*u*(3 - 2*u)
+      -- (now and then the arm sags back under the weight: a dip that comes and goes, never at the start or the end)
+      local dip = GEST.sag*sin(u*pi)*max(0, sin(tr*2.1 - 0.9))^3
+      local y = y0 + (y1 - y0)*max(0, e - dip)
+      local a = GEST.shake*(0.3 + 0.7*e)
+      return EGG.x + shake(1, a), y + shake(2, a), EGG.z + shake(3, a), 1
+    elseif tr < R + T then
+      local a = GEST.shake*1.3
+      return EGG.x + shake(1, a), y1 + shake(2, a), EGG.z + shake(3, a), 1
+    elseif tr < R + T + D then
+      local u = (tr - R - T)/D
+      local e = u*u
+      return EGG.x + (fx - EGG.x)*e, y1 + (fy - y1)*e, EGG.z + (fz - EGG.z)*e, GEST.snap
+    end
+    return fx, fy, fz, 1.5
+  end
   local function die()
-    SEQ.dead = SEQ.t; SEQ.k2 = 0
+    SEQ.dead = SEQ.t
     local hx, hz = EGG.x - L.x, EGG.z - L.z
     local hl = sqrt(hx*hx + hz*hz)
     hx, hz = hx/hl, hz/hl
@@ -865,9 +925,6 @@ function GM.create(R, hud_layer)
       push = { -fx*DIE.back - hx*DIE.out, 0, -fz*DIE.back - hz*DIE.out } })
     AU.play('lich_die', { pos = L })
     lmask.drop(cave.ground_y)
-    local nb = snakes.burst_all(gore.burst)
-    if nb > 0 then AU.play('mass_burst', { pos = { EGG.x, EGG.y + 0.4, EGG.z }, volume = min(1, 0.55 + 0.08*nb) }) end
-    ep.start()                -- (round 61: from here the egg is a physics object)
   end
   -- round 59: the real egg cracks: its shell cut along the crack (its program patched, silhouette.lua) and the cap a
   -- real piece of it (the shell's geometry and look, cut the other way). Round 60: first a glowing crack spreads round
@@ -955,7 +1012,7 @@ function GM.create(R, hud_layer)
     -- first grip (snakes.hold), so the snakes then dead in the pool never came back and the coil could stall at half
     -- while the sequence played on. Now every pooled snake is sent in from the nearest clear spot just out of the
     -- camera's sight, at the start and each second until the shell is covered or he dies.
-    if not END.won and not SEQ.dead and not SEQ.egg_start and SEQ.t >= (SEQ.send_t or 0) then
+    if not END.won and not SEQ.burst and not SEQ.egg_start and SEQ.t >= (SEQ.send_t or 0) then
       SEQ.send_t = SEQ.t + 1.0
       local cam, q = R.world_camera, SEQ.q or Vector3.new()
       SEQ.q = q
@@ -967,7 +1024,8 @@ function GM.create(R, hud_layer)
       end) end
     end
     -- (session 17) the egg's nest for its physics, worked out a piece a tick before he dies (eggphys.lua api.prepare)
-    if ep and not SEQ.dead and not SEQ.egg_start then ep.prepare() end
+    if ep and not SEQ.burst and not SEQ.egg_start then ep.prepare() end
+    SEQ.falter = max(0, (SEQ.falter or 0) - dt/0.7)
     -- the camera follows the covering (never back, never faster than SHOT.rate of the way a second)
     local want = END.won and 1 or clamp(END.level/0.97, 0, 1)
     SEQ.k = min(1, SEQ.k + clamp(want - SEQ.k, 0, SHOT.rate*dt))
@@ -976,11 +1034,35 @@ function GM.create(R, hud_layer)
     if SEQ.sil_t0 then local u = clamp((SEQ.t - SEQ.sil_t0)/SIL.dur, 0, 1); sil.e = u*u*(3 - 2*u) end
     -- round 58: his death, the snakes' burst, the egg rocking, the camera in on it, the hatch
     if sil.e >= 1 and not SEQ.e1 then SEQ.e1 = SEQ.t end
-    if SEQ.e1 and not SEQ.dead and SEQ.t >= SEQ.e1 + DIE.hold then die() end
-    if SEQ.dead then
-      local d = SEQ.t - SEQ.dead
+    -- (2026-10-16) his gesture, the blast, a beat, his fall (GEST); the egg's own start: the blast and his fall at once
+    if SEQ.egg_start and SEQ.e1 and not SEQ.burst then blast(); die() end
+    if SEQ.e1 and not SEQ.dead then
+      local tr = SEQ.t - SEQ.e1 - GEST.start
+      if tr >= 0 then
+        local x, y, z, f = gest_aim(tr)
+        -- (his arm stays where he brought it down, full, while the rest of him lets go)
+        mover.motion.point = { w = SEQ.burst and 1 or lich.hurt.w, arm = 1, x = x, y = y, z = z, f = f }
+        SEQ.gest = tr
+        -- (the warped air gathers over the egg as his hand stops at the top, a little toward the camera so it crosses the
+        -- egg on screen, and falls with his hand: it lands at the blast)
+        if not SEQ.burst and tr >= GEST.raise and not SEQ.gather then
+          SEQ.gather = true
+          local gx, gz = EGG.x - ROOM_H.x*0.3, EGG.z - ROOM_H.y*0.3
+          slamfx.gather(v(gx, cave.ground_y(gx, gz), gz), GEST.top + GEST.down)
+        end
+        if not SEQ.burst and tr >= GEST.raise + GEST.top + GEST.down then blast() end
+        -- (spent: his pain lets go a little while he stands, then he falls)
+        if SEQ.burst then
+          local b = SEQ.t - SEQ.burst
+          lich.hurt.w = lich.hurt.w*(1 - 0.45*smoothstep(0, GEST.beat, b))
+          if b >= GEST.beat then die() end
+        end
+      end
+    end
+    if SEQ.burst then
+      local d = SEQ.t - SEQ.burst
       -- (dead: no hurt pose, no pointing; the rag doll sets his bones after the pose)
-      lich.hurt.w = 0; lich.hurt.level = 0; mover.motion.point = nil
+      if SEQ.dead then lich.hurt.w = 0; lich.hurt.level = 0; mover.motion.point = nil end
       local H = SL.HATCH
       local open_at = DIE.zoom_at + DIE.hatch_k*DIE.zoom + H.crack_t
       local ht = SEQ.hatch and SEQ.t - SEQ.hatch or nil
@@ -1060,6 +1142,7 @@ function GM.create(R, hud_layer)
     lap = PROF.lap('fx', lap, true)
     gore.update(G.t, DT)
     lap = PROF.lap('gore', lap, true)
+    slamfx.update(DT)
     warp.update(G.t, DT)
     lap = PROF.lap('warp', lap, true)
     if items then
@@ -1255,7 +1338,7 @@ function GM.create(R, hud_layer)
   function GAME.snake_count() local n = 0; for _, s in ipairs(snakes.S) do if not s.pooled and s.dying < 0 then n = n + 1 end end; return n end
   function GAME.intro() return { state = INTRO.state, x = r3(L.x), z = r3(L.z), speed = r3(mover.speed()) } end
   function GAME.seq()
-    return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), e = r3(sil.e), k2 = r3(SEQ.k2), dead = SEQ.dead ~= nil, hatch = sil.hatch_t and r3(sil.hatch_t) or nil, side = SEQ.side, won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
+    return { on = SEQ.on, t = r3(SEQ.t), k = r3(SEQ.k), e = r3(sil.e), k2 = r3(SEQ.k2), dead = SEQ.dead ~= nil, burst = SEQ.burst ~= nil, gest = SEQ.gest and r3(SEQ.gest) or nil, hatch = sil.hatch_t and r3(sil.hatch_t) or nil, side = SEQ.side, won = END.won, level = r3(END.level), coverage = r3(snakes.coverage),
       d = SEQ.spot and r3(js_hypot(SEQ.spot.x - L.x, SEQ.spot.z - L.z)) or nil, spot = SEQ.spot and { r3(SEQ.spot.x), r3(SEQ.spot.z) } or nil,
       lich = { r3(L.x), r3(L.z) }, egg = { r3(EGG.x), r3(EGG.z) } }
   end

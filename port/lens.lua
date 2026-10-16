@@ -371,6 +371,57 @@ function LE.create(ctx)
     return false
   end
 
+  -- (2026-10-16, owner: "attack lens fire will often go through a snake, but because the snake isn't the targeted one, it
+  -- doesn't die, which feels unrealistic. If the laser goes through a snake it should die and other abilities should take
+  -- that into account and target other snakes from the get go") the game's flow only (snakes.reclaim: LICH_ROOM keeps the
+  -- old rule): every free snake near the line its fire will sweep is this lens's from the moment it starts gathering the
+  -- light (a claim renewed each tick, so the other attacks choose others), and its cut takes every snake it passes over.
+  -- Before the fire the line is the one the fire will take from where things are now (beside(), toward the target's
+  -- frame, SWEEP long); then what is left of it (the spot to its end, or the rest of a group's path). No rng draws.
+  local CLAIM_R = CUT_R + 0.12
+  local LA, LB, LP = Vector3.new(), Vector3.new(), {}
+  for k = 1, 9 do LP[k] = Vector3.new() end
+  local function seg_d(px, pz, ax, az, bx, bz)
+    local dx, dz = bx - ax, bz - az
+    local l2 = dx*dx + dz*dz
+    local u = l2 > 1e-9 and max(0, min(1, ((px - ax)*dx + (pz - az)*dz)/l2)) or 0
+    return hyp(px - (ax + dx*u), pz - (az + dz*u))
+  end
+  local function line_of(q)
+    local pts, n = LP, 0
+    if not q.fired then
+      if q.group or not q.s or not snakes.free(q.s) then return nil, 0 end
+      beside(q, LA)
+      local p = frame_at(q.s, q.ring)
+      local dx, dz = p.x - LA.x, p.z - LA.z
+      local dl = hyp(dx, dz)
+      if dl < 1e-3 then return nil, 0 end
+      LB:set(LA.x + dx/dl*max(SWEEP, dl + 0.5), 0, LA.z + dz/dl*max(SWEEP, dl + 0.5))
+      pts[1]:copy(LA); pts[2]:copy(LB); n = 2
+    elseif q.path then
+      local f0 = min(1, max(0, q.t - FORM - CONVERGE)/q.dur)
+      for k = 0, 8 do n = n + 1; path_at(q, f0 + (1 - f0)*k/8, pts[n]) end
+    else
+      pts[1]:copy(q.spot); pts[2]:copy(q.b); n = 2
+    end
+    return pts, n
+  end
+  local function claim_line(q)
+    local pts, n = line_of(q)
+    if not pts then return end
+    for _, s in ipairs(snakes.S) do
+      if snakes.free(s) and s ~= q.s then
+        local hit = false
+        for j = 2, N - 3, 2 do
+          local p = s.spine[j + 1]
+          for k = 2, n do if seg_d(p.x, p.z, pts[k - 1].x, pts[k - 1].z, pts[k].x, pts[k].z) < CLAIM_R then hit = true; break end end
+          if hit then break end
+        end
+        if hit then snakes.reclaim(s, 'LENS') end
+      end
+    end
+  end
+
   -- a shot's tally (once): its cut done, and whether it cut nothing
   local function count_shot(q)
     if q.counted or not q.fired then return end
@@ -481,6 +532,8 @@ function LE.create(ctx)
         if q.path then for _, e in ipairs(q.path.nodes) do if snakes.free(e.s) then snakes.reclaim(e.s, 'LENS') end end
         elseif q.group then for _, g in ipairs(q.group) do if snakes.free(g) then snakes.reclaim(g, 'LENS') end end end
       end
+      -- (2026-10-16) and every snake on the line its fire will sweep, from when it starts gathering the light
+      if snakes.reclaim and q.t >= FORM and q.t - FORM - CONVERGE <= q.dur then claim_line(q) end
       local L = q.L
       local m = L.m
       local UU = m.material.user_data.U
@@ -664,10 +717,17 @@ function LE.create(ctx)
             local z = sp.z + rng.spread(0.02)
             fx.mote({ x = x, y = sp.y + 0.01, z = z, life = rng.float(1.4, 2.4), s0 = 0.06, s1 = 0.035, r = 1.4, g = 0.4, b = 0.07, a = 0.85, fin = 0.02 })
           end
+          -- (2026-10-16: in the game's flow the fire takes every free snake it passes over, whoever else had chosen it,
+          -- cut where it is crossed, kept inside the cuttable stretch; LICH_ROOM keeps round 52/53's rule)
+          local pierce = snakes.reclaim ~= nil
           for _, s in ipairs(snakes.S) do
-            if snakes.free(s) and not (snakes.held_by_other and s ~= q.s and (snakes.held_by_other(s, 'LENS') or aimed_by_other(s, q))) then
+            if snakes.free(s) and (pierce or not (snakes.held_by_other and s ~= q.s and (snakes.held_by_other(s, 'LENS') or aimed_by_other(s, q)))) then
               local best, bi = 1e9, -1
               for j = 2, N - 3 do local d = hyp(s.spine[j + 1].x - sp.x, s.spine[j + 1].z - sp.z); if d < best then best = d; bi = j end end
+              if pierce and best < CUT_R then
+                while bi > 3 and snakes.arc(bi) > CUT_MAX do bi = bi - 1 end
+                while bi < N - 4 and snakes.arc(bi) < CUT_MIN do bi = bi + 1 end
+              end
               if best < CUT_R and snakes.arc(bi) <= CUT_MAX and snakes.arc(bi) >= CUT_MIN then
                 s.claim = nil; snakes.take(s, cut_fx(s, max(3, bi))); cuts[#cuts + 1] = { arc = snakes.arc(bi), target = s == q.s }
                 AU.play('lens_cut', { pos = s.spine[bi + 1], gap = 0.05 })

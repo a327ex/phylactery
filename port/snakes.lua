@@ -983,11 +983,12 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   function api.send(kind) DIR.force = kind; return kind end
   -- round 58 (the ending, owner: "all snakes should explode as they do from the lift power"): every snake out (those
   -- coiled on the egg and any still coming) bursts at once through `burst` (gore.burst) and goes to the pool
-  function api.burst_all(burst)
+  -- (2026-10-16: `slam`, gore.burst's downward force for the ending's blast; nil = as before)
+  function api.burst_all(burst, slam)
     local mid = (RINGS - 1)//2
     local n = 0
     for _, s in ipairs(S) do
-      if not s.pooled and s.delay <= 0 and s.sink < 0 and s.dying < 0 then burst(s, mid, nil); to_pool(s); n = n + 1 end
+      if not s.pooled and s.delay <= 0 and s.sink < 0 and s.dying < 0 then burst(s, mid, nil, slam); to_pool(s); n = n + 1 end
     end
     for k = #coiled, 1, -1 do coiled[k] = nil end
     return n

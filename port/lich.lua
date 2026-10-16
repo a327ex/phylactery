@@ -287,6 +287,8 @@ function L.create(R, opts)
       local sd = 40 + k0*17
       local tt = t*(k0 == 1 and 1.21 or 0.79)
       local pt = (m.point and m.point.arm == k0) and m.point.w or 0
+      -- (2026-10-16, the ending's gesture: m.point.f, how much faster than usual the arm follows its aim; nil = as before)
+      local pf = (pt > 0 and m.point.f) or 1
       local aim_p, aim_r = 0, 0
       if pt > 0 then
         chest:update_world_matrix(true, false)
@@ -299,10 +301,10 @@ function L.create(R, opts)
       local base_r = (s < 0 and 0.12 or 0.22)*s
       local drive = (az*0.85 + ay*sin(-Q.p.x) + (S.cp.a + S.bp.a)*0.5 - s*(S.cy.a + ya)*0.3)*(1 - pt)
       local hang = k0 == 0 and hw or 0
-      spring(Q.p, H(mix(mix(R0.p, ARM_TRAIL.p, trail), aim_p, pt), hang ~= 0 and 0.3 + 0.1*wr1 or aim_p + 0.16*lv*pt), mix(0.55*df, 2.3, pt), mix(0.34, 0.75, pt), drive*g + air(tt, sd, 0.55, 0.1*g*(1 - pt)), dt)
-      spring(Q.r, H(mix((-0.25*side + s*0.1*fwd)*gt, aim_r - base_r, pt), hang ~= 0 and s*(0.42 + 0.08*wr2) or aim_r - base_r), mix(0.6*df, 2.3, pt), mix(0.3, 0.75, pt), (-ax + (S.cr.a + S.br.a)*0.4)*g*(1 - pt) + air(tt, sd + 3, 0.6, 0.07*g*(1 - pt)), dt)
+      spring(Q.p, H(mix(mix(R0.p, ARM_TRAIL.p, trail), aim_p, pt), hang ~= 0 and 0.3 + 0.1*wr1 or aim_p + 0.16*lv*pt), mix(0.55*df, 2.3*pf, pt), mix(0.34, 0.75, pt), drive*g + air(tt, sd, 0.55, 0.1*g*(1 - pt)), dt)
+      spring(Q.r, H(mix((-0.25*side + s*0.1*fwd)*gt, aim_r - base_r, pt), hang ~= 0 and s*(0.42 + 0.08*wr2) or aim_r - base_r), mix(0.6*df, 2.3*pf, pt), mix(0.3, 0.75, pt), (-ax + (S.cr.a + S.br.a)*0.4)*g*(1 - pt) + air(tt, sd + 3, 0.6, 0.07*g*(1 - pt)), dt)
       spring(Q.t, 0, 0.7*df, 0.4, air(tt, sd + 5, 0.7, 0.12*g*(1 - pt)), dt)
-      spring(Q.e, H(mix(mix(R0.e, ARM_TRAIL.e, trail), -0.1, pt), hang ~= 0 and -0.5 - 0.1*wr3 or -0.12 - 0.38*lv*pt), mix(1.0*df, 2.6, pt), mix(0.3, 0.75, pt), (az*0.8 - Q.p.a*0.35)*g*(1 - pt) + air(tt, sd + 7, 1.0, 0.1*g*(1 - pt)), dt)
+      spring(Q.e, H(mix(mix(R0.e, ARM_TRAIL.e, trail), -0.1, pt), hang ~= 0 and -0.5 - 0.1*wr3 or -0.12 - 0.38*lv*pt), mix(1.0*df, 2.6*pf, pt), mix(0.3, 0.75, pt), (az*0.8 - Q.p.a*0.35)*g*(1 - pt) + air(tt, sd + 7, 1.0, 0.1*g*(1 - pt)), dt)
       spring(Q.w, H(mix(mix(R0.w, ARM_TRAIL.w, trail), 0.05, pt), hang ~= 0 and 0.6 or 0.05), mix(1.5*df, 3.0, pt), mix(0.3, 0.75, pt), (az*0.5 - Q.e.a*0.3)*g*(1 - pt) + air(tt, sd + 9, 1.5, 0.08*g*(1 - pt)), dt)
       spring(Q.f, (ARM_TRAIL.curl - R0.curl)*trail, 2.0*df, 0.3, (az*0.6 - Q.w.a*0.2)*g + air(tt, sd + 11, 2.0, 0.06*g), dt)
       local roll = s*max(mix(-0.08, -0.45, pt), s*Q.r.x)
@@ -377,6 +379,13 @@ function L.create(R, opts)
     HURT.drop.v = HURT.drop.v - 1.1*a; HURT.clench.v = HURT.clench.v + 9*a; HURT.legs.v = HURT.legs.v - 2.4*a; S.jw.v = S.jw.v + 3.5*a
     RC[2].kick = RC[2].kick + 0.55*a*lich.recoil_gain
     AU.play('lich_hurt', { pos = lich.head_pos(SND_P), volume = math.min(1, 0.35 + 0.35*a), gap = 0.12 })
+  end
+  -- (2026-10-16, the ending's slam: his body sinks with the blow he brings down, knees and head going with it; no sound,
+  -- no arm kick, no draw: lich.hit's jolts without its voice)
+  function lich.slam(a)
+    a = a or 1
+    S.hp.v = S.hp.v - 2.6*a; S.cp.v = S.cp.v - 1.6*a; S.bp.v = S.bp.v - 0.8*a
+    HURT.drop.v = HURT.drop.v - 1.8*a; HURT.legs.v = HURT.legs.v - 2.6*a; S.jw.v = S.jw.v + 2.0*a
   end
   function lich.kick(k, amount) RC[k + 1].kick = RC[k + 1].kick + (amount or 1)*lich.recoil_gain*RECOILS[recoil + 1].gain end
   function lich.curl(k)
