@@ -303,7 +303,7 @@ function GM.create(R, hud_layer)
   -- brings it down onto the floor before the egg (the arm `snap` times its usual speed); as it lands the snakes burst,
   -- thrown down and out (gore.burst's slam: `slam` m/s), the warped air hits the floor and runs out along it
   -- (port/slam.lua) and the egg's part begins (DIE's times count from here); he stands `beat` s, spent, and falls.
-  local GEST = { start = 0.3, raise = 4.0, top = 0.35, down = 0.2, beat = 1.1, up = 3.6, snap = 3.2, sag = 0.07, shake = 0.05, reach = 0.55,
+  local GEST = { start = 0.3, raise = 4.0, top = 0.35, down = 0.2, beat = 0.0, up = 3.6, snap = 3.2, sag = 0.07, shake = 0.05, reach = 0.55,
     slam = { down = 4.0, out = 1.6 },
     -- (2026-10-16, his "the downwards move needs more oomph, his body/torso needs to react with it as well, he needs to
     -- put all his force into it, could also use a camera pull downwards and an audio effect there as well"): his body
@@ -940,7 +940,7 @@ function GM.create(R, hud_layer)
     -- (2026-10-16: his reach starts where the hand he brought down points, ragdoll.lua reach_from)
     local tip = lich.fingertip(1)
     SEQ.rag = RG.create(lich, { ground_y = cave.ground_y, egg = { x = EGG.x, y = EGG.y + 0.38, z = EGG.z, r = 0.36 },
-      reach = 2, reach_to = { EGG.x, EGG.y + 0.15, EGG.z }, reach_from = { tip.x, tip.y, tip.z },
+      reach = 2, reach_to = { EGG.x, EGG.y + 0.15, EGG.z }, reach_from = { tip.x, tip.y, tip.z }, prev = SEQ.prev_pts,
       push = { -fx*DIE.back - hx*DIE.out, 0, -fz*DIE.back - hz*DIE.out } })
     AU.play('lich_die', { pos = L })
     lmask.drop(cave.ground_y)
@@ -1091,12 +1091,16 @@ function GM.create(R, hud_layer)
           AU.play('gest_slam', { pos = { EGG.x, EGG.y + 0.6, EGG.z } })
         end
         if not SEQ.burst and tr >= GEST.raise + GEST.top + GEST.down then blast() end
-        -- (spent: his pain lets go a little while he stands, then he falls)
+        -- (spent: his pain lets go a little while he stands, then he falls. 2026-10-16, owner: "the lich shouldn't wait
+        -- after he does the attack, his body should go down right as he makes the final move, in the same motion kind
+        -- of": beat 0, he falls as the blow lands, his body carrying on as it was moving: ragdoll.lua opts.prev, his
+        -- points a tick before, sampled through the stroke)
         if SEQ.burst then
           local b = SEQ.t - SEQ.burst
-          lich.hurt.w = lich.hurt.w*(1 - 0.45*smoothstep(0, GEST.beat, b))
-          if b >= GEST.beat then die() end
+          if b >= GEST.beat then die()
+          else lich.hurt.w = lich.hurt.w*(1 - 0.45*smoothstep(0, GEST.beat, b)) end
         end
+        if not SEQ.dead and tr >= GEST.raise + GEST.top then SEQ.prev_pts = RG.sample(lich, SEQ.prev_pts) end
       end
     end
     if SEQ.burst then
