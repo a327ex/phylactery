@@ -23,10 +23,44 @@ RG.FRICTION = 0.45              -- of the sideways velocity kept at each contact
 -- pelvis to the skull times `spine`, the free arm's shoulder-wrist times `elbow`; all as soft as `k`
 RG.SLUMP = { knee = 0.86, hip = 0.9, spine = 0.95, elbow = 0.8, k = 0.06 }
 RG.REACH_T = 1.4                -- (opts.reach_from: how long the reach takes to turn to reach_to)
+RG.INHERIT, RG.INHERIT_MAX = 0.8, 4.0   -- (opts.prev: how much of his motion goes on into the fall, its cap in m/s)
+RG.VMAX = 6.0                   -- (m/s: the fastest any point of him moves, a guard)
+
+-- every point of him: add(name, node, offset x, y, z, radius)
+local function points(lich, add)
+  local N = lich.nodes
+  add('pelvis', N.pelvis, 0, 0, 0, 0.1)
+  add('chest', N.chest, 0, 0, 0, 0.11)
+  add('neck', N.neck, 0, 0, 0, 0.06)
+  add('head', N.head, 0, 0.09, 0.02, 0.09)
+  for k, a in ipairs(N.arms) do
+    add('sh' .. k, a.sh, 0, 0, 0, 0.05); add('el' .. k, a.el, 0, 0, 0, 0.035); add('wr' .. k, a.wr, 0, 0, 0, 0.03)
+    add('tip' .. k, a.fingers[2].tip, 0, 0, 0, 0.015)
+  end
+  for k, l in ipairs(N.legs) do
+    add('hip' .. k, l.hip, 0, 0, 0, 0.07); add('kn' .. k, l.kn, 0, 0, 0, 0.045); add('an' .. k, l.an, 0, 0, 0, 0.04)
+    add('toe' .. k, l.an, 0, -0.06, 0.12, 0.025)
+  end
+end
+-- (2026-10-16) where his points are now, by name: taken each tick before he dies, handed to create as opts.prev
+function RG.sample(lich, out)
+  out = out or {}
+  local V = Vector3.new()
+  points(lich, function(name, node, ox, oy, oz)
+    node:update_world_matrix(true, false)
+    V:set(ox or 0, oy or 0, oz or 0):apply_matrix4(node.matrix_world)
+    local q = out[name] or {}
+    q.x, q.y, q.z = V.x, V.y, V.z
+    out[name] = q
+  end)
+  return out
+end
 
 -- opts: ground_y(x, z), egg = { x, y, z, r }, reach = arm index (1 or 2) or nil, reach_to = { x, y, z } (a point to
--- reach toward), reach_from = { x, y, z } (where it reaches at first, nil: reach_to from the start), push = { x, y, z } (m/s on the upper body as he goes), turn = { x, y, z } (m/s on the camera-side
--- shoulder, to turn him as he falls)
+-- reach toward), reach_from = { x, y, z } (where it reaches at first, nil: reach_to from the start), push = { x, y, z }
+-- (m/s on the upper body as he goes), turn = { x, y, z } (m/s on the camera-side shoulder, to turn him as he falls),
+-- prev = RG.sample one tick before (2026-10-16: he goes on moving as he was, by RG.INHERIT of it, each point at most
+-- RG.INHERIT_MAX m/s: his last blow carries on into his fall)
 function RG.create(lich, opts)
   local N = lich.nodes
   local arms, legs = N.arms, N.legs
@@ -38,18 +72,7 @@ function RG.create(lich, opts)
     P[#P + 1] = { x = V.x, y = V.y, z = V.z, ox = V.x, oy = V.y, oz = V.z, r = r, name = name }
     idx[name] = #P
   end
-  add('pelvis', N.pelvis, 0, 0, 0, 0.1)
-  add('chest', N.chest, 0, 0, 0, 0.11)
-  add('neck', N.neck, 0, 0, 0, 0.06)
-  add('head', N.head, 0, 0.09, 0.02, 0.09)
-  for k, a in ipairs(arms) do
-    add('sh' .. k, a.sh, 0, 0, 0, 0.05); add('el' .. k, a.el, 0, 0, 0, 0.035); add('wr' .. k, a.wr, 0, 0, 0, 0.03)
-    add('tip' .. k, a.fingers[2].tip, 0, 0, 0, 0.015)
-  end
-  for k, l in ipairs(legs) do
-    add('hip' .. k, l.hip, 0, 0, 0, 0.07); add('kn' .. k, l.kn, 0, 0, 0, 0.045); add('an' .. k, l.an, 0, 0, 0, 0.04)
-    add('toe' .. k, l.an, 0, -0.06, 0.12, 0.025)
-  end
+  points(lich, add)
   local function p(n) return P[idx[n]] end
   local function dist(a, b) local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z; return sqrt(dx*dx + dy*dy + dz*dz) end
   local C = {}
@@ -94,7 +117,18 @@ function RG.create(lich, opts)
   end
   -- the push as he goes (in m/s: the previous position set back by it)
   local h0 = 1/60/RG.SUB
-  local function give(n, vx, vy, vz) local q = p(n); q.ox = q.x - vx*h0; q.oy = q.y - vy*h0; q.oz = q.z - vz*h0 end
+  local function give(n, vx, vy, vz) local q = p(n); q.ox = q.ox - vx*h0; q.oy = q.oy - vy*h0; q.oz = q.oz - vz*h0 end    -- (on top of opts.prev's)
+  if opts.prev then
+    for _, q in ipairs(P) do
+      local q0 = opts.prev[q.name]
+      if q0 then
+        local vx, vy, vz = (q.x - q0.x)*60*RG.INHERIT, (q.y - q0.y)*60*RG.INHERIT, (q.z - q0.z)*60*RG.INHERIT
+        local v = sqrt(vx*vx + vy*vy + vz*vz)
+        if v > RG.INHERIT_MAX then local k = RG.INHERIT_MAX/v; vx, vy, vz = vx*k, vy*k, vz*k end
+        q.ox = q.x - vx*h0; q.oy = q.y - vy*h0; q.oz = q.z - vz*h0
+      end
+    end
+  end
   if opts.push then for _, n in ipairs({ 'chest', 'neck', 'head', 'sh1', 'sh2' }) do give(n, opts.push[1], opts.push[2], opts.push[3]) end end
   if opts.turn then local q = p(opts.turn_side or 'sh1'); q.ox = q.ox - opts.turn[1]*h0; q.oy = q.oy - opts.turn[2]*h0; q.oz = q.oz - opts.turn[3]*h0 end
 
@@ -129,17 +163,30 @@ function RG.create(lich, opts)
     local A, J, B = p(a), p(j), p(b)
     local mx, my, mz = (A.x + B.x)/2, (A.y + B.y)/2, (A.z + B.z)/2
     local d = ((J.x - mx)*fx + (J.y - my)*fy + (J.z - mz)*fz)*sign
-    if d < 0.01 then local k = (0.01 - d)*sign*0.5; J.x = J.x + fx*k; J.y = J.y + fy*k; J.z = J.z + fz*k end
+    -- (2026-10-16: the joint goes 2/3 of the way, its two ends 1/3 back, so nothing is gained: moving the joint alone
+    -- added energy each pass, and with him face down after his last blow the knees, pushed toward the floor while the
+    -- floor pushed them out, threw his legs up at 20-30 m/s; now the hip and ankle can rise instead)
+    if d < 0.01 then
+      local k = (0.01 - d)*sign*0.5
+      local kj, ke = k*2/3, k/3
+      J.x = J.x + fx*kj; J.y = J.y + fy*kj; J.z = J.z + fz*kj
+      A.x = A.x - fx*ke; A.y = A.y - fy*ke; A.z = A.z - fz*ke
+      B.x = B.x - fx*ke; B.y = B.y - fy*ke; B.z = B.z - fz*ke
+    end
   end
 
   local rag = { P = P, t = 0 }
   function rag.step(dt)
     rag.t = rag.t + dt
     local h = dt/RG.SUB
+    local vcap = RG.VMAX*h
     for _ = 1, RG.SUB do
       local damp = RG.DAMP
       for _, q in ipairs(P) do
         local vx, vy, vz = (q.x - q.ox)*damp, (q.y - q.oy)*damp, (q.z - q.oz)*damp
+        -- (2026-10-16: no part of him faster than RG.VMAX, whatever the constraints do between them)
+        local vv = vx*vx + vy*vy + vz*vz
+        if vv > vcap*vcap then local k = vcap/sqrt(vv); vx, vy, vz = vx*k, vy*k, vz*k end
         q.ox, q.oy, q.oz = q.x, q.y, q.z
         q.x, q.y, q.z = q.x + vx, q.y + vy - RG.G*h*h, q.z + vz
       end
