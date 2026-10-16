@@ -1,5 +1,5 @@
 --[[
-  slam.lua -- the ending's blast in warped air (2026-10-16, Phylactery 19). Owner: "in a final gesture he brings it
+  slam.lua -- the ending's blast in warped air (2026-10-16, Phylactery 18). Owner: "in a final gesture he brings it
   down, as though bringing down gravity/psychic force on all the snakes, they all explode (with downwards force), the
   telekinesis visual effect should also be somewhat visible as a downward force (that then hits the ground and moves to
   the sides) too."
