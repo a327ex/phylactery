@@ -47,20 +47,36 @@ function FX.sprite_pool(R, N, additive, shape)
   local nxt = 0
   local pa, ca, sa = pos.array, col.array, size.array
   local pool = { mat = mat, P = P, points = pts }
-  function pool.spawn() local p = P[nxt + 1]; nxt = (nxt + 1) % N; return p end
+  -- (2026-10-16, Phylactery 19) a dead slot's arrays are written dead (size 0, alpha 0) once, not every tick; a pool
+  -- with nothing alive and every slot written dead is idle (no pass at all) until the next spawn; and only the slots
+  -- written go up to the GPU (BufferAttribute:mark). The same arrays, the same buffers, the same picture: it was
+  -- 2600 slots of motes, shards and puffs (and fire's 1380) written and ~8 floats a slot sent every frame.
+  local dead_w, idle = {}, false
+  function pool.spawn() local p = P[nxt + 1]; nxt = (nxt + 1) % N; idle = false; return p end
   -- fn(p, i, pos, col, size) with i 0-based (the arrays are 1-based: pos[i*3 + 1] ...)
   function pool.write(fn)
+    if idle then return end
+    local lo, hi, live = nil, nil, false
     for i = 0, N - 1 do
       local p = P[i + 1]
-      if p.life <= 0 then sa[i + 1] = 0; ca[i*4 + 4] = 0
-      else fn(p, i, pa, ca, sa) end
+      if p.life <= 0 then
+        if not dead_w[i + 1] then
+          sa[i + 1] = 0; ca[i*4 + 4] = 0; dead_w[i + 1] = true
+          if not lo then lo = i end; hi = i
+        end
+      else
+        fn(p, i, pa, ca, sa); dead_w[i + 1] = false; live = true
+        if not lo then lo = i end; hi = i
+      end
     end
-    pos.needs_update = true; col.needs_update = true; size.needs_update = true
+    if lo then pos:mark(lo, hi); col:mark(lo, hi); size:mark(lo, hi) end
+    if not live then idle = true end
   end
   return pool
 end
 
 -- beams: segments drawn as camera-facing ribbons (see fx.js for the styles)
+local MARKED = { 'aP0', 'aP1', 'aCol', 'aWO', 'aB', 'aX', 'aPv', 'aNx' }
 local function ribbon_pool(R, N)
   local V = N*4
   local function zeros(n) local a = {}; for i = 1, n do a[i] = 0 end; return a end
@@ -94,24 +110,36 @@ local function ribbon_pool(R, N)
     style = 0, w0 = 0, w1 = 0, x0 = 0, ph0 = 0, pv = nil, nx = nil } end
   local nxt = 0
   local pool = { mat = mat }
+  -- (2026-10-16, Phylactery 19) a dead ribbon (not held, its life out) draws nothing: no width (aWO.x, aB.xy 0) and
+  -- no alpha. It is written dead once, then left until it is spawned again; with none alive and all written dead the
+  -- pool is idle; only the ribbons written go up (mark). Was: all 240 ribbons' 24k floats written and sent each frame.
+  local dead_w, idle = {}, false
   function pool.spawn(p0, p1, o)
     -- held ribbons (kept alive by their owner) are skipped
     local k = 0
     while k < N and (B[nxt + 1].held or B[nxt + 1].life > 5) do nxt = (nxt + 1) % N; k = k + 1 end
     local b = B[nxt + 1]; nxt = (nxt + 1) % N
+    idle = false
     b.p0:copy(p0); b.p1:copy(p1); b.c = o.c or { 1, 1, 1 }; b.w = o.w == nil and 1.5 or o.w; b.off = o.off or 0; b.hue = o.hue == nil and -1 or o.hue
     b.a = o.a == nil and 1 or o.a
     b.life = o.life == nil and 1 or o.life; b.max = b.life; b.fade_in = o.fade_in == nil and 0.03 or o.fade_in; b.held = not not o.held
     b.style = o.style or 0; b.w0 = o.w0 or 0; b.w1 = o.w1 == nil and b.w0 or o.w1; b.x0 = o.x0 or 0; b.ph0 = o.ph0 or 0; b.pv = nil; b.nx = nil
     return b
   end
-  function pool.release(b) b.held = false; b.life = 0 end
+  function pool.release(b) b.held = false; b.life = 0; idle = false end
   function pool.update(t, dt)
     mat.uniforms.uTime.value = t
+    if idle then return end
+    local lo, hi, live = nil, nil, false
     for i = 0, N - 1 do
       local b = B[i + 1]
       if not b.held and b.life > 0 then b.life = b.life - dt end
       local on = b.held or b.life > 0
+      if on then live = true; dead_w[i + 1] = false
+      elseif dead_w[i + 1] then goto next_ribbon
+      else dead_w[i + 1] = true end
+      if not lo then lo = i end; hi = i
+      do
       local u = b.held and 0.5 or 1 - b.life/b.max
       local al = (not on) and 0 or (b.held and b.a or b.a*smoothstep(0, b.fade_in/b.max, u)*(1 - smoothstep(0.5, 1, u)))
       local len = b.p0:distance_to(b.p1)
@@ -128,8 +156,11 @@ local function ribbon_pool(R, N)
         apv[v3 + 1], apv[v3 + 2], apv[v3 + 3] = q.x, q.y, q.z
         anx[v3 + 1], anx[v3 + 2], anx[v3 + 3] = r.x, r.y, r.z
       end
+      end
+      ::next_ribbon::
     end
-    for _, k in ipairs({ 'aP0', 'aP1', 'aCol', 'aWO', 'aB', 'aX', 'aPv', 'aNx' }) do A[k].needs_update = true end
+    if lo then for _, k in ipairs(MARKED) do A[k]:mark(lo*4, hi*4 + 3) end end
+    if not live then idle = true end
   end
   return pool
 end
@@ -148,12 +179,21 @@ local function chunk_pool(R, cave, N)
   local zero = Matrix4.new():make_scale(0, 0, 0)
   for i = 0, N - 1 do mesh:set_matrix_at(i, zero) end
   local pool = {}
-  function pool.spawn() local c = C[nxt + 1]; nxt = (nxt + 1) % N; c.sink = 0; c.rest = 0; return c end
+  -- (2026-10-16, Phylactery 19) a dead chunk's zero matrix written once, the pool idle with none alive, only the
+  -- instances written sent (mark): the same matrices as writing all 160 every tick
+  local dead_w, idle = {}, false
+  for i = 1, N do dead_w[i] = true end           -- (all zero above, and sent whole at the first draw)
+  function pool.spawn() local c = C[nxt + 1]; nxt = (nxt + 1) % N; c.sink = 0; c.rest = 0; idle = false; return c end
   function pool.update(dt)
+    if idle then return end
+    local lo, hi, live = nil, nil, false
     for i = 0, N - 1 do
       local c = C[i + 1]
-      if c.life <= 0 then mesh:set_matrix_at(i, zero)
+      if c.life <= 0 then
+        if not dead_w[i + 1] then mesh:set_matrix_at(i, zero); dead_w[i + 1] = true; if not lo then lo = i end; hi = i end
       else
+        live = true; dead_w[i + 1] = false
+        if not lo then lo = i end; hi = i
         c.life = c.life - dt
         local gy = cave.ground_y(c.x, c.z)
         if c.rest <= 0 then
@@ -175,7 +215,8 @@ local function chunk_pool(R, cave, N)
         mesh:set_matrix_at(i, M)
       end
     end
-    mesh.instance_matrix.needs_update = true
+    if lo then mesh.instance_matrix:mark(lo, hi) end
+    if not live then idle = true end
   end
   return pool
 end

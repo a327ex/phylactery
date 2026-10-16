@@ -86,8 +86,40 @@ try {
   await send('Page.navigate', { url: pageUrl });
   const t0 = Date.now();
   let done = false, keyed = false, tapped = process.env.WEBBENCH_TAP !== '1';
+  // (2026-10-16, Phylactery 19) WEBBENCH_TRACE=1: a Chrome trace of 12 s from 20 s in (the fight), to see what fills
+  // a long frame besides the game's Lua (V8's collector, the GPU process, the compositor); saved as trace.json beside
+  // the page for tools/webbench/trace_frames.py
+  const traceOn = process.env.WEBBENCH_TRACE === '1';
+  let traceState = traceOn ? 'wait' : 'off';
+  const traceEvents = [];
+  let traceDone = null;
   while (!done && Date.now() - t0 < timeout*1000) {
     await sleep(1000);
+    // (2026-10-16) WEBBENCH_GLCOUNT=1: every WebGL call counted for 600 frames from 20 s in (glcount.js)
+    if (process.env.WEBBENCH_GLCOUNT === '1' && !globalThis.__glc && Date.now() - t0 > 20000) {
+      globalThis.__glc = 'on';
+      const r = await send('Runtime.evaluate', { returnByValue: true, expression: fs.readFileSync(path.join(HERE, 'glcount.js'), 'utf8') });
+      console.log('webbench: glcount ' + (r.result && r.result.value));
+    }
+    if (globalThis.__glc === 'on' && Date.now() - t0 > 34000) {
+      globalThis.__glc = 'done';
+      const r = await send('Runtime.evaluate', { returnByValue: true, expression: 'window.__GLC ? window.__GLC.report() : "no counts"' });
+      console.log('webbench: ' + (r.result && r.result.value));
+    }
+    if (traceState === 'wait' && Date.now() - t0 > 20000) {
+      traceState = 'on';
+      traceDone = new Promise(r => { ws.addEventListener('message', e => { const m = JSON.parse(e.data);
+        if (m.method === 'Tracing.dataCollected') traceEvents.push(...m.params.value);
+        if (m.method === 'Tracing.tracingComplete') r(); }); });
+      await send('Tracing.start', { transferMode: 'ReportEvents', traceConfig: { includedCategories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'v8', 'v8.gc', 'blink', 'gpu', 'cc', 'viz', 'toplevel', 'blink.user_timing', 'webgl'] } });
+      console.log('webbench: tracing');
+    } else if (traceState === 'on' && Date.now() - t0 > 32000) {
+      traceState = 'ending';
+      await send('Tracing.end');
+      await traceDone;
+      fs.writeFileSync(path.join(path.dirname(page), 'trace.json'), JSON.stringify({ traceEvents }));
+      console.log(`webbench: trace saved (${traceEvents.length} events)`);
+    }
     // (2026-10-15, Phylactery 19) WEBBENCH_TAP=1: what the browser really plays, sample for sample (tap.js: an
     // AudioWorklet after the ScriptProcessorNode) next to every block the engine mixed; saved at the end for
     // tools/webbench/tap_check.py

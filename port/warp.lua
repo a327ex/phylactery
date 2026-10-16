@@ -147,7 +147,7 @@ function W.create(R)
     update_flings(dt)
     -- (a streak that is off draws nothing whatever its points hold: written once as off, then left; a mesh with none
     -- on is not drawn, and its buffers go out again only when one of its streaks changed)
-    for c = 1, NC do local ch = chunks[c]; ch.on = false; ch.dirty = false end
+    for c = 1, NC do local ch = chunks[c]; ch.on = false; ch.dirty = false; ch.lo = nil end
     for i = 0, NS - 1 do
       local s = S[i + 1]
       local ch = chunks[i//CH + 1]
@@ -159,6 +159,9 @@ function W.create(R)
       s.written_off = not s.on
       local pos, prv, nxt, prm, fade = ch.pos, ch.prv, ch.nxt, ch.prm, ch.fade
       local li = i % CH
+      -- (2026-10-16, Phylactery 19: only the streaks written go up, not their whole mesh)
+      local v0, v1 = li*K*2, (li + 1)*K*2 - 1
+      if not ch.lo then ch.lo, ch.hi = v0, v1 else if v0 < ch.lo then ch.lo = v0 end; if v1 > ch.hi then ch.hi = v1 end end
       for k = 0, K - 1 do
         local p, a, b = sp[k + 1], sp[max(0, k - 1) + 1], sp[min(K - 1, k + 1) + 1]
         for e = 0, 1 do
@@ -178,15 +181,17 @@ function W.create(R)
       local ch = chunks[c]
       ch.mesh.visible = ch.on
       if ch.on then any_on = true end
-      if ch.dirty then for _, a in ipairs(ch.attrs) do a.needs_update = true end end
+      if ch.dirty then for _, a in ipairs(ch.attrs) do a:mark(ch.lo, ch.hi) end end
     end
     local alive, changed = false, false
+    local lo, hi = nil, nil
     for i = 0, NP - 1 do
       local p = P[i + 1]
       if p.life <= 0 then
-        if pprm[i*4 + 4] ~= 0 then pprm[i*4 + 4] = 0; changed = true end
+        if pprm[i*4 + 4] ~= 0 then pprm[i*4 + 4] = 0; changed = true; if not lo then lo = i end; hi = i end
       else
         alive, changed = true, true
+        if not lo then lo = i end; hi = i
         p.life = p.life - dt
         local u = 1 - p.life/p.max
         local d = 1 - p.drag*dt
@@ -198,7 +203,7 @@ function W.create(R)
       end
     end
     -- (2026-10-15: sent only when something moved or died; none alive: not drawn)
-    if changed then pposA.needs_update = true; pprmA.needs_update = true end
+    if changed then pposA:mark(lo, hi); pprmA:mark(lo, hi) end
     pts.visible = alive
     active = any_on or alive
   end

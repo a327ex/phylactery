@@ -410,11 +410,19 @@ function EP.create(opts)
       end
     end
     local pos, nor, uv, gi = {}, {}, {}, {}
+    -- (2026-10-16, Phylactery 19) a point's uv and bounce light worked out once and kept on it (p[6..10]): a point is
+    -- a corner of up to six triangles, and the hatch's frame spent a quarter of its time in gi_at
     local function vert(p, n)
       pos[#pos + 1] = p[1]; pos[#pos + 1] = p[2]; pos[#pos + 1] = p[3]
       nor[#nor + 1] = n[1]; nor[#nor + 1] = n[2]; nor[#nor + 1] = n[3]
-      local u, v = uv_at(p[4], p[5]); uv[#uv + 1] = u; uv[#uv + 1] = v
-      local g1, g2, g3 = gi_at(p[4], p[5]); gi[#gi + 1] = g1; gi[#gi + 1] = g2; gi[#gi + 1] = g3
+      local u, v, g1, g2, g3 = p[6], p[7], p[8], p[9], p[10]
+      if u == nil then
+        u, v = uv_at(p[4], p[5])
+        g1, g2, g3 = gi_at(p[4], p[5])
+        p[6], p[7], p[8], p[9], p[10] = u, v, g1, g2, g3
+      end
+      uv[#uv + 1] = u; uv[#uv + 1] = v
+      gi[#gi + 1] = g1; gi[#gi + 1] = g2; gi[#gi + 1] = g3
     end
     local function tri(a, na, b, nb, c, nc) vert(a, na); vert(b, nb); vert(c, nc) end
     for c = 0, cols - 2 do

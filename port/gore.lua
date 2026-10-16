@@ -82,12 +82,12 @@ function GO.create(R, cave, snakes, fx, rng)
   end
   local function update_decals(dt)
     for _, pool in ipairs(decals) do
-      local dirty = false
+      local lo, hi = nil, nil    -- (2026-10-16, Phylactery 19: only the decals written go up)
       for i = 0, DEC_N - 1 do
         local d = pool.D[i + 1]
         if d.life > 0 then
           d.life = d.life - dt; d.t = d.t + dt
-          if d.life <= 0 then pool.mesh:set_matrix_at(i, M:make_scale(0, 0, 0)); dirty = true
+          if d.life <= 0 then pool.mesh:set_matrix_at(i, M:make_scale(0, 0, 0)); if not lo then lo = i end; hi = i
           elseif not d.full or d.life < 1.2 then
             -- (grown and not yet sinking it stays as it was last posed: posed once full-grown, then left)
             local s = d.s0 + (d.s1 - d.s0)*smoothstep(0, d.grow, d.t)
@@ -95,12 +95,12 @@ function GO.create(R, cave, snakes, fx, rng)
             Q:set_from_axis_angle(V:set(0, 1, 0), d.rot)
             M:compose(V2:set(d.x, d.y - sink, d.z), Q, SC:set(s*d.sx, 1, s))
             pool.mesh:set_matrix_at(i, M)
-            dirty = true
+            if not lo then lo = i end; hi = i
             if d.t >= d.grow then d.full = true end
           end
         end
       end
-      if dirty then pool.mesh.instance_matrix.needs_update = true end
+      if lo then pool.mesh.instance_matrix:mark(lo, hi) end
     end
   end
 
@@ -144,14 +144,20 @@ function GO.create(R, cave, snakes, fx, rng)
     local b = B[bnext + 1]; bnext = (bnext + 1) % BN
     b.life = 3; b.x = x; b.y = y; b.z = z; b.vx = vx; b.vy = vy; b.vz = vz; b.s = s; b.splat = splat; b.pl = pl; b.dark = rng.float(0.7, 1.15)
   end
+  -- (2026-10-16, Phylactery 19) a dead drop's size 0 written once, not every tick; only the drops written go up
+  local bdead_w = {}
   local function update_blood(dt)
     if bidle then return end
     local any = false
+    local lo, hi = nil, nil
     for i = 0, BN - 1 do
       local b = B[i + 1]
-      if b.life <= 0 then bsize[i + 1] = 0
+      if b.life <= 0 then
+        if not bdead_w[i + 1] then bsize[i + 1] = 0; bdead_w[i + 1] = true; if not lo then lo = i end; hi = i end
       else
         any = true
+        if not lo then lo = i end; hi = i
+        bdead_w[i + 1] = false
         b.life = b.life - dt
         b.vy = b.vy - GRAV*dt
         if b.pl > 0 then tug(b.x, b.y, b.z, b.pl); b.vx = b.vx + TUG.x*dt; b.vy = b.vy + TUG.y*dt; b.vz = b.vz + TUG.z*dt; b.pl = b.pl - dt end
@@ -164,7 +170,7 @@ function GO.create(R, cave, snakes, fx, rng)
             local sp = js_hypot(b.vx, b.vz)
             splash(b.x, b.z, b.s*rng.float(7, 13), 0.08, atan2(-b.vz, b.vx), 1 + min(1.6, sp*0.35))
           end
-          b.life = 0; bsize[i + 1] = 0
+          b.life = 0; bsize[i + 1] = 0; bdead_w[i + 1] = true
         else
           bpos[i*3 + 1] = b.x; bpos[i*3 + 2] = b.y; bpos[i*3 + 3] = b.z
           bvel[i*3 + 1] = b.vx; bvel[i*3 + 2] = b.vy; bvel[i*3 + 3] = b.vz
@@ -173,7 +179,7 @@ function GO.create(R, cave, snakes, fx, rng)
         end
       end
     end
-    bposA.needs_update = true; bvelA.needs_update = true; bcolA.needs_update = true; bsizeA.needs_update = true
+    if lo then bposA:mark(lo, hi); bvelA:mark(lo, hi); bcolA:mark(lo, hi); bsizeA:mark(lo, hi) end
     if not any then bidle = true end
   end
 

@@ -29,6 +29,7 @@ local clamp, smoothstep, lerp = U.clamp, U.smoothstep, U.lerp
 local sqrt, abs, sin, cos, atan2, exp, floor, ceil, min, max, huge, pi = math.sqrt, math.abs, math.sin, math.cos, math.atan, math.exp, math.floor, math.ceil, math.min, math.max, math.huge, math.pi
 
 local SN = {}
+local PROF_S = require('port.prof')      -- (fine sections inside build, PROF.fine only)
 local LEN, R0 = 4.4, 0.08
 local RINGS, SIDES = 72, 12
 local RAISE, RAISE_LEN = 0.34, 1.1
@@ -60,6 +61,9 @@ local F32 = js_fround
 -- per-ring constants (the same for every snake)
 local SA, RAD, FLAT = {}, {}, {}
 for i = 0, RINGS - 1 do SA[i + 1] = S_AT(i); RAD[i + 1] = radius_at(SA[i + 1]); FLAT[i + 1] = flat_at(SA[i + 1]) end
+-- (2026-10-16) the neck's raise along the body, per ring (build's smoothstep(RAISE_LEN, 0.05, SA[i]), made once)
+local LIFT_S = {}
+for i = 1, RINGS do LIFT_S[i] = smoothstep(RAISE_LEN, 0.05, SA[i]) end
 -- the section's corners (snakes.js computes the same sin/cos per vertex)
 local CXS, CYS = {}, {}
 for j = 0, SIDES - 1 do local ang = j/SIDES*math.pi*2; CXS[j + 1] = math.sin(ang); CYS[j + 1] = -math.cos(ang) end
@@ -157,11 +161,15 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
     end
     -- (round 64: `at` made once, not a closure per call: it was a quarter of the game's garbage)
     local function at(F, a, b) return F[min(nz - 1, max(0, b))*nx + min(nx - 1, max(0, a))] end
+    -- (2026-10-16, Phylactery 19: at()'s four reads inline, the same cells and the same sums; every snake ring's height
+    -- comes through here, ~400 a tick)
     local function sample(F, x, z)
       local fx, fz = (x - x0)/cell - 0.5, (z - z0)/cell - 0.5
       local i, j = floor(fx), floor(fz)
       local u, v = fx - i, fz - j
-      return (at(F, i, j)*(1 - u) + at(F, i + 1, j)*u)*(1 - v) + (at(F, i, j + 1)*(1 - u) + at(F, i + 1, j + 1)*u)*v
+      local a0, a1 = min(nx - 1, max(0, i)), min(nx - 1, max(0, i + 1))
+      local b0, b1 = min(nz - 1, max(0, j))*nx, min(nz - 1, max(0, j + 1))*nx
+      return (F[b0 + a0]*(1 - u) + F[b0 + a1]*u)*(1 - v) + (F[b1 + a0]*(1 - u) + F[b1 + a1]*u)*v
     end
     route_at = function(x, z) return sample(D, x, z) end
     floor_at = function(x, z) return cave.ground_y(x, z) + sample(bump, x, z) end
@@ -677,36 +685,55 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
   -- each lies over the ones before it (a grid over the earlier bodies' rings finds the crossings)
   local GC = 0.15                                 -- over the largest reach (2*R0*0.9 = 0.144)
   local function gkey(ix, iy, iz) return (ix + 512)*1048576 + (iy + 512)*1024 + (iz + 512) end
+  -- (2026-10-16, Phylactery 19) the grid's tables kept between ticks (a cell's list is this tick's when its stamp is),
+  -- the keys worked out inline: it was a new grid and new lists every tick and a call per cell looked at, ~16% of the
+  -- ending's Lua. The same rings found for each ring (the cells looked at are the same) and the lift is the greatest
+  -- need over them, rounded (F32 rounds up or down to the same float whatever the order), so the same numbers.
+  local G_LIST, G_STAMP, stamp = {}, {}, 0
   local function stack_lifts()
-    local grid = {}
+    stamp = stamp + 1
     for k = 1, #coiled do
       local c = coiled[k].coil
       local Lf = c.lift
       for i = 1, RINGS do Lf[i] = 0 end
       if k > 1 then
+        local on, foot, rad, fl, off = c.on, c.foot, c.rad, c.fl, c.off
         for i = 1, RINGS do
-          if c.on[i] then
-            local f, ri = c.foot[i], c.rad[i]
-            local bi = ri*c.fl[i]*0.8
+          if on[i] then
+            local f, ri = foot[i], rad[i]
+            local bi = ri*fl[i]*0.8
             -- the cells the reach of any ring of radius <= R0 can touch
             local Rq = (ri + R0)*0.9
             local fx, fy, fz = f[1], f[2], f[3]
-            for ix = floor((fx - Rq)/GC), floor((fx + Rq)/GC) do for iy = floor((fy - Rq)/GC), floor((fy + Rq)/GC) do for iz = floor((fz - Rq)/GC), floor((fz + Rq)/GC) do
-              local list = grid[gkey(ix, iy, iz)]
-              if list then
-                for q = 1, #list, 2 do
-                  local o, m = list[q], list[q + 1]
-                  local g = o.foot[m]
-                  local ex, ey, ez = fx - g[1], fy - g[2], fz - g[3]
-                  local Dl = (ri + o.rad[m])*0.9
-                  local d2 = ex*ex + ey*ey + ez*ez
-                  if d2 < Dl*Dl then
-                    local need = (o.hgt[m] + (bi + o.rad[m]*o.fl[m])*sqrt(1 - d2/(Dl*Dl)) - c.off[i])*LIFT_K
-                    if need > Lf[i] then Lf[i] = F32(need) end
+            local x0, x1 = floor((fx - Rq)/GC), floor((fx + Rq)/GC)
+            local y0, y1 = floor((fy - Rq)/GC), floor((fy + Rq)/GC)
+            local z0, z1 = floor((fz - Rq)/GC), floor((fz + Rq)/GC)
+            local best = Lf[i]
+            for ix = x0, x1 do
+              local kx = (ix + 512)*1048576
+              for iy = y0, y1 do
+                local kxy = kx + (iy + 512)*1024
+                for iz = z0, z1 do
+                  local key = kxy + (iz + 512)
+                  if G_STAMP[key] == stamp then
+                    local list = G_LIST[key]
+                    for q = 1, list.n, 2 do
+                      local o, m = list[q], list[q + 1]
+                      local g = o.foot[m]
+                      local ex, ey, ez = fx - g[1], fy - g[2], fz - g[3]
+                      local orad = o.rad[m]
+                      local Dl = (ri + orad)*0.9
+                      local d2 = ex*ex + ey*ey + ez*ez
+                      if d2 < Dl*Dl then
+                        local need = (o.hgt[m] + (bi + orad*o.fl[m])*sqrt(1 - d2/(Dl*Dl)) - off[i])*LIFT_K
+                        if need > best then best = F32(need) end
+                      end
+                    end
                   end
                 end
               end
-            end end end
+            end
+            Lf[i] = best
           end
         end
       end
@@ -725,9 +752,11 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
         if c.on[m] then
           local g = c.foot[m]
           local key = gkey(floor(g[1]/GC), floor(g[2]/GC), floor(g[3]/GC))
-          local list = grid[key]
-          if not list then list = {}; grid[key] = list end
-          list[#list + 1] = c; list[#list + 1] = m
+          local list = G_LIST[key]
+          if not list then list = { n = 0 }; G_LIST[key] = list end
+          if G_STAMP[key] ~= stamp then G_STAMP[key] = stamp; list.n = 0 end
+          local n = list.n
+          list[n + 1] = c; list[n + 2] = m; list.n = n + 2
         end
       end
     end
@@ -753,6 +782,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
 
   -- the spine: points along the trail by arc length, the front raised into a neck curve
   local function build(s)
+    local bl = PROF_S.fine and perf_time()
     local acc, ti = 0, 0
     local sc, fx = s.scale, s.fx
     local f = s.leak*1.12
@@ -767,12 +797,20 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
         if fx.glow then GL[i + 1] = F32(max(GL[i + 1], fx.glow(i))) end
       end
     end
+    bl = PROF_S.lap('s.b.rk', bl)
     if s.coil then coil_place(s)
     else
+      -- (2026-10-16, Phylactery 19) the same numbers with less around them: what is the same for every ring of this
+      -- snake (its sag and sink terms) or for this ring of every snake (LIFT_S) worked out once, the vectors written
+      -- field by field (Vector3:set / :copy are only that). ~3 us a ring natively, ~400 rings a frame.
       local trail = s.trail
       local NT = #trail
+      local sag_k = 1 - smoothstep(0, 1, s.sag)
+      local sink = sink_depth(s)
+      local spine, radii = s.spine, s.radii
+      local ux, uy, uz = UP.x, UP.y, UP.z
       for i = 0, RINGS - 1 do
-        UU[i + 1]:copy(UP)
+        local uu = UU[i + 1]; uu.x, uu.y, uu.z = ux, uy, uz
         local target = SA[i + 1]
         local x, z = trail[NT][1], trail[NT][2]
         while ti < NT - 1 do
@@ -788,18 +826,21 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
           if l and l > 0 then local ff = (target - acc)/l; x = b[1] + (b[1] - a[1])*ff; z = b[2] + (b[2] - a[2])*ff end
         end
         local r = R0*RAD[i + 1]*sc*RK[i + 1]
-        local lift = RAISE*smoothstep(RAISE_LEN, 0.05, target)*sc*(1 - smoothstep(0, 1, s.sag))
+        local lift = RAISE*LIFT_S[i + 1]*sc*sag_k
         SH[1], SH[2], SH[3] = 0, 0, 0
         if fx then
           if fx.sag ~= nil then lift = lift*(1 - fx.sag) end
           if fx.lift then lift = lift + fx.lift(i) end
           if fx.shift then fx.shift(i, SH) end
         end
-        P[i + 1]:set(x + SH[1], ground(x, z) + R0*RAD[i + 1]*sc*FLAT[i + 1] + lift + SH[2] - sink_depth(s), z + SH[3])
-        if fx and fx.place then fx.place(i, P[i + 1]) end
-        s.spine[i + 1]:copy(P[i + 1]); s.radii[i + 1] = F32(r)
+        local p = P[i + 1]
+        p.x, p.y, p.z = x + SH[1], ground(x, z) + R0*RAD[i + 1]*sc*FLAT[i + 1] + lift + SH[2] - sink, z + SH[3]
+        if fx and fx.place then fx.place(i, p) end
+        local q = spine[i + 1]; q.x, q.y, q.z = p.x, p.y, p.z
+        radii[i + 1] = F32(r)
       end
     end
+    bl = PROF_S.lap('s.b.spine', bl)
     local glowing = s.leak > 0 or (fx and fx.glow)
     local charred = s.burn or s.burnt or (fx and fx.char)
     if charred or glowing or s.fxw then
@@ -816,9 +857,11 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
       ab.needs_update = true
       s.fxw = (charred or glowing) and true or false
     end
+    bl = PROF_S.lap('s.b.burn', bl)
     local pos, nor = s.m.geometry.attributes.position.array, s.m.geometry.attributes.normal.array
     for i = 1, RINGS do RR[i] = R0*RAD[i]*sc*RK[i] end
     gpu_tube(pos, nor, P, UU, RR, FLAT, TUBE)
+    bl = PROF_S.lap('s.b.tube', bl)
     local tip = RINGS*SIDES*3
     local en = tip + 3
     Tv:sub_vectors(P[1], P[2]):normalize()
@@ -842,6 +885,7 @@ function SN.create(R, cave, get_lich_pos, fire, count, seed, opts)
       e.position:copy(P[ei + 1]):add_scaled_vector(Bn, side*rr*0.8):add_scaled_vector(Nn, rr*0.18)
       e.scale:set_scalar(R0*0.12*sc*RK[ei + 1])
     end
+    PROF_S.lap('s.b.tail_eyes', bl)
   end
 
   local PROF = require('port.prof')

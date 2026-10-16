@@ -64,14 +64,21 @@ function C.ground_y(x, z)
   local r2 = x*x + z*z
   local r = sqrt(r2)
   local y = (noise_fbm3(x*0.21, 0, z*0.21, 91, 3) - 0.5)*0.7 + (noise_value3(x*0.9, 7.1, z*0.9, 93) - 0.5)*0.14
+  -- (2026-10-16, Phylactery 19: util's smoothstep and clamp written in place, the same operations)
   if r > 3.5 then
     local rid = 1 - abs(noise_fbm3(x*0.13, 3.3, z*0.13, 97, 2)*2 - 1)
-    y = y + rid^6*0.55*smoothstep(3.5, 7, r)
+    local t = (r - 3.5)/(7 - 3.5)
+    if t < 0 then t = 0 elseif t > 1 then t = 1 end
+    y = y + rid^6*0.55*(t*t*(3 - 2*t))
   else
     y = y + 0.0
   end
   y = y + MOUND*exp(-r2/4.0)
-  if r > 12.5 then y = y + smoothstep(12.5, 17.5, r)*1.4 else y = y + 0.0 end
+  if r > 12.5 then
+    local t = (r - 12.5)/(17.5 - 12.5)
+    if t < 0 then t = 0 elseif t > 1 then t = 1 end
+    y = y + (t*t*(3 - 2*t))*1.4
+  else y = y + 0.0 end
   return y
 end
 
