@@ -28,6 +28,7 @@ local FXM = require('port.fx')
 local GORE = require('port.gore')
 local WARP = require('port.warp')
 local SLAMFX = require('port.slam')     -- 2026-10-16: the ending's blast in warped air
+local PRISM = require('port.prism')     -- 2026-10-16: and the same force as glass you can see over the dark
 local PW = require('port.powers')
 local BEAM = require('port.beam')
 local LENS = require('port.lens')
@@ -132,7 +133,9 @@ function GM.create(R, hud_layer)
   local gore = GORE.create(R, cave, snakes, fx, U.run_rng(41))
   if VARIED then gore.set_settle(true) end     -- (2026-10-15: what comes to rest tips onto its side, gore.lua)
   local warp = WARP.create(R)
-  local slamfx = SLAMFX.create({ warp = warp, cave = cave })
+  local prism = PRISM.create(R, warp.K)
+  R.prism = prism
+  local slamfx = SLAMFX.create({ warp = warp, cave = cave, prism = prism })
   local powers = PW.create({ R = R, cave = cave, snakes = snakes, fx = fx, gore = gore, warp = warp, fire = fire, lich = lich, mover = mover, egg = EGG,
     get_L = function() return L end, rng = U.run_rng(29), varied = VARIED })
   G.powers = powers; G.fx = fx; G.gore = gore; G.warp = warp
@@ -301,7 +304,15 @@ function GM.create(R, hud_layer)
   -- thrown down and out (gore.burst's slam: `slam` m/s), the warped air hits the floor and runs out along it
   -- (port/slam.lua) and the egg's part begins (DIE's times count from here); he stands `beat` s, spent, and falls.
   local GEST = { start = 0.3, raise = 4.0, top = 0.35, down = 0.2, beat = 1.1, up = 3.6, snap = 3.2, sag = 0.07, shake = 0.05, reach = 0.55,
-    slam = { down = 4.0, out = 1.6 } }
+    slam = { down = 4.0, out = 1.6 },
+    -- (2026-10-16, his "the downwards move needs more oomph, his body/torso needs to react with it as well, he needs to
+    -- put all his force into it, could also use a camera pull downwards and an audio effect there as well"): his body
+    -- behind the blow (lich.lua m.force: wind = drawn up and back at the top, throw = thrown down with the stroke, spent =
+    -- held follow s past the blast, then
+    -- spent: still bent over it, straightening through the beat), the camera pulled down (pre = m it sinks with the stroke, kick = m/s down at the blast,
+    -- a spring of f Hz, damping z, eye and look-at (look x it) both), the lift's gravity sound with the stroke
+    wind = -0.3, throw = 1.2, follow = 0.2, spent = { 0.8, 0.0 },
+    cam = { pre = 0.1, kick = 5.5, f = 1.3, z = 0.55, look = 1.3 } }
   local function gest_to_blast() return GEST.start + GEST.raise + GEST.top + GEST.down end
   SEQ.label_n = 0
   G.SHOT = SHOT
@@ -432,6 +443,11 @@ function GM.create(R, hud_layer)
       eye = eye:clone():lerp(SEQ.eye, k)
       tgt = tgt:clone():lerp(SEQ.tgt, k)
       C.fov = C.fov + (SHOT.fov - C.fov)*k; C:update_projection_matrix()
+      -- (2026-10-16: pulled down with his last blow)
+      if SEQ.cdip then
+        eye = eye:clone(); eye.y = eye.y + SEQ.cdip.x
+        tgt = tgt:clone(); tgt.y = tgt.y + SEQ.cdip.x*GEST.cam.look
+      end
     end
     -- round 58: in on the egg as it rocks, until it hatches
     if SEQ.k2 > 0 and G.cam == 0 and not G.look then
@@ -882,6 +898,7 @@ function GM.create(R, hud_layer)
   -- hits the floor and runs out along it; his body goes down with the blow; the egg's part begins (it is free now)
   local function blast()
     SEQ.burst = SEQ.t; SEQ.k2 = 0
+    if SEQ.cdip then SEQ.cdip.to = 0; SEQ.cdip.v = SEQ.cdip.v - GEST.cam.kick end
     local nb = snakes.burst_all(gore.burst, { x = EGG.x, z = EGG.z, down = GEST.slam.down, out = GEST.slam.out })
     if nb > 0 then AU.play('mass_burst', { pos = { EGG.x, EGG.y + 0.4, EGG.z }, volume = min(1, 0.55 + 0.08*nb) }) end
     slamfx.hit(v(EGG.x, cave.ground_y(EGG.x, EGG.z), EGG.z))
@@ -920,8 +937,10 @@ function GM.create(R, hud_layer)
     local hl = sqrt(hx*hx + hz*hz)
     hx, hz = hx/hl, hz/hl
     local fx, fz = -ROOM_H.x, -ROOM_H.y
+    -- (2026-10-16: his reach starts where the hand he brought down points, ragdoll.lua reach_from)
+    local tip = lich.fingertip(1)
     SEQ.rag = RG.create(lich, { ground_y = cave.ground_y, egg = { x = EGG.x, y = EGG.y + 0.38, z = EGG.z, r = 0.36 },
-      reach = 2, reach_to = { EGG.x, EGG.y + 0.15, EGG.z },
+      reach = 2, reach_to = { EGG.x, EGG.y + 0.15, EGG.z }, reach_from = { tip.x, tip.y, tip.z },
       push = { -fx*DIE.back - hx*DIE.out, 0, -fz*DIE.back - hz*DIE.out } })
     AU.play('lich_die', { pos = L })
     lmask.drop(cave.ground_y)
@@ -1026,6 +1045,13 @@ function GM.create(R, hud_layer)
     -- (session 17) the egg's nest for its physics, worked out a piece a tick before he dies (eggphys.lua api.prepare)
     if ep and not SEQ.burst and not SEQ.egg_start then ep.prepare() end
     SEQ.falter = max(0, (SEQ.falter or 0) - dt/0.7)
+    -- (the camera's pull down with his blow: a spring, place_camera adds it)
+    local cd = SEQ.cdip
+    if cd then
+      local w, z = 2*pi*GEST.cam.f, GEST.cam.z
+      cd.v = cd.v + (w*w*(cd.to - cd.x) - 2*z*w*cd.v)*dt
+      cd.x = cd.x + cd.v*dt
+    end
     -- the camera follows the covering (never back, never faster than SHOT.rate of the way a second)
     local want = END.won and 1 or clamp(END.level/0.97, 0, 1)
     SEQ.k = min(1, SEQ.k + clamp(want - SEQ.k, 0, SHOT.rate*dt))
@@ -1050,6 +1076,18 @@ function GM.create(R, hud_layer)
           local gx, gz = EGG.x - ROOM_H.x*0.3, EGG.z - ROOM_H.y*0.3
           slamfx.gather(v(gx, cave.ground_y(gx, gz), gz), GEST.top + GEST.down)
         end
+        -- (his body behind the blow, the camera sinking with the stroke, its sound)
+        local top_at, stroke_at = GEST.raise, GEST.raise + GEST.top
+        local bt = SEQ.burst and SEQ.t - SEQ.burst
+        if bt and bt < GEST.follow then mover.motion.force = GEST.throw
+        elseif bt then mover.motion.force = GEST.spent[1] + (GEST.spent[2] - GEST.spent[1])*smoothstep(GEST.follow, GEST.beat, bt)
+        elseif tr >= stroke_at then mover.motion.force = GEST.throw
+        elseif tr >= top_at then mover.motion.force = GEST.wind*smoothstep(0, GEST.top, tr - top_at)
+        else mover.motion.force = nil end
+        if tr >= stroke_at and not SEQ.cdip then
+          SEQ.cdip = { x = 0, v = 0, to = -GEST.cam.pre }
+          AU.play('gest_slam', { pos = { EGG.x, EGG.y + 0.6, EGG.z } })
+        end
         if not SEQ.burst and tr >= GEST.raise + GEST.top + GEST.down then blast() end
         -- (spent: his pain lets go a little while he stands, then he falls)
         if SEQ.burst then
@@ -1062,7 +1100,7 @@ function GM.create(R, hud_layer)
     if SEQ.burst then
       local d = SEQ.t - SEQ.burst
       -- (dead: no hurt pose, no pointing; the rag doll sets his bones after the pose)
-      if SEQ.dead then lich.hurt.w = 0; lich.hurt.level = 0; mover.motion.point = nil end
+      if SEQ.dead then lich.hurt.w = 0; lich.hurt.level = 0; mover.motion.point = nil; mover.motion.force = nil end
       local H = SL.HATCH
       local open_at = DIE.zoom_at + DIE.hatch_k*DIE.zoom + H.crack_t
       local ht = SEQ.hatch and SEQ.t - SEQ.hatch or nil
@@ -1238,6 +1276,7 @@ function GM.create(R, hud_layer)
     fx.set_camera(R.world_camera, R.H)
     gore.set_camera(R.world_camera, R.H)
     warp.set_camera(R.world_camera, R.H)
+    prism.set_camera(R.world_camera, R.H)
     lap = PROF.lap('set_camera', lap)
     draw_hud()
     draw_over()

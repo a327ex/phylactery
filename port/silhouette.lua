@@ -149,6 +149,7 @@ in vec2 vUv;
 uniform sampler2D tFinal;
 uniform sampler2D tSil;
 uniform sampler2D tBlur;
+uniform sampler2D tPrism;
 uniform float uE, uDim, uBlur, uFade;
 uniform vec3 uFadeCol;
 out vec4 fragColor;
@@ -158,6 +159,9 @@ void main(){
   vec3 b = texture(tBlur, vUv).rgb;
   vec3 bg = mix(c, b, uBlur*uE)*mix(1.0, uDim, uE);
   vec3 o = mix(bg, c, max(s.r, max(s.g, s.b)));
+  // (2026-10-16, port/prism.lua) the force as glass: through it the frame undimmed, its rims' light over it
+  vec4 pr = texture(tPrism, vUv);
+  o = mix(o, c, clamp(pr.a, 0.0, 1.0)) + pr.rgb;
   fragColor = vec4(mix(o, uFadeCol, uFade*(1.0 - s.r)), 1.0);
 }
 ]]

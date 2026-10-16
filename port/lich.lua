@@ -148,7 +148,7 @@ function L.create(R, opts)
   local trail = 0
   local function SP(x) return { x = x or 0, v = 0, a = 0 } end
   local S = {
-    bp = SP(), br = SP(), py = SP(), cp = SP(), cr = SP(), cy = SP(), hp = SP(), hr = SP(), hy = SP(), jw = SP(),
+    bp = SP(), br = SP(), py = SP(), cp = SP(), cr = SP(), cy = SP(), hp = SP(), hr = SP(), hy = SP(), jw = SP(), fo = SP(),
     legs = { { p = SP(), r = SP(), k = SP(), an = SP(), tw = SP() }, { p = SP(), r = SP(), k = SP(), an = SP(), tw = SP() } },
     arms = {},
   }
@@ -249,6 +249,13 @@ function L.create(R, opts)
     spring(S.br, H(clamp(-0.035*ax*g, -0.24, 0.24), 0.08 + 0.07*wr2), 0.9, 0.75, air(t, 2, 0.9, 0.012*g), dt)
     spring(S.py, 0, 1.1, 0.45, -ya*0.05*g, dt)
     spring(S.jw, 0, 2.3, 0.22, (ay*8 + az*3.5)*g + air(t, 7, 2.3, 0.015*g), dt)
+    -- (2026-10-16, the ending's down-stroke, owner: "his body/torso needs to react with it as well, he needs to put all
+    -- his force into it"): m.force, his whole body behind the blow (game.lua GEST): below 0 he draws himself up and back
+    -- (the wind-up), 1 thrown forward and down over the arm he brings down, his knees giving, the other arm flung back.
+    -- A fast spring that overshoots a little (the blow's follow-through); nil = 0 (never set outside the ending)
+    spring(S.fo, m.force or 0, 3.4, 0.42, 0, dt)
+    local fo = S.fo.x
+    local fd = max(0, fo)
     local JAW0 = H(0.07 + max(0, sin(t*0.45))*0.04, 0.26 + 0.1*lv + 0.04*wr3)
     if JAW0 + S.jw.x < 0.0 then S.jw.x = -JAW0; if S.jw.v < 0 then S.jw.v = -S.jw.v*0.3 end end
     if JAW0 + S.jw.x > 0.42 then S.jw.x = 0.42 - JAW0; if S.jw.v > 0 then S.jw.v = 0 end end
@@ -273,9 +280,9 @@ function L.create(R, opts)
       local k = l.s > 0 and 1 or 0
       local Lg = S.legs[k + 1]
       local stagger = l.s > 0 and 0.07 or 0
-      l.hip.rotation:set(clamp(H(0.1 + stagger, -0.34 - 0.1*lv + (k == 1 and -0.12 or 0.06) + 0.05*wr2*(k == 1 and 1 or -1)) + Lg.p.x + HURT.legs.x, -0.9, 0.9),
+      l.hip.rotation:set(clamp(H(0.1 + stagger, -0.34 - 0.1*lv + (k == 1 and -0.12 or 0.06) + 0.05*wr2*(k == 1 and 1 or -1)) + Lg.p.x + HURT.legs.x - 0.32*fd, -0.9, 0.9),
         clamp(Lg.tw.x, -0.2, 0.2), H(-0.02*l.s, 0.05*l.s) + clamp(k == 1 and r1 or r0, -0.4, 0.4))
-      l.kn.rotation:set(clamp(H(0.2 + stagger*0.5, 0.62 + 0.2*lv + (k == 1 and 0.3 or 0)) + Lg.k.x - 0.6*HURT.legs.x, 0.03, 1.5), 0, 0.015*l.s)
+      l.kn.rotation:set(clamp(H(0.2 + stagger*0.5, 0.62 + 0.2*lv + (k == 1 and 0.3 or 0)) + Lg.k.x - 0.6*HURT.legs.x + 0.5*fd, 0.03, 1.5), 0, 0.015*l.s)
       l.an.rotation:set(clamp(H(1.0, 1.22) + Lg.an.x, 0.55, 1.45), 0, 0)
     end
 
@@ -310,7 +317,8 @@ function L.create(R, opts)
       local roll = s*max(mix(-0.08, -0.45, pt), s*Q.r.x)
       local rc = RC[k0 + 1]
       local tr = rc.press*sin(t*31 + k0*2)*0.012 + trem(k0*3)*1.4
-      rc.sh = clamp(Q.p.x + rc.p.x + tr, -2.4, 1.0); rc.el = clamp(Q.e.x + rc.e.x + trem(k0*3 + 1)*1.6, -1.9, -0.05)
+      local fling = (m.point and m.point.arm ~= k0) and 0.6*fd or 0       -- (the other arm flung back with the blow)
+      rc.sh = clamp(Q.p.x + rc.p.x + tr + fling, -2.4, 1.0); rc.el = clamp(Q.e.x + rc.e.x + trem(k0*3 + 1)*1.6, -1.9, -0.05)
       Ar.sh.rotation:set(clamp(Q.p.x, -2.4, 1.0), clamp(Q.t.x, -0.35, 0.35), base_r + roll)
       Ar.el.rotation:set(clamp(Q.e.x, -1.9, -0.05), 0, 0)
       Ar.wr.rotation:set(clamp(Q.w.x, -0.9, 0.7), -s*(s < 0 and 0.9 or 1.25), 0)
@@ -331,13 +339,13 @@ function L.create(R, opts)
       Ar.thumb[2].rotation:set(0, 0, -s*(0.3 + 0.5*fw))
     end
 
-    body.position.y = hw ~= 0 and (-hw*(0.07 + 0.2*lv) + HURT.drop.x + hw*0.025*wr2) or 0
-    body.rotation:set(0.1 + S.bp.x, 0, S.br.x)
+    body.position.y = (hw ~= 0 and (-hw*(0.07 + 0.2*lv) + HURT.drop.x + hw*0.025*wr2) or 0) - 0.09*fd + 0.035*max(0, -fo)
+    body.rotation:set(0.1 + S.bp.x + 0.2*fo, 0, S.br.x)
     pelvis.rotation:set(0, S.py.x, 0)
-    spine.rotation:set(0.04 + S.cp.x*0.5, -S.py.x*0.75 + S.cy.x*0.45, S.cr.x*0.5)
-    chest.rotation:set(0.03 + S.cp.x*0.5, S.cy.x*0.55, S.cr.x*0.5)
-    neck.rotation:set(0.04 + S.hp.x*0.3, S.hy.x*0.3, S.hr.x*0.3)
-    head.rotation:set(-0.02 + S.hp.x*0.7 + trem(20), S.hy.x*0.7 + trem(21)*0.7, S.hr.x*0.7)
+    spine.rotation:set(0.04 + S.cp.x*0.5 + 0.6*fo, -S.py.x*0.75 + S.cy.x*0.45, S.cr.x*0.5)
+    chest.rotation:set(0.03 + S.cp.x*0.5 + 0.4*fo, S.cy.x*0.55, S.cr.x*0.5)
+    neck.rotation:set(0.04 + S.hp.x*0.3 + 0.15*fo, S.hy.x*0.3, S.hr.x*0.3)
+    head.rotation:set(-0.02 + S.hp.x*0.7 + trem(20) + 0.3*fo, S.hy.x*0.7 + trem(21)*0.7, S.hr.x*0.7)
     jaw.rotation.x = JAW0 + S.jw.x
 
     for k0 = 0, 1 do

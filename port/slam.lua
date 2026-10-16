@@ -9,6 +9,10 @@
   faster, onto it (they land at the moment of the blast), then at the blast (slam.hit) rings of warped air that run out
   along the floor and streaks that skim it outward, with puffs rolling after them. Its own draws (U.run_rng(911)):
   nothing else's sequence moves.
+
+  2026-10-16, his "I also didn't see the telekinetic visual, I think here it can be more prismatic and lens transparent
+  because the background is all black": each streak also carries a ribbon of glass (port/prism.lua) on the same points,
+  SL.GLASS.w times as wide, as strong as SL.GLASS.a of it: seen over the dark, the world undimmed inside it.
 ]]
 local TM = require('port.three.math')
 local U = require('port.util')
@@ -23,13 +27,21 @@ SL.COLUMN = { n = 22, r0 = 0.0, r1 = 0.8, h0 = 2.6, h1 = 3.8, len = { 0.8, 1.3 }
 SL.RINGS = { n = 3, r0 = 0.45, r1 = 4.6, T = { 0.85, 1.0, 1.2 }, gap = 0.07, w = 0.26, amp = 6.5, chroma = 1.2 }
 SL.SKIM = { n = 22, r0 = 0.55, speed = { 4.5, 7.0 }, life = { 0.45, 0.7 }, len = { 0.5, 0.9 }, w = { 0.1, 0.16 }, amp = { 5.0, 6.5 } }
 SL.PUFFS = { n = 14, r0 = 0.7, speed = { 2.2, 3.4 }, life = { 0.6, 0.9 } }
+-- the glass on them (port/prism.lua): how much wider than the warped air, how strong (column, rings, skims)
+SL.GLASS = { w = { 1.7, 1.0, 1.3 }, a = { 1.0, 0.35, 0.5 } }
 
 function SL.create(ctx)
-  local warp, cave = ctx.warp, ctx.cave
+  local warp, cave, prism = ctx.warp, ctx.cave, ctx.prism
   local rng = U.run_rng(911)
   local K = warp.K
   local column, rings, skims = {}, {}, {}
   local slam = {}
+  local clock = 0
+  local function glass(s, kind)
+    if not prism then return nil end
+    return prism.ribbon(s.pts, s.w*SL.GLASS.w[kind], s.ph)
+  end
+  local function done(q) warp.release(q.s); if q.gl then prism.release(q.gl) end end
 
   -- the column: each streak's foot on the floor round the egg, its head falling from h0 to the floor in `T` s (eased in:
   -- slow while he holds his hand up, then fast with it), its tail `len` behind (above) it, a slow sway as it falls
@@ -42,7 +54,7 @@ function SL.create(ctx)
       local x, z = c.x + cos(a)*r, c.z + sin(a)*r
       s.w = rng.float(C.w[1], C.w[2]); s.amp = rng.float(C.amp[1], C.amp[2]); s.chroma = rng.float(0.9, 1.25); s.a = 0
       column[#column + 1] = { s = s, x = x, z = z, g = cave.ground_y(x, z) + 0.04, h = c.y + rng.float(C.h0, C.h1), len = rng.float(C.len[1], C.len[2]),
-        T = T*rng.float(0.94, 1.0), t = 0, ph = rng.float(0, 2*pi), out = rng.float(0.15, 0.4), a = a }
+        T = T*rng.float(0.94, 1.0), t = 0, ph = rng.float(0, 2*pi), out = rng.float(0.15, 0.4), a = a, gl = glass(s, 1) }
     end
   end
 
@@ -51,7 +63,7 @@ function SL.create(ctx)
     if not s then return end
     local R = SL.RINGS
     s.w = R.w; s.amp = R.amp; s.chroma = R.chroma; s.a = 0
-    rings[#rings + 1] = { s = s, c = c, t = -(i - 1)*R.gap, T = R.T[i] or R.T[#R.T] }
+    rings[#rings + 1] = { s = s, c = c, t = -(i - 1)*R.gap, T = R.T[i] or R.T[#R.T], gl = glass(s, 2) }
   end
 
   -- the blast: rings out along the floor, streaks skimming it outward, puffs rolling after them
@@ -64,7 +76,7 @@ function SL.create(ctx)
       local a = (k - 1)/SK.n*2*pi + rng.spread(0.12)
       s.w = rng.float(SK.w[1], SK.w[2]); s.amp = rng.float(SK.amp[1], SK.amp[2]); s.chroma = rng.float(0.9, 1.2); s.a = 0
       skims[#skims + 1] = { s = s, c = c, a = a, sp = rng.float(SK.speed[1], SK.speed[2]), life = rng.float(SK.life[1], SK.life[2]),
-        len = rng.float(SK.len[1], SK.len[2]), curl = rng.spread(0.5), t = 0 }
+        len = rng.float(SK.len[1], SK.len[2]), curl = rng.spread(0.5), t = 0, gl = glass(s, 3) }
     end
     for _ = 1, PF.n do
       local a = rng.float(0, 2*pi)
@@ -76,6 +88,7 @@ function SL.create(ctx)
   end
 
   function slam.update(dt)
+    clock = clock + dt
     for i = #column, 1, -1 do
       local q = column[i]
       q.t = q.t + dt
@@ -94,7 +107,8 @@ function SL.create(ctx)
       end
       local after = q.t - q.T
       q.s.a = smoothstep(0, 0.12, q.t)*(after > 0 and 1 - smoothstep(0, 0.14, after) or 1)
-      if after >= 0.14 then warp.release(q.s); table.remove(column, i) end
+      if q.gl then q.gl.a = q.s.a*SL.GLASS.a[1] end
+      if after >= 0.14 then done(q); table.remove(column, i) end
     end
     for i = #rings, 1, -1 do
       local q = rings[i]
@@ -110,8 +124,9 @@ function SL.create(ctx)
           p.y = cave.ground_y(p.x, p.z) + 0.07
         end
         q.s.a = smoothstep(0, 0.06, u)*(1 - smoothstep(0.55, 1, u))
+        if q.gl then q.gl.a = q.s.a*SL.GLASS.a[2] end
       end
-      if u >= 1 then warp.release(q.s); table.remove(rings, i) end
+      if u >= 1 then done(q); table.remove(rings, i) end
     end
     for i = #skims, 1, -1 do
       local q = skims[i]
@@ -127,8 +142,10 @@ function SL.create(ctx)
         p:set(x, cave.ground_y(x, z) + 0.1 + 0.04*(d - SL.SKIM.r0)*u, z)
       end
       q.s.a = smoothstep(0, 0.06, q.t)*(1 - smoothstep(0.6, 1, u))
-      if u >= 1 then warp.release(q.s); table.remove(skims, i) end
+      if q.gl then q.gl.a = q.s.a*SL.GLASS.a[3] end
+      if u >= 1 then done(q); table.remove(skims, i) end
     end
+    if prism then prism.update(clock) end
   end
   function slam.busy() return #column + #rings + #skims > 0 end
   return slam

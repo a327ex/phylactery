@@ -32,6 +32,7 @@ function P.create(opts)
   local rt_final = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
   local rt_freeze = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
   local rt_comp = RD.RenderTarget.new(W, H, { type = 'byte', min_filter = 'nearest', mag_filter = 'nearest', depth = false })   -- (round 57)
+  local rt_prism = RD.RenderTarget.new(W, H, { type = 'half', min_filter = 'nearest', mag_filter = 'nearest', depth = false })  -- (2026-10-16, port/prism.lua)
   -- round 59: the frame small and blurred, for the ending's background
   local rt_sb_a = RD.RenderTarget.new(W//4, H//4, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
   local rt_sb_b = RD.RenderTarget.new(W//4, H//4, { type = 'byte', min_filter = 'linear', mag_filter = 'linear', depth = false })
@@ -100,7 +101,8 @@ function P.create(opts)
   local copy_mat = mk('post.copy', { tSrc = { value = rt_final.texture } })
   local comp_mat = mk('sil.comp', { tFinal = { value = rt_final.texture }, tSil = { value = black }, uE = { value = 0 },
     tBlur = { value = rt_sb_a.texture }, uDim = { value = 1 }, uBlur = { value = 0 },   -- (round 57/59)
-    uFade = { value = 0 }, uFadeCol = { value = Vector3.new(0, 0, 0) } })                  -- (round 62)
+    uFade = { value = 0 }, uFadeCol = { value = Vector3.new(0, 0, 0) },                    -- (round 62)
+    tPrism = { value = black } })                                                          -- (2026-10-16)
   R.hook_uniforms = {}
   function R.rebuild() for k, v in pairs(R.hook_uniforms) do U[k] = v end end
 
@@ -207,6 +209,14 @@ function P.create(opts)
       comp_mat.uniforms.uE.value = sl.e
       comp_mat.uniforms.uFade.value = sl.fade
       comp_mat.uniforms.uFadeCol.value:set(sl.fade_col[1], sl.fade_col[2], sl.fade_col[3])
+      -- (2026-10-16, port/prism.lua: the force he brings down, as glass over the finished frame)
+      local pr = R.prism
+      if pr and pr.active() then
+        renderer:set_render_target(rt_prism)
+        renderer:set_clear_color(0x000000, 0)
+        renderer:render(pr.scene, wc)
+        comp_mat.uniforms.tPrism.value = rt_prism.texture
+      else comp_mat.uniforms.tPrism.value = black end
       pass(comp_mat, rt_comp)
       R.out = rt_comp
     end

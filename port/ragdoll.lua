@@ -22,9 +22,10 @@ RG.FRICTION = 0.45              -- of the sideways velocity kept at each contact
 -- the slump (ragdoll.create): a straight knee's hip-ankle length times `knee`, the chest to the knees times `hip`, the
 -- pelvis to the skull times `spine`, the free arm's shoulder-wrist times `elbow`; all as soft as `k`
 RG.SLUMP = { knee = 0.86, hip = 0.9, spine = 0.95, elbow = 0.8, k = 0.06 }
+RG.REACH_T = 1.4                -- (opts.reach_from: how long the reach takes to turn to reach_to)
 
 -- opts: ground_y(x, z), egg = { x, y, z, r }, reach = arm index (1 or 2) or nil, reach_to = { x, y, z } (a point to
--- reach toward), push = { x, y, z } (m/s on the upper body as he goes), turn = { x, y, z } (m/s on the camera-side
+-- reach toward), reach_from = { x, y, z } (where it reaches at first, nil: reach_to from the start), push = { x, y, z } (m/s on the upper body as he goes), turn = { x, y, z } (m/s on the camera-side
 -- shoulder, to turn him as he falls)
 function RG.create(lich, opts)
   local N = lich.nodes
@@ -147,7 +148,18 @@ function RG.create(lich, opts)
         -- much (a muscle, not a hand from outside: round 59b found the old one-sided pull dragging his whole body across
         -- the floor to the egg); strong as he falls, holding after
         local s = p('sh' .. R)
-        local tx, ty, tz = opts.reach_to[1] - s.x, opts.reach_to[2] - s.y, opts.reach_to[3] - s.z
+        -- (2026-10-16: reach_from, where his hand was when he died; the point it reaches for slides from there to reach_to
+        -- over RG.REACH_T s. His last gesture leaves the arm pointing down at the floor, and pulled at once toward the egg
+        -- it swung up against the floor's friction and threw him 1.5-3.5 m across it, up to 26 m/s)
+        local rt = opts.reach_to
+        local rf = opts.reach_from
+        local rx, ry, rz = rt[1], rt[2], rt[3]
+        if rf then
+          local u = min(1, rag.t/RG.REACH_T)
+          u = u*u*(3 - 2*u)
+          rx, ry, rz = rf[1] + (rx - rf[1])*u, rf[2] + (ry - rf[2])*u, rf[3] + (rz - rf[3])*u
+        end
+        local tx, ty, tz = rx - s.x, ry - s.y, rz - s.z
         local l = sqrt(tx*tx + ty*ty + tz*tz)
         local fk = 1 - 0.7*min(1, max(0, (rag.t - 1.0)/1.0))
         if l > 1e-6 then

@@ -242,6 +242,24 @@ return {
     ["vol"] = 0.7,
     ["width"] = 0.5,
   },
+  ["gest_slam"] = {
+    ["files"] = {
+      "assets/sfx/lift_cast_4.ogg",
+    },
+    ["per"] = {
+      ["assets/sfx/lift_cast_4.ogg"] = {
+        ["sr"] = 3,
+        ["vol"] = 0.5,
+      },
+    },
+    ["pitch_hi"] = 0.82,
+    ["pitch_lo"] = 0.82,
+    ["reverb"] = 0.45,
+    ["src"] = {
+      "Pixel Magic Sound Effects Pack/PM_SPELL_Cast14_Gravity_Ball.wav",
+    },
+    ["vol"] = 1.0,
+  },
   ["gore_crush"] = {
     ["files"] = {
       "assets/sfx/gore_crush_1.ogg",

@@ -57,6 +57,7 @@ do
     return src
   end })
   require('port.silhouette').add_programs(lib)     -- (round 57: its own programs, under three.js-style keys)
+  require('port.prism').add_programs(lib)          -- (2026-10-16: the ending's force as glass)
   G.programs = lib
 end
 
