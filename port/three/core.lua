@@ -96,6 +96,7 @@ function Object3D:update_matrix_world(force)
     if self.matrix_world_auto_update then
       if self.parent == nil then self.matrix_world:copy(self.matrix)
       else self.matrix_world:multiply_matrices(self.parent.matrix_world, self.matrix) end
+      self._wv = (self._wv or 0) + 1      -- (2026-10-16: its world matrix was worked out again: the renderer's caches)
     end
     self.matrix_world_needs_update = false
     force = true
@@ -104,13 +105,24 @@ function Object3D:update_matrix_world(force)
   for i = 1, #ch do ch[i]:update_matrix_world(force) end
   if self.on_after_matrix_world then self:on_after_matrix_world() end
 end
+-- (2026-10-16, Phylactery 19) as three.js, but the local matrix is composed again only when its position, rotation or
+-- scale moved since the last compose (update_matrix_world's rule): the game's world-position lookups walk up to the
+-- scene, and composing every ancestor flagged the scene itself, so the next render recomputed the world matrix of
+-- every object in it (~250 a frame) from the same numbers to the same matrices
 function Object3D:update_world_matrix(update_parents, update_children)
   local parent = self.parent
   if update_parents and parent then parent:update_world_matrix(true, false) end
-  if self.matrix_auto_update then self:update_matrix() end
+  if self.matrix_auto_update then
+    local p, q, sc, c = self.position, self.quaternion, self.scale, self._mc
+    if not c or c[1] ~= p.x or c[2] ~= p.y or c[3] ~= p.z or c[4] ~= q._x or c[5] ~= q._y or c[6] ~= q._z or c[7] ~= q._w
+      or c[8] ~= sc.x or c[9] ~= sc.y or c[10] ~= sc.z then
+      self:update_matrix()
+    end
+  end
   if self.matrix_world_auto_update then
     if parent == nil then self.matrix_world:copy(self.matrix)
     else self.matrix_world:multiply_matrices(parent.matrix_world, self.matrix) end
+    self._wv = (self._wv or 0) + 1
   end
   if update_children then
     for _, c in ipairs(self.children) do c:update_world_matrix(false, true) end
@@ -355,6 +367,17 @@ function BufferAttribute:ensure_array()
   for i = 1, n do arr[i] = unpack(fmt, b, (i - 1)*4 + 1) end
   self.array = arr
   return arr
+end
+-- (2026-10-16, Phylactery 19) elements lo..hi (0-based, inclusive) were rewritten since the last upload: only they go
+-- up (the renderer, with an engine that has gpu_mesh_update_range; without one, the whole array). needs_update = true
+-- still sends everything. A writer that marks must mark every element it changed.
+function BufferAttribute:mark(lo, hi)
+  local a, b = self.range_lo, self.range_hi
+  if not a then self.range_lo, self.range_hi = lo, hi
+  else
+    if lo < a then self.range_lo = lo end
+    if hi > b then self.range_hi = hi end
+  end
 end
 function BufferAttribute:get_x(i) return (self.array or self:ensure_array())[i*self.item_size + 1] end
 function BufferAttribute:get_y(i) return (self.array or self:ensure_array())[i*self.item_size + 2] end

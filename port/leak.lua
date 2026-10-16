@@ -127,9 +127,11 @@ function LK.create(ctx)
   end
   local function update_flakes(t, dt)
     local ic = fmesh.instance_color.array
+    local lo, hi = nil, nil      -- (2026-10-16, Phylactery 19: only the flakes written go up, not all of them every tick)
     for i = 0, FN - 1 do
       local f = FL[i + 1]
       if f.life > 0 then
+        if not lo then lo = i end; hi = i
         f.life = f.life - dt; f.t = f.t + dt
         local u = f.t/f.max
         local dx, dz = f.x - f.cx, f.z - f.cz
@@ -153,7 +155,7 @@ function LK.create(ctx)
         end
       end
     end
-    fmesh.instance_matrix.needs_update = true; fmesh.instance_color.needs_update = true
+    if lo then fmesh.instance_matrix:mark(lo, hi); fmesh.instance_color:mark(lo, hi) end
   end
 
   local function smoke(p, big)

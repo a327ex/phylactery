@@ -70,7 +70,16 @@ function RD.new(opts)
     info = { draws = 0, programs = 0 },
   }, Renderer)
   r.depth_material = MAT.MeshDepthMaterial.new({ name = 'depth' })
-  r._set = function(n, v) gpu_set(r._prog, n, v) end
+  -- (2026-10-16, Phylactery 19) a uniform the program does not have (gpu_set false: optimized out, or never in its
+  -- source) is remembered per program and not asked for again: a material's refresh names 50-80 uniforms and many
+  -- are absent from its program (the maps it has none of, the physical terms a Lambert lacks). The same GL state.
+  r._absent = {}
+  r._absent_cur = {}
+  r._set = function(n, v)
+    local ab = r._absent_cur
+    if ab[n] then return end
+    if not gpu_set(r._prog, n, v) then ab[n] = true end
+  end
   return r
 end
 
@@ -191,19 +200,27 @@ local function light_state(lights, camera, L)
 end
 
 -- ---------------------------------------------------------------------------- geometry upload
+local update_range = gpu_mesh_update_range      -- (2026-10-16: an engine without it sends a marked attribute whole)
 local function up(m, sizes, name, a, divisor)
   local n = a.array and #a.array or #a.blob
   if sizes[name] ~= n then
     gpu_mesh_attr(m, name, a.item_size, a.array or a.blob, divisor, a.dynamic)
-    sizes[name] = n; a.needs_update = false
-  elseif a.needs_update then
+    sizes[name] = n; a.needs_update = false; a.range_lo = nil
+  elseif a.needs_update or a.range_lo then
     local t0 = PROF.fine and perf_time()
-    gpu_mesh_update(m, name, a.array)
-    a.needs_update = false
+    local sent = n
+    if not a.needs_update and update_range then
+      local k = a.item_size
+      sent = (a.range_hi - a.range_lo + 1)*k
+      update_range(m, name, a.array, a.range_lo*k, sent)
+    else
+      gpu_mesh_update(m, name, a.array)
+    end
+    a.needs_update = false; a.range_lo = nil
     if t0 then
       local k = '~' .. tostring(PROF.cur_obj) .. '.' .. name
       PROF.t[k] = (PROF.t[k] or 0) + (perf_time() - t0)
-      PROF.t['#floats_up'] = (PROF.t['#floats_up'] or 0) + n/1000
+      PROF.t['#floats_up'] = (PROF.t['#floats_up'] or 0) + sent/1000
     end
   end
 end
@@ -347,6 +364,9 @@ function Renderer:draw(camera, scene_tag, object, geometry, material, group, sid
   local tr = self.trace and {} or nil
   local set
   self._prog = prog
+  local ab = self._absent[key]          -- (by the program's key: a pointer could be reused by another program)
+  if not ab then ab = {}; self._absent[key] = ab end
+  self._absent_cur = ab
   if tr then set = function(n, v)
       if gpu_set(prog, n, v) then
         if type(v) == 'table' then local c = {}; for k, x in pairs(v) do c[k] = x end; v = c end
@@ -376,11 +396,24 @@ function Renderer:draw(camera, scene_tag, object, geometry, material, group, sid
   lap = PROF.lap('d.uni_cam_mat', lap)
   set('receiveShadow', object.receive_shadow)
   set('modelViewMatrix', object.model_view_matrix.elements)
-  set('normalMatrix', object.normal_matrix.elements)
+  -- (2026-10-16, Phylactery 19) the normal matrix is worked out here, from the model-view matrix the caller just set,
+  -- and only for a program that has the uniform (or might: not yet asked): the depth programs and most of the
+  -- effects' never read it, and it was an inverse at every one of their draws
+  if tr or not ab.normalMatrix then
+    if object._nm_stale then object.normal_matrix:get_normal_matrix(object.model_view_matrix); object._nm_stale = false end
+    set('normalMatrix', object.normal_matrix.elements)
+  end
   set('modelMatrix', object.matrix_world.elements)
   lap = PROF.lap('d.uni_obj', lap)
-  -- state and the call
-  local front_cw = object.is_mesh and object.matrix_world:determinant() < 0
+  -- state and the call (a mirrored object faces the other way: its world matrix's determinant, once per render for
+  -- each object inside render(), whose passes draw it with the same world matrix)
+  local front_cw = false
+  if object.is_mesh then
+    if self._in_render then
+      if object._det_n ~= self._render_n then object._det_neg = object.matrix_world:determinant() < 0; object._det_n = self._render_n end
+      front_cw = object._det_neg
+    else front_cw = object.matrix_world:determinant() < 0 end
+  end
   local o = draw_state(material, side, front_cw, tr and {} or _o)
   o.first, o.count = draw_start, count
   if object.is_points then o.mode = 'points' else o.mode = 'triangles' end
@@ -396,7 +429,7 @@ end
 -- renderObject: the view matrices, then one draw (a transparent double-sided material: back, then front)
 function Renderer:render_object(camera, scene_tag, object, geometry, material, group, lights, pass)
   object.model_view_matrix:multiply_matrices(camera.matrix_world_inverse, object.matrix_world)
-  object.normal_matrix:get_normal_matrix(object.model_view_matrix)
+  object._nm_stale = true            -- (its normal matrix: in draw, when a program needs it)
   if object.on_before_render then object:on_before_render(self, camera, geometry, material) end
   if material.transparent and material.side == MAT.DoubleSide and not material.force_single_pass then
     self:draw(camera, scene_tag, object, geometry, material, group, MAT.BackSide, lights, pass)
@@ -476,16 +509,33 @@ local function sphere_of(o)
   return g.bounding_sphere or g:compute_bounding_sphere()
 end
 RD.sphere_of = sphere_of
--- Frustum.intersectsObject
-local function in_frustum(F, o)
-  local bs = sphere_of(o)
-  local c, mw = bs.center, o.matrix_world
+-- (2026-10-16, Phylactery 19) an object's bounding sphere in the world, kept while its world matrix (its _wv, bumped
+-- wherever core.lua works one out) and the sphere's numbers are what they were: the frustum tests (the camera's, the
+-- shadow camera's) and the sort's depth worked the same centre out again for every still object every frame.
+-- -> the culling centre and radius (Frustum.intersectsObject's), and the sort's centre (x, y, z, w, no divide)
+local function world_sphere(o, bs)
+  local q = o._ws
+  local wv, c = o._wv, bs.center
+  if q and wv and q.wv == wv and q.bs == bs and q.r0 == bs.radius and q.cx == c.x and q.cy == c.y and q.cz == c.z then return q end
+  if not q then q = {}; o._ws = q end
+  local mw = o.matrix_world
   local e = mw.elements
   local w = 1/(e[4]*c.x + e[8]*c.y + e[12]*c.z + e[16])
-  local x = (e[1]*c.x + e[5]*c.y + e[9]*c.z + e[13])*w
-  local y = (e[2]*c.x + e[6]*c.y + e[10]*c.z + e[14])*w
-  local z = (e[3]*c.x + e[7]*c.y + e[11]*c.z + e[15])*w
-  local r = bs.radius*mw:get_max_scale_on_axis()
+  q.fx = (e[1]*c.x + e[5]*c.y + e[9]*c.z + e[13])*w
+  q.fy = (e[2]*c.x + e[6]*c.y + e[10]*c.z + e[14])*w
+  q.fz = (e[3]*c.x + e[7]*c.y + e[11]*c.z + e[15])*w
+  q.r = bs.radius*mw:get_max_scale_on_axis()
+  q.sx = e[1]*c.x + e[5]*c.y + e[9]*c.z + e[13]
+  q.sy = e[2]*c.x + e[6]*c.y + e[10]*c.z + e[14]
+  q.sz = e[3]*c.x + e[7]*c.y + e[11]*c.z + e[15]
+  q.sw = e[4]*c.x + e[8]*c.y + e[12]*c.z + e[16]
+  q.wv = wv; q.bs = bs; q.r0 = bs.radius; q.cx, q.cy, q.cz = c.x, c.y, c.z
+  return q
+end
+-- Frustum.intersectsObject
+local function in_frustum(F, o)
+  local q = world_sphere(o, sphere_of(o))
+  local x, y, z, r = q.fx, q.fy, q.fz, q.r
   for k = 0, 5 do
     local b = k*4
     if F[b + 1]*x + F[b + 2]*y + F[b + 3]*z + F[b + 4] < -r then return false end
@@ -499,6 +549,10 @@ local _frustum = {}
 -- closures every render; the same items in the same order)
 local _items, _counter, _F, _e = {}, 0, nil, nil
 local _opaque, _transmissive, _transparent = {}, {}, {}
+-- (2026-10-16, Phylactery 19) the same walk also gathers the lights (collect's traverse_visible: every visible light,
+-- parents first, in scene order) and the shadow casters the shadow pass walked the scene again for (every visible
+-- mesh or points casting shadows, in scene order): one walk of the scene where there were three, the same lists
+local _lights, _light_casters, _shadow_objs = {}, {}, {}
 local function push(object, geometry, material, group_order, z, group)
   _counter = _counter + 1
   local item = _items[_counter]
@@ -513,18 +567,14 @@ local walk
 walk = function(o, group_order)
   local F, e = _F, _e
     if not o.visible then return end
+    if o.is_light then _lights[#_lights + 1] = o; if o.cast_shadow then _light_casters[#_light_casters + 1] = o end end
+    if (o.is_mesh or o.is_points) and o.cast_shadow then _shadow_objs[#_shadow_objs + 1] = o end
     if o.is_group then group_order = o.render_order
     elseif (o.is_mesh or o.is_points) and (o.frustum_culled == false or in_frustum(F, o)) then
       local g = o.geometry
-      local bs = sphere_of(o)
       -- the centre, world, then clip space; three.js sorts on clip z (no divide)
-      local c = bs.center
-      local mw = o.matrix_world.elements
-      local x = mw[1]*c.x + mw[5]*c.y + mw[9]*c.z + mw[13]
-      local y = mw[2]*c.x + mw[6]*c.y + mw[10]*c.z + mw[14]
-      local z = mw[3]*c.x + mw[7]*c.y + mw[11]*c.z + mw[15]
-      local w = mw[4]*c.x + mw[8]*c.y + mw[12]*c.z + mw[16]
-      local cz = e[3]*x + e[7]*y + e[11]*z + e[15]*w
+      local q = world_sphere(o, sphere_of(o))
+      local cz = e[3]*q.sx + e[7]*q.sy + e[11]*q.sz + e[15]*q.sw
       local mat = o.material
       if type(mat) == 'table' and mat[1] then
         for _, gr in ipairs(g.groups) do
@@ -556,6 +606,7 @@ local function project(scene, camera, proj_screen)
   _e = proj_screen.elements
   _counter = 0
   clear(_opaque); clear(_transmissive); clear(_transparent)
+  clear(_lights); clear(_light_casters); clear(_shadow_objs)
   walk(scene, 0)
   -- (an item left over from a bigger render keeps nothing alive)
   for i = _counter + 1, #_items do local it = _items[i]; it.object, it.geometry, it.material, it.group = nil, nil, nil, nil end
@@ -584,9 +635,8 @@ function Renderer:shadow_pass(scene, camera, casters)
     local scam = sh.camera
     local dm = self.depth_material
     local SF = frustum_of(_psm_shadow:multiply_matrices(scam.projection_matrix, scam.matrix_world_inverse), _sfrustum)
-    local function walk(o)
-      if not o.visible then return end
-      if (o.is_mesh or o.is_points) and o.cast_shadow and (o.frustum_culled == false or in_frustum(SF, o)) then
+    for _, o in ipairs(_shadow_objs) do
+      if o.frustum_culled == false or in_frustum(SF, o) then
         local mat = o.material
         if mat and mat.visible then
           o.model_view_matrix:multiply_matrices(scam.matrix_world_inverse, o.matrix_world)
@@ -596,15 +646,18 @@ function Renderer:shadow_pass(scene, camera, casters)
           m.side = side
           m.alpha_map, m.alpha_test, m.map = mat.alpha_map, mat.alpha_test, mat.map
           -- one depth program per instancing mode (tools/port_programs.py: the variants draw the same depth)
-          local key = custom and (custom.name .. '|depth|' .. (o.is_instanced_mesh and 'i' or '-'))
-            or ('depth|' .. (o.is_instanced_mesh and 'i' or '-'))
-          o.normal_matrix:get_normal_matrix(o.model_view_matrix)
+          -- (the key strings made once: they were built at every shadow draw)
+          local key
+          if custom then
+            local kk = custom._depth_keys
+            if not kk or kk.name ~= custom.name then kk = { name = custom.name, i = custom.name .. '|depth|i', n = custom.name .. '|depth|-' }; custom._depth_keys = kk end
+            key = o.is_instanced_mesh and kk.i or kk.n
+          else key = o.is_instanced_mesh and 'depth|i' or 'depth|-' end
+          o._nm_stale = true
           self:draw(scam, 'shadow', o, o.geometry, m, nil, side, nil, 'shadow', key)
         end
       end
-      for _, c in ipairs(o.children) do walk(c) end
     end
-    walk(scene)
   end
   self.clear_color:copy(prev_c); self.clear_alpha = prev_a
   self:set_render_target(prev)
@@ -614,14 +667,15 @@ end
 local _psm = Matrix4.new()
 function Renderer:render(scene, camera)
   local lap = PROF.on and perf_time()       -- (2026-10-15: port/prof.lua, the benchmark's sections)
+  self._render_n = (self._render_n or 0) + 1; self._in_render = true
   self.cur_mat_id, self.cur_cam = -1, nil
   self.environment, self.environment_intensity = scene.environment, scene.environment_intensity or 1
   scene:update_matrix_world()
   if camera.parent == nil then camera:update_matrix_world() end
   lap = PROF.lap('r3.matrices', lap)
   _psm:multiply_matrices(camera.projection_matrix, camera.matrix_world_inverse)
-  local lights, casters = collect(scene)
   local opaque, transmissive, transparent = project(scene, camera, _psm)
+  local lights, casters = _lights, _light_casters
   lap = PROF.lap('r3.project', lap)
   self:shadow_pass(scene, camera, casters)
   lap = PROF.lap('r3.shadow', lap)
@@ -676,6 +730,7 @@ function Renderer:render(scene, camera)
   for _, it in ipairs(transparent) do self:render_object(camera, tag, it.object, it.geometry, it.material, it.group, L, 'transparent') end
   lap = PROF.lap('r3.draw', lap)
   self:finish_target(target)
+  self._in_render = false
   PROF.lap('r3.finish', lap)
 end
 
@@ -705,7 +760,7 @@ function Renderer:transmission_pass(scene, camera, tag, L, opaque, transmissive)
   for _, it in ipairs(transmissive) do
     if it.material.side == MAT.DoubleSide then
       it.object.model_view_matrix:multiply_matrices(camera.matrix_world_inverse, it.object.matrix_world)
-      it.object.normal_matrix:get_normal_matrix(it.object.model_view_matrix)
+      it.object._nm_stale = true
       self:draw(camera, tag, it.object, it.geometry, it.material, it.group, MAT.BackSide, L, 'transmission')
       again = true
     end

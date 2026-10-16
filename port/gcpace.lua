@@ -19,12 +19,28 @@
   debt dropped at the wait's end 17 / 34.2, Lua 5.4's generational collector 15 / 32.8, its automatic incremental
   collector with its defaults 7 / 26-28 ms (and a smaller heap). With round 64's garbage gone (232 -> 40 KB a frame)
   Lua's own pacing is the best of them: AUTO = true hands the collector back to it; tick() then does nothing.
+  2026-10-16, Phylactery 19 (owner: "Sometimes it drops to like 30 fps"): Lua's own pacing still ended a cycle in one
+  frame now and then (the ending: 32-44 ms natively, the heap dropping 75 MB at once; none with the collector stopped):
+  an allocation burst (geometry built in a tick) raises its debt, and the next step pays it all. SMOOTH: the collector
+  stopped, and each tick ONE basic step (collectgarbage('step', 0): a fixed amount of work, never the debt piled up
+  since; 'step' with n > 0 pays that too, which is what sank round 64's and session 17's pacing). Measured: a cycle is
+  ~37 basic steps at ~80 MB, 0.3 ms each natively, the slowest 2.3 ms; so a cycle takes ~0.6 s of ticks at ~0.3 ms a
+  tick. Between cycles nothing, until the heap is s_pause times what the last left plus s_slack MB; past s_runaway
+  times it, s_catch steps a tick.
 ]]
-local GP = { k = 4, grow = 1.5, slack = 8, runaway = 2.5, catch_up = 4, AUTO = true }
+local GP = { k = 4, grow = 1.5, slack = 8, runaway = 2.5, catch_up = 4, AUTO = false,
+  SMOOTH = true, s_pause = 1.6, s_slack = 16, s_steps = 1, s_catch = 3, s_runaway = 2.5 }
 
 local live_kb, last_kb, waiting = nil, nil, false
 function GP.start()
   if GP.AUTO then collectgarbage('incremental', 200, 100, 13); collectgarbage('restart'); return end
+  if GP.SMOOTH then
+    collectgarbage('collect')
+    collectgarbage('incremental', 200, 100, 13)       -- (a basic step's size)
+    collectgarbage('stop')
+    live_kb = collectgarbage('count'); last_kb = live_kb; waiting = true
+    return
+  end
   collectgarbage('collect')
   collectgarbage('incremental', 100, 100, 10)
   collectgarbage('stop')
@@ -42,13 +58,25 @@ function GP.pause()
 end
 function GP.resume()
   if GP.AUTO or live_kb then return end
-  collectgarbage('incremental', 100, 100, 10)
+  if not GP.SMOOTH then collectgarbage('incremental', 100, 100, 10) end
   collectgarbage('stop')
   live_kb = collectgarbage('count'); last_kb = live_kb; waiting = false
 end
 
 function GP.tick()
   if not live_kb then return end
+  if GP.SMOOTH then
+    local kb = collectgarbage('count')
+    if waiting then
+      if kb < live_kb*GP.s_pause + GP.s_slack*1024 then return end
+      waiting = false
+    end
+    local n = (kb > live_kb*GP.s_runaway + GP.s_slack*1024) and GP.s_catch or GP.s_steps
+    for _ = 1, n do
+      if collectgarbage('step', 0) then live_kb = collectgarbage('count'); waiting = true; break end
+    end
+    return
+  end
   local kb = collectgarbage('count')
   local grown = kb - last_kb
   if waiting then
