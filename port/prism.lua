@@ -17,7 +17,7 @@ local Vector2 = TM.Vector2
 local max, min = math.max, math.min
 
 local PR = {}
-PR.N = 64                     -- ribbons at most
+PR.N = 96                     -- ribbons at most
 PR.GAIN = 0.6                 -- the rims' light (the last pass: display values)
 PR.REVEAL = 0.55              -- how much of the undimmed world shows through them
 
@@ -37,6 +37,7 @@ out float vSide;
 out float vU;
 out float vA;
 out float vPh;
+out float vTp;
 void main(){
   mat4 PV = projectionMatrix*viewMatrix;
   vec4 c = PV*vec4(position, 1.0), cp = PV*vec4(aPrev, 1.0), cn = PV*vec4(aNext, 1.0);
@@ -46,7 +47,7 @@ void main(){
   float px = max(4.0, aP.x*uProj/max(c.w, 0.05));
   c.xy += n*aSide*px*0.5*2.0/uRes*c.w;
   gl_Position = c;
-  vSide = aSide; vU = aU; vA = aP.y; vPh = aP.z;
+  vSide = aSide; vU = aU; vA = aP.y; vPh = aP.z; vTp = aP.w;
 }
 ]]
 local FS = [[#version 300 es
@@ -58,13 +59,15 @@ in float vSide;
 in float vU;
 in float vA;
 in float vPh;
+in float vTp;
 out vec4 fragColor;
 vec3 spectrum(float h){ return 0.5 + 0.5*cos(6.2831853*(h + vec3(0.0, 0.33, 0.67))); }
 void main(){
   if (vA <= 0.0) discard;
   if (gl_FragCoord.z > texture(tDepth, gl_FragCoord.xy/uRes).x + 1e-6) discard;
   float x = vSide, ax = abs(x);
-  float env = smoothstep(0.0, 0.16, vU)*smoothstep(1.0, 0.72, vU);
+  // (vTp 1: a falling streak, brightest at its head (vU 1), fading along its length; 0: even, both ends eased)
+  float env = mix(smoothstep(0.0, 0.16, vU)*smoothstep(1.0, 0.72, vU), smoothstep(0.0, 0.9, vU)*smoothstep(1.0, 0.95, vU), vTp);
   // the glass: clear inside, its two edges catching the light, split into colours across them
   float rr = (ax - 0.84)/0.1;
   float rim = exp(-rr*rr);
@@ -116,10 +119,11 @@ function PR.create(R, K)
   local RB = {}
   for i = 1, N do RB[i] = { on = false, pts = nil, w = 0.2, a = 0, ph = 0, written_off = true } end
   local pr = { scene = scene, U = UN }
-  -- a ribbon on `pts` (K points the caller moves), `w` m wide, phase `ph`; its `a` the caller fades
-  function pr.ribbon(pts, w, ph)
+  -- a ribbon on `pts` (K points the caller moves), `w` m wide, phase `ph`, taper `tp` (1: a streak, brightest at its last
+  -- point); its `a` the caller fades
+  function pr.ribbon(pts, w, ph, tp)
     for _, r in ipairs(RB) do
-      if not r.on then r.on = true; r.pts = pts; r.w = w; r.a = 0; r.ph = ph or 0; return r end
+      if not r.on then r.on = true; r.pts = pts; r.w = w; r.a = 0; r.ph = ph or 0; r.tp = tp or 0; return r end
     end
     return nil
   end
@@ -147,7 +151,7 @@ function PR.create(R, K)
               prv[v3 + 1], prv[v3 + 2], prv[v3 + 3] = pa.x, pa.y, pa.z
               nxt[v3 + 1], nxt[v3 + 2], nxt[v3 + 3] = pb.x, pb.y, pb.z
             end
-            prm[v4 + 1], prm[v4 + 2], prm[v4 + 3], prm[v4 + 4] = r.w, a, r.ph, 0
+            prm[v4 + 1], prm[v4 + 2], prm[v4 + 3], prm[v4 + 4] = r.w, a, r.ph, r.tp or 0
           end
         end
       end
