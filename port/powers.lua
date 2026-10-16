@@ -667,9 +667,16 @@ function PW.create(ctx)
     m.point = G.pw > 0 and { w = G.pw*G.pw*(3 - 2*G.pw), arm = G.arm, x = G.point.x, y = G.point.y, z = G.point.z } or nil
 
     -- the lens
+    -- (2026-10-15) one familiar, or (the lens all he has) as many as it could cast at once, each staying. 2026-10-16
+    -- (owner: "When there's only the lens and another attack it tends to be overactive and thus only the lens attacks"):
+    -- this was "the lens one of two", and with one other attack the familiar, resting 0.15 s and reaching 6 m, took
+    -- nearly every snake before the other could (3 min each: the lift 9 to its 76, the beam 14 to 73). Now strong
+    -- only when no other attack takes snakes (the leakage only wears them down)
+    local strong = false
     if varied then
-      -- (2026-10-15) one familiar, or (the lens all he has, or one of two) as many as it could cast at once, each staying
-      local strong = #actives <= 2
+      local takers = 0
+      for _, a in ipairs(actives) do if a ~= leak then takers = takers + 1 end end
+      strong = takers <= 1
       lens.set_familiars(strong and lens.capacity(power) or 1, strong)
       if not on[lens] then lens.dismiss() end
     end
@@ -704,9 +711,8 @@ function PW.create(ctx)
           end
         else
           -- (2026-10-15) the familiar, between the bouts' casts: a snake of its own when it has rested its while
-          -- (every one there is when the lens is all he has or one of two: a long cut through three or more)
+          -- (every one there is when the lens is all he has: a long cut through three or more)
           local f = lens.idle_familiar()
-          local strong = #actives <= 2
           if f and f.idle_t >= (strong and 0.15 or f.cd) and room_for(lens) then
             local th = threats(LENS_ENGAGE)
             if #th > 0 then
