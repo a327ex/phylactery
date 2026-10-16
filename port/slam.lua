@@ -18,11 +18,19 @@ local TM = require('port.three.math')
 local U = require('port.util')
 local Vector3 = TM.Vector3
 local smoothstep = U.smoothstep
+local function clamp(x, a, b) return x < a and a or (x > b and b or x) end
 local sin, cos, min, max, pi = math.sin, math.cos, math.min, math.max, math.pi
 
 local SL = {}
--- the falling column: how many, how wide round the egg, how high they start, how long, how bent
-SL.COLUMN = { n = 22, r0 = 0.0, r1 = 0.8, h0 = 2.6, h1 = 3.8, len = { 0.8, 1.3 }, w = { 0.14, 0.22 }, amp = { 6.0, 8.0 }, sway = 0.1 }
+-- the falling column (2026-10-16, his "the rays as they come from above are too regular, should be more irregular and
+-- more streaky"): n streaks in clumps (clumps of them round the gather point within r1, each streak within clump_r of
+-- its clump; loners anywhere), each from its own height h, its own width (w, thin ones likelier: wpow), its own
+-- strength (bright); each starts late by a fraction of the fall (start) and lands a little before the blast (land s),
+-- eased in its own way (u^p: p), slanting (tilt m off the vertical at its top, any way); a streak `len` long that
+-- stretches by up to `stretch` as it speeds up (a fall's streak), its top never above where it began
+SL.COLUMN = { n = 34, clumps = 5, clump_r = 0.35, loners = 0.25, r1 = 1.1, h = { 1.6, 5.2 }, w = { 0.04, 0.2 }, wpow = 2.2,
+  amp = { 4.5, 8.0 }, bright = { 0.35, 1.0 }, start = { 0.0, 0.45 }, land = { -0.12, 0.0 }, p = { 2.0, 4.5 }, tilt = 0.35,
+  len = { 0.4, 1.2 }, stretch = { 0.6, 2.6 }, sway = 0.06 }
 -- the floor: rings (count, from-to radius, their times), streaks along it (count, speed, life), puffs
 SL.RINGS = { n = 3, r0 = 0.45, r1 = 4.6, T = { 0.85, 1.0, 1.2 }, gap = 0.07, w = 0.26, amp = 6.5, chroma = 1.2 }
 SL.SKIM = { n = 22, r0 = 0.55, speed = { 4.5, 7.0 }, life = { 0.45, 0.7 }, len = { 0.5, 0.9 }, w = { 0.1, 0.16 }, amp = { 5.0, 6.5 } }
@@ -39,22 +47,38 @@ function SL.create(ctx)
   local clock = 0
   local function glass(s, kind)
     if not prism then return nil end
-    return prism.ribbon(s.pts, s.w*SL.GLASS.w[kind], s.ph)
+    return prism.ribbon(s.pts, s.w*SL.GLASS.w[kind], s.ph, kind == 1 and 1 or 0)    -- (the column's: brightest at its head)
   end
   local function done(q) warp.release(q.s); if q.gl then prism.release(q.gl) end end
 
-  -- the column: each streak's foot on the floor round the egg, its head falling from h0 to the floor in `T` s (eased in:
-  -- slow while he holds his hand up, then fast with it), its tail `len` behind (above) it, a slow sway as it falls
+  -- the column: each streak's foot on the floor round the egg, its head falling from its height to the floor between its
+  -- start and its landing (eased in: slow while he holds his hand up, then fast with it), its streak behind (above) it
   function slam.gather(c, T)
     local C = SL.COLUMN
+    local cl = {}
+    for k = 1, C.clumps do
+      local a, r = rng.float(0, 2*pi), C.r1*0.7*math.sqrt(rng.next())
+      cl[k] = { x = c.x + cos(a)*r, z = c.z + sin(a)*r }
+    end
     for _ = 1, C.n do
       local s = warp.streak()
       if not s then break end
-      local a, r = rng.float(0, 2*pi), C.r0 + (C.r1 - C.r0)*math.sqrt(rng.next())
-      local x, z = c.x + cos(a)*r, c.z + sin(a)*r
-      s.w = rng.float(C.w[1], C.w[2]); s.amp = rng.float(C.amp[1], C.amp[2]); s.chroma = rng.float(0.9, 1.25); s.a = 0
-      column[#column + 1] = { s = s, x = x, z = z, g = cave.ground_y(x, z) + 0.04, h = c.y + rng.float(C.h0, C.h1), len = rng.float(C.len[1], C.len[2]),
-        T = T*rng.float(0.94, 1.0), t = 0, ph = rng.float(0, 2*pi), out = rng.float(0.15, 0.4), a = a, gl = glass(s, 1) }
+      local x, z
+      if rng.next() < C.loners then
+        local a, r = rng.float(0, 2*pi), C.r1*math.sqrt(rng.next())
+        x, z = c.x + cos(a)*r, c.z + sin(a)*r
+      else
+        local k = cl[rng.int(1, C.clumps)]
+        local a, r = rng.float(0, 2*pi), C.clump_r*math.sqrt(rng.next())
+        x, z = k.x + cos(a)*r, k.z + sin(a)*r
+      end
+      s.w = C.w[1] + (C.w[2] - C.w[1])*rng.next()^C.wpow; s.amp = rng.float(C.amp[1], C.amp[2]); s.chroma = rng.float(0.9, 1.25); s.a = 0
+      local t0 = T*rng.float(C.start[1], C.start[2])
+      local t1 = math.max(t0 + 0.15, T + rng.float(C.land[1], C.land[2]))
+      column[#column + 1] = { s = s, x = x, z = z, g = cave.ground_y(x, z) + 0.04, h = c.y + rng.float(C.h[1], C.h[2]),
+        len = rng.float(C.len[1], C.len[2]), stretch = rng.float(C.stretch[1], C.stretch[2]), p = rng.float(C.p[1], C.p[2]),
+        t0 = t0, t1 = t1, b = rng.float(C.bright[1], C.bright[2]), ta = rng.float(0, 2*pi), tl = C.tilt*rng.next(),
+        t = 0, ph = rng.float(0, 2*pi), out = rng.float(0.15, 0.4), a = math.atan(z - c.z, x - c.x), gl = glass(s, 1) }
     end
   end
 
@@ -92,23 +116,29 @@ function SL.create(ctx)
     for i = #column, 1, -1 do
       local q = column[i]
       q.t = q.t + dt
-      local u = min(1, q.t/q.T)
-      local f = u*u*u                                  -- (eased in: it falls as the hand comes down)
+      local u = clamp((q.t - q.t0)/(q.t1 - q.t0), 0, 1)
+      local f = u^q.p                                  -- (eased in: it falls as the hand comes down)
       local head = q.h + (q.g - q.h)*f
-      local tail = min(q.h, head + q.len*(0.4 + 0.6*min(1, q.t/0.25)))
+      -- (its streak: longer the faster it falls; its top never above where it began)
+      local vn = q.p*u^(q.p - 1)
+      local tail = min(q.h, head + q.len*(0.3 + 0.7*min(1, (q.t - q.t0)/0.12)) + q.stretch*min(1, vn/2.5))
+      local hh = max(1e-3, q.h - q.g)
       for k = 0, K - 1 do
         local w = k/(K - 1)
         local y = tail + (head - tail)*w
         local sw = SL.COLUMN.sway*sin(q.ph + y*1.7)*(1 - f)
+        -- (it slants: off its foot by tl at its top, toward ta)
+        local sl = q.tl*clamp((y - q.g)/hh, 0, 1)
         -- (at the foot the air spreads: the last part of each streak bends outward as it lands)
         local spread = q.out*smoothstep(0.75, 1, u)*w*w
         local p = q.s.pts[k + 1]
-        p:set(q.x + cos(q.a)*(sw + spread), max(q.g, y), q.z + sin(q.a)*(sw + spread))
+        p:set(q.x + cos(q.a)*(sw + spread) + cos(q.ta)*sl, max(q.g, y), q.z + sin(q.a)*(sw + spread) + sin(q.ta)*sl)
       end
-      local after = q.t - q.T
-      q.s.a = smoothstep(0, 0.12, q.t)*(after > 0 and 1 - smoothstep(0, 0.14, after) or 1)
+      local after = q.t - q.t1
+      local live = q.t >= q.t0 and smoothstep(q.t0, q.t0 + 0.06, q.t) or 0
+      q.s.a = q.b*live*(after > 0 and 1 - smoothstep(0, 0.12, after) or 1)
       if q.gl then q.gl.a = q.s.a*SL.GLASS.a[1] end
-      if after >= 0.14 then done(q); table.remove(column, i) end
+      if after >= 0.12 then done(q); table.remove(column, i) end
     end
     for i = #rings, 1, -1 do
       local q = rings[i]
