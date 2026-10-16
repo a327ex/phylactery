@@ -66,12 +66,14 @@ void main(){
   float x = vSide, ax = abs(x);
   float env = smoothstep(0.0, 0.16, vU)*smoothstep(1.0, 0.72, vU);
   // the glass: clear inside, its two edges catching the light, split into colours across them
-  float rim = exp(-pow((ax - 0.84)/0.1, 2.0));
+  float rr = (ax - 0.84)/0.1;
+  float rim = exp(-rr*rr);
   float body = exp(-x*x*3.0);
   float h = 0.18*x + 0.22*vU + 0.1*sin(vU*9.0 - uTime*6.0 + vPh) + vPh*0.16;
   vec3 col = mix(vec3(1.0), spectrum(h), 0.7)*rim*0.85 + spectrum(h + 0.5)*body*0.06;
   // a glint running down it
-  float g = pow(max(0.0, sin(vU*10.0 - uTime*18.0 + vPh*3.0)), 18.0)*exp(-pow((x - 0.35)/0.22, 2.0));
+  float gx = (x - 0.35)/0.22;
+  float g = pow(max(0.0, sin(vU*10.0 - uTime*18.0 + vPh*3.0)), 18.0)*exp(-gx*gx);
   col += vec3(1.0, 0.97, 0.92)*g*0.9;
   float k = vA*env;
   fragColor = vec4(col*k*uGain, (body*0.8 + rim*0.4)*k*uReveal);
