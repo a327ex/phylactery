@@ -1,5 +1,5 @@
 --[[
-  prism.lua -- the ending's telekinesis as glass you can see (2026-10-16, Phylactery 19). Owner, on round 88's warped air:
+  prism.lua -- the ending's telekinesis as glass you can see (2026-10-16, Phylactery 18). Owner, on round 88's warped air:
   "I also didn't see the telekinetic visual, I think here it can be more prismatic and lens transparent because the
   background is all black." Warped air shows only by bending what is behind it, and in the ending everything behind it is
   dimmed to black (silhouette.lua). So the force he brings down is also drawn as ribbons of clear glass, like the lens's:
