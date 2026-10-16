@@ -120,7 +120,23 @@ function GO.create(R, cave, snakes, fx, rng)
   for i = 1, BN do B[i] = { life = 0, x = 0, y = 0, z = 0, vx = 0, vy = 0, vz = 0, s = 0, splat = 0 } end
   local bnext = 0
   local bidle = false               -- (nothing in the air and its sizes already sent as 0)
+  -- (2026-10-16, the ending's slam, owner: "in a final gesture he brings it down, as though bringing down gravity/psychic
+  -- force on all the snakes, they all explode (with downwards force)"): while SLAM is set (gore.burst's fourth argument:
+  -- { x, z = where the force comes down, down = m/s, out = m/s }) everything a burst throws goes down and out from there
+  -- instead of up: part of its sideways speed kept and turned outward, its rise turned into a fall. A transform of the
+  -- velocities drawn as before: no draws of its own, and nothing changes while it is nil (every other burst).
+  local SLAM = nil
+  local function slammed(x, z, vx, vy, vz)
+    local ox, oz = x - SLAM.x, z - SLAM.z
+    local ol = sqrt(ox*ox + oz*oz)
+    if ol < 1e-4 then ox, oz, ol = 1, 0, 1 end
+    ox, oz = ox/ol, oz/ol
+    local h = sqrt(vx*vx + vz*vz)
+    local o = SLAM.out + 0.5*h
+    return vx*0.35 + ox*o, -(abs(vy)*0.4 + SLAM.down), vz*0.35 + oz*o
+  end
   local function drop(x, y, z, vx, vy, vz, s, splat, pl)
+    if SLAM then vx, vy, vz = slammed(x, z, vx, vy, vz) end
     bidle = false
     if s == nil then s = 0.012 end
     if splat == nil then splat = 0.5 end
@@ -544,6 +560,7 @@ function GO.create(R, cave, snakes, fx, rng)
   end
   -- en: 1-based index into piece.ends
   local function gut(from, vel, piece, en)
+    if SLAM then vel.x, vel.y, vel.z = slammed(from.x, from.z, vel.x, vel.y, vel.z) end
     local G
     for _, q in ipairs(GUTS) do if not q.on then G = q; break end end
     if not G then return end
@@ -614,7 +631,8 @@ function GO.create(R, cave, snakes, fx, rng)
   local MEAT_C = { { 0.2, 0.012, 0.009 }, { 0.3, 0.03, 0.022 }, { 0.13, 0.007, 0.006 }, { 0.4, 0.1, 0.075 }, { 0.26, 0.06, 0.04 } }
   local function meat_c() return MEAT_C[rng.int(0, #MEAT_C - 1) + 1] end
   local TW = Vector3.new()
-  local function burst(s, mid, toward)
+  local function burst(s, mid, toward, slam)
+    SLAM = slam
     local arc = snakes.arc
     local c = s.spine[mid + 1]:clone()
     local cm = arc(mid)
@@ -636,6 +654,7 @@ function GO.create(R, cave, snakes, fx, rng)
       local vz = out.z*sp + rng.spread(0.8)
       P.v:set(vx, vy, vz)
       pull(P.v, 0.6, 1.5); P.pl = follow_on and PULL_T or 0
+      if SLAM then P.v.x, P.v.y, P.v.z = slammed(P.m.position.x, P.m.position.z, P.v.x, P.v.y, P.v.z) end
       local wx = rng.spread(1)
       local wy = rng.spread(1)
       local wz = rng.spread(1)
@@ -671,6 +690,7 @@ function GO.create(R, cave, snakes, fx, rng)
       local vx = dir.x*sp + (p.x - c.x)*1.5
       local vy = abs(dir.y)*sp*0.8 + rng.float(0.8, 2.4)
       local vz = dir.z*sp + (p.z - c.z)*1.5
+      if SLAM then vx, vy, vz = slammed(x, z, vx, vy, vz) end
       return { x = x, y = y, z = z, vx = vx, vy = vy, vz = vz, pl = PL }
     end
     for _ = 1, 46 do
@@ -776,8 +796,11 @@ function GO.create(R, cave, snakes, fx, rng)
       local life = rng.float(0.8, 1.7)
       local s0 = rng.float(0.1, 0.2)*(near and 1.5 or 1)
       local s1 = rng.float(0.3, 0.55)*(near and 1.3 or 1)
+      -- (the slam: its smoke rolls out along the floor; vy kept a little above it, so it does not sink in)
+      if SLAM then vx, vy, vz = slammed(p.x, p.z, vx, vy, vz); vy = 0.15*abs(vy) end
       fx.puff({ x = p.x, y = p.y, z = p.z, vx = vx, vy = vy, vz = vz, grav = 0.6, drag = 1.8, life = life, s0 = s0, s1 = s1, r = 0.03, g = 0.0025, b = 0.002, a = near and 0.7 or 0.45, fin = 0.02 })
     end
+    SLAM = nil
   end
 
   -- a snake crushed by a thrown rock at p

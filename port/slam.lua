@@ -1,0 +1,137 @@
+--[[
+  slam.lua -- the ending's blast in warped air (2026-10-16, Phylactery 19). Owner: "in a final gesture he brings it
+  down, as though bringing down gravity/psychic force on all the snakes, they all explode (with downwards force), the
+  telekinesis visual effect should also be somewhat visible as a downward force (that then hits the ground and moves to
+  the sides) too."
+
+  The game's telekinesis is air that bends the light (warp.lua, the leakage's look), so this is made of the same things:
+  streaks of warped air that gather over the egg while his hand is up (slam.gather), fall with his hand, faster and
+  faster, onto it (they land at the moment of the blast), then at the blast (slam.hit) rings of warped air that run out
+  along the floor and streaks that skim it outward, with puffs rolling after them. Its own draws (U.run_rng(911)):
+  nothing else's sequence moves.
+]]
+local TM = require('port.three.math')
+local U = require('port.util')
+local Vector3 = TM.Vector3
+local smoothstep = U.smoothstep
+local sin, cos, min, max, pi = math.sin, math.cos, math.min, math.max, math.pi
+
+local SL = {}
+-- the falling column: how many, how wide round the egg, how high they start, how long, how bent
+SL.COLUMN = { n = 22, r0 = 0.0, r1 = 0.8, h0 = 2.6, h1 = 3.8, len = { 0.8, 1.3 }, w = { 0.14, 0.22 }, amp = { 6.0, 8.0 }, sway = 0.1 }
+-- the floor: rings (count, from-to radius, their times), streaks along it (count, speed, life), puffs
+SL.RINGS = { n = 3, r0 = 0.45, r1 = 4.6, T = { 0.85, 1.0, 1.2 }, gap = 0.07, w = 0.26, amp = 6.5, chroma = 1.2 }
+SL.SKIM = { n = 22, r0 = 0.55, speed = { 4.5, 7.0 }, life = { 0.45, 0.7 }, len = { 0.5, 0.9 }, w = { 0.1, 0.16 }, amp = { 5.0, 6.5 } }
+SL.PUFFS = { n = 14, r0 = 0.7, speed = { 2.2, 3.4 }, life = { 0.6, 0.9 } }
+
+function SL.create(ctx)
+  local warp, cave = ctx.warp, ctx.cave
+  local rng = U.run_rng(911)
+  local K = warp.K
+  local column, rings, skims = {}, {}, {}
+  local slam = {}
+
+  -- the column: each streak's foot on the floor round the egg, its head falling from h0 to the floor in `T` s (eased in:
+  -- slow while he holds his hand up, then fast with it), its tail `len` behind (above) it, a slow sway as it falls
+  function slam.gather(c, T)
+    local C = SL.COLUMN
+    for _ = 1, C.n do
+      local s = warp.streak()
+      if not s then break end
+      local a, r = rng.float(0, 2*pi), C.r0 + (C.r1 - C.r0)*math.sqrt(rng.next())
+      local x, z = c.x + cos(a)*r, c.z + sin(a)*r
+      s.w = rng.float(C.w[1], C.w[2]); s.amp = rng.float(C.amp[1], C.amp[2]); s.chroma = rng.float(0.9, 1.25); s.a = 0
+      column[#column + 1] = { s = s, x = x, z = z, g = cave.ground_y(x, z) + 0.04, h = c.y + rng.float(C.h0, C.h1), len = rng.float(C.len[1], C.len[2]),
+        T = T*rng.float(0.94, 1.0), t = 0, ph = rng.float(0, 2*pi), out = rng.float(0.15, 0.4), a = a }
+    end
+  end
+
+  local function ring(c, i)
+    local s = warp.streak()
+    if not s then return end
+    local R = SL.RINGS
+    s.w = R.w; s.amp = R.amp; s.chroma = R.chroma; s.a = 0
+    rings[#rings + 1] = { s = s, c = c, t = -(i - 1)*R.gap, T = R.T[i] or R.T[#R.T] }
+  end
+
+  -- the blast: rings out along the floor, streaks skimming it outward, puffs rolling after them
+  function slam.hit(c)
+    local R, SK, PF = SL.RINGS, SL.SKIM, SL.PUFFS
+    for i = 1, R.n do ring(c, i) end
+    for k = 1, SK.n do
+      local s = warp.streak()
+      if not s then break end
+      local a = (k - 1)/SK.n*2*pi + rng.spread(0.12)
+      s.w = rng.float(SK.w[1], SK.w[2]); s.amp = rng.float(SK.amp[1], SK.amp[2]); s.chroma = rng.float(0.9, 1.2); s.a = 0
+      skims[#skims + 1] = { s = s, c = c, a = a, sp = rng.float(SK.speed[1], SK.speed[2]), life = rng.float(SK.life[1], SK.life[2]),
+        len = rng.float(SK.len[1], SK.len[2]), curl = rng.spread(0.5), t = 0 }
+    end
+    for _ = 1, PF.n do
+      local a = rng.float(0, 2*pi)
+      local sp = rng.float(PF.speed[1], PF.speed[2])
+      local x, z = c.x + cos(a)*PF.r0, c.z + sin(a)*PF.r0
+      warp.puff({ x = x, y = cave.ground_y(x, z) + 0.12, z = z, vx = cos(a)*sp, vy = 0.05, vz = sin(a)*sp, drag = 2.2, life = rng.float(PF.life[1], PF.life[2]),
+        s0 = 0.18, s1 = 0.55, amp = 4.2, spin = rng.spread(2) })
+    end
+  end
+
+  function slam.update(dt)
+    for i = #column, 1, -1 do
+      local q = column[i]
+      q.t = q.t + dt
+      local u = min(1, q.t/q.T)
+      local f = u*u*u                                  -- (eased in: it falls as the hand comes down)
+      local head = q.h + (q.g - q.h)*f
+      local tail = min(q.h, head + q.len*(0.4 + 0.6*min(1, q.t/0.25)))
+      for k = 0, K - 1 do
+        local w = k/(K - 1)
+        local y = tail + (head - tail)*w
+        local sw = SL.COLUMN.sway*sin(q.ph + y*1.7)*(1 - f)
+        -- (at the foot the air spreads: the last part of each streak bends outward as it lands)
+        local spread = q.out*smoothstep(0.75, 1, u)*w*w
+        local p = q.s.pts[k + 1]
+        p:set(q.x + cos(q.a)*(sw + spread), max(q.g, y), q.z + sin(q.a)*(sw + spread))
+      end
+      local after = q.t - q.T
+      q.s.a = smoothstep(0, 0.12, q.t)*(after > 0 and 1 - smoothstep(0, 0.14, after) or 1)
+      if after >= 0.14 then warp.release(q.s); table.remove(column, i) end
+    end
+    for i = #rings, 1, -1 do
+      local q = rings[i]
+      q.t = q.t + dt
+      local u = q.t/q.T
+      if u >= 0 then
+        local R = SL.RINGS
+        local r = R.r0 + (R.r1 - R.r0)*(1 - (1 - min(1, u))^2.2)
+        for k = 0, K - 1 do
+          local a = k/(K - 1)*2*pi
+          local p = q.s.pts[k + 1]
+          p:set(q.c.x + sin(a)*r, 0, q.c.z + cos(a)*r)
+          p.y = cave.ground_y(p.x, p.z) + 0.07
+        end
+        q.s.a = smoothstep(0, 0.06, u)*(1 - smoothstep(0.55, 1, u))
+      end
+      if u >= 1 then warp.release(q.s); table.remove(rings, i) end
+    end
+    for i = #skims, 1, -1 do
+      local q = skims[i]
+      q.t = q.t + dt
+      local u = min(1, q.t/q.life)
+      local head = SL.SKIM.r0 + q.sp*q.life*(1 - (1 - u)^2)
+      local tail = max(SL.SKIM.r0, head - q.len)
+      for k = 0, K - 1 do
+        local d = tail + (head - tail)*k/(K - 1)
+        local a = q.a + q.curl*(d - SL.SKIM.r0)*0.25
+        local p = q.s.pts[k + 1]
+        local x, z = q.c.x + cos(a)*d, q.c.z + sin(a)*d
+        p:set(x, cave.ground_y(x, z) + 0.1 + 0.04*(d - SL.SKIM.r0)*u, z)
+      end
+      q.s.a = smoothstep(0, 0.06, q.t)*(1 - smoothstep(0.6, 1, u))
+      if u >= 1 then warp.release(q.s); table.remove(skims, i) end
+    end
+  end
+  function slam.busy() return #column + #rings + #skims > 0 end
+  return slam
+end
+
+return SL
