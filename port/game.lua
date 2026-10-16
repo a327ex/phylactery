@@ -1069,12 +1069,14 @@ function GM.create(R, hud_layer)
         -- (his arm stays where he brought it down, full, while the rest of him lets go)
         mover.motion.point = { w = SEQ.burst and 1 or lich.hurt.w, arm = 1, x = x, y = y, z = z, f = f }
         SEQ.gest = tr
-        -- (the warped air gathers over the egg as his hand stops at the top, a little toward the camera so it crosses the
-        -- egg on screen, and falls with his hand: it lands at the blast)
-        if not SEQ.burst and tr >= GEST.raise and not SEQ.gather then
+        -- (the warped air comes down over the egg with his hand, a little toward the camera so it crosses the egg on
+        -- screen: it lands at the blast. 2026-10-16, owner: "Portions of the effect appear before the lich moves his hand
+        -- for half a second or so, that shouldn't happen": it gathered as his hand stopped at the top, through the hold;
+        -- now nothing of it before the stroke begins)
+        if not SEQ.burst and tr >= GEST.raise + GEST.top and not SEQ.gather then
           SEQ.gather = true
           local gx, gz = EGG.x - ROOM_H.x*0.3, EGG.z - ROOM_H.y*0.3
-          slamfx.gather(v(gx, cave.ground_y(gx, gz), gz), GEST.top + GEST.down)
+          slamfx.gather(v(gx, cave.ground_y(gx, gz), gz), GEST.down)
         end
         -- (his body behind the blow, the camera sinking with the stroke, its sound)
         local top_at, stroke_at = GEST.raise, GEST.raise + GEST.top

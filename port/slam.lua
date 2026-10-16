@@ -26,10 +26,10 @@ local SL = {}
 -- more streaky"): n streaks in clumps (clumps of them round the gather point within r1, each streak within clump_r of
 -- its clump; loners anywhere), each from its own height h, its own width (w, thin ones likelier: wpow), its own
 -- strength (bright); each starts late by a fraction of the fall (start) and lands a little before the blast (land s),
--- eased in its own way (u^p: p), slanting (tilt m off the vertical at its top, any way); a streak `len` long that
+-- falling at least fall_min s, eased in its own way (u^p: p), slanting (tilt m off the vertical at its top, any way); a streak `len` long that
 -- stretches by up to `stretch` as it speeds up (a fall's streak), its top never above where it began
 SL.COLUMN = { n = 34, clumps = 5, clump_r = 0.35, loners = 0.25, r1 = 1.1, h = { 1.6, 5.2 }, w = { 0.04, 0.2 }, wpow = 2.2,
-  amp = { 4.5, 8.0 }, bright = { 0.35, 1.0 }, start = { 0.0, 0.45 }, land = { -0.12, 0.0 }, p = { 2.0, 4.5 }, tilt = 0.35,
+  amp = { 4.5, 8.0 }, bright = { 0.35, 1.0 }, start = { 0.0, 0.3 }, land = { -0.03, 0.0 }, fall_min = 0.1, p = { 1.6, 3.2 }, tilt = 0.35,
   len = { 0.4, 1.2 }, stretch = { 0.6, 2.6 }, sway = 0.06 }
 -- the floor: rings (count, from-to radius, their times), streaks along it (count, speed, life), puffs
 SL.RINGS = { n = 3, r0 = 0.45, r1 = 4.6, T = { 0.85, 1.0, 1.2 }, gap = 0.07, w = 0.26, amp = 6.5, chroma = 1.2 }
@@ -52,7 +52,7 @@ function SL.create(ctx)
   local function done(q) warp.release(q.s); if q.gl then prism.release(q.gl) end end
 
   -- the column: each streak's foot on the floor round the egg, its head falling from its height to the floor between its
-  -- start and its landing (eased in: slow while he holds his hand up, then fast with it), its streak behind (above) it
+  -- start and its landing (eased in: slow, then fast with his hand coming down), its streak behind (above) it
   function slam.gather(c, T)
     local C = SL.COLUMN
     local cl = {}
@@ -74,7 +74,7 @@ function SL.create(ctx)
       end
       s.w = C.w[1] + (C.w[2] - C.w[1])*rng.next()^C.wpow; s.amp = rng.float(C.amp[1], C.amp[2]); s.chroma = rng.float(0.9, 1.25); s.a = 0
       local t0 = T*rng.float(C.start[1], C.start[2])
-      local t1 = math.max(t0 + 0.15, T + rng.float(C.land[1], C.land[2]))
+      local t1 = math.max(t0 + C.fall_min, T + rng.float(C.land[1], C.land[2]))
       column[#column + 1] = { s = s, x = x, z = z, g = cave.ground_y(x, z) + 0.04, h = c.y + rng.float(C.h[1], C.h[2]),
         len = rng.float(C.len[1], C.len[2]), stretch = rng.float(C.stretch[1], C.stretch[2]), p = rng.float(C.p[1], C.p[2]),
         t0 = t0, t1 = t1, b = rng.float(C.bright[1], C.bright[2]), ta = rng.float(0, 2*pi), tl = C.tilt*rng.next(),
