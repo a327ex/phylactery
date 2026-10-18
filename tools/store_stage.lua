@@ -77,7 +77,11 @@ if S.only == 'mask' then keep[M.mesh] = true                -- (his mask alone: 
 elseif S.only == 'dropped' then                             -- (the dropped objects alone, where they lie / were gathered)
   for _, i in ipairs(S.drop_kept or {}) do keep[items.W[i + 1].g] = true end
 elseif S.only == 'items' then                               -- (the placed objects alone: S.items)
-  for _, it in ipairs(S.items or {}) do keep[items.W[it.i + 1].g] = true end
+  for _, it in ipairs(S.items or {}) do
+    local w = items.W[it.i + 1]
+    keep[w.g] = true
+    for _, m in ipairs(w.orbs or {}) do keep[m] = true end   -- (the orbs' meshes live in the world, not under their group)
+  end
 elseif S.lich ~= false then keep[lich.root] = true; if S.mask ~= 'none' then keep[M.mesh] = true end end
 if S.cave ~= false then keep[cave_root] = true end
 if not S.objects_hidden then for _, i in ipairs(S.drop or {}) do keep[items.W[i + 1].g] = true end end
@@ -196,6 +200,15 @@ local function pose_over()
       w.g.position:set(c.x + rx*math.cos(th)*r + fx*(it.fwd or 0.2), c.y + math.sin(th)*r, c.z + rz*math.cos(th)*r + fz*(it.fwd or 0.2))
     elseif type(it.at) == 'table' then
       w.g.position:set(it.at[1], it.at[2], it.at[3])
+    end
+    if w.orbs then
+      -- the orbs: a loose cluster round the placed point (it.spread apart), each mesh moved itself
+      local p = w.g.position
+      for k, m in ipairs(w.orbs) do
+        local a, rr = k*2.4, (it.spread or 0.09)*(0.6 + 0.25*k)
+        m.position:set(p.x + math.cos(a)*rr, p.y + math.sin(a*1.7)*rr*0.5, p.z + math.sin(a)*rr*0.4)
+        m.visible = true
+      end
     end
     if it.rot then w.g.quaternion:set_from_euler(Euler.new(it.rot[1], it.rot[2], it.rot[3])) end
     if it.scale then w.g.scale:set_scalar(it.scale) end
