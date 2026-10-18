@@ -271,7 +271,13 @@ function IN.create(ctx)
     local want = object_bottom()
     want = want and want + 6 or lowest
     want = math.min(lowest, math.max(8, want))
-    HUD.text(it.name, cx, floor(want + 0.5), UI.CREAM, 1, 'center', nil, ink)
+    -- (2026-10-18, the serif) the name as a title, in mixed case (HUD.name_case = 'caps': in spaced capitals like
+    -- the buttons)
+    local was = HUD.case
+    HUD.case = HUD.name_case or 'mixed'
+    local name = HUD.case == 'mixed' and it.name:lower():gsub("(%a)([%w']*)", function(a, b) return a:upper() .. b end) or it.name
+    HUD.text(name, cx, floor(want + 0.5), UI.CREAM, 1, 'center', nil, ink)
+    HUD.case = was
     -- (round 52, owner: "Make the X on the top right normal size instead of double")
     local xs = HUD.text_height(1) + 14
     S.buttons.close = { R.W - 6 - xs, 6, xs, xs }
