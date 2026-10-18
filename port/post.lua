@@ -17,6 +17,12 @@ local Vector2, Vector3, Vector4, Matrix4, Color = TM.Vector2, TM.Vector3, TM.Vec
 
 local P = {}
 P.W, P.H = 640, 360
+-- (2026-10-18, Phylactery 20: the store art) LICH_RENDER_SCALE=n in the environment renders the world n times larger, for
+-- capture runs that read the frame back (gpu_read of R.targets / R.out); never set for players or the site
+do
+  local s = tonumber(os.getenv('LICH_RENDER_SCALE') or '')
+  if s and s > 1 then P.W, P.H = math.floor(640*s), math.floor(360*s) end
+end
 
 function P.create(opts)
   local W, H = P.W, P.H

@@ -1,0 +1,12 @@
+{
+  "models": {
+    "nbpro": {"id": "gemini-3-pro-image", "aspect": "16:9", "size": "2K"},
+    "nb21": {"id": "gemini-nano-banana-2.1", "aspect": "16:9", "size": "2K"}
+  },
+  "jobs": [
+    {"key": "d_painted", "images": ["d_y300_plate.png"], "prompt_file": "p_painted.txt"},
+    {"key": "d_painted_ref", "images": ["d_y300_plate.png", "style_it_follows.jpg"], "prompt_file": "p_painted_ref.txt"},
+    {"key": "d_engraved", "images": ["d_y300_plate.png"], "prompt_file": "p_engraved.txt"},
+    {"key": "a_painted_ref", "images": ["a_y090_plate.png", "style_it_follows.jpg"], "prompt_file": "p_painted_ref.txt", "models": ["nbpro"]}
+  ]
+}

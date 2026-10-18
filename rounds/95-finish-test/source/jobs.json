@@ -1,0 +1,17 @@
+{
+  "models": {
+    "kontext": {"id": "fal-ai/flux-pro/kontext", "args": {"guidance_scale": 3.5, "output_format": "png", "safety_tolerance": "2"}},
+    "banana": {"id": "fal-ai/nano-banana/edit", "args": {"num_images": 1, "output_format": "png"}},
+    "qwen3": {"id": "alibaba/qwen-image-3/edit", "args": {}}
+  },
+  "jobs": [
+    {"key": "d_painted", "image_file": "d_y300_plate.png", "image_field": "image_url", "models": ["kontext"], "prompt_file": "p_painted.txt"},
+    {"key": "d_painted", "image_files": ["d_y300_plate.png"], "models": ["qwen3", "banana"], "prompt_file": "p_painted.txt"},
+    {"key": "d_painted_ref", "image_files": ["d_y300_plate.png", "style_it_follows.jpg"], "models": ["banana", "qwen3"], "prompt_file": "p_painted_ref.txt"},
+    {"key": "d_engraved", "image_file": "d_y300_plate.png", "image_field": "image_url", "models": ["kontext"], "prompt_file": "p_engraved.txt"},
+    {"key": "d_engraved", "image_files": ["d_y300_plate.png"], "models": ["qwen3", "banana"], "prompt_file": "p_engraved.txt"},
+    {"key": "a_painted", "image_file": "a_y090_plate.png", "image_field": "image_url", "models": ["kontext"], "prompt_file": "p_painted.txt"},
+    {"key": "a_painted_ref", "image_files": ["a_y090_plate.png", "style_it_follows.jpg"], "models": ["banana"], "prompt_file": "p_painted_ref.txt"},
+    {"key": "a_engraved", "image_file": "a_y090_plate.png", "image_field": "image_url", "models": ["kontext"], "prompt_file": "p_engraved.txt"}
+  ]
+}
