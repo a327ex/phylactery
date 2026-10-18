@@ -1,0 +1,134 @@
+{
+ "models": {
+  "nbpro": {
+   "id": "gemini-3-pro-image",
+   "size": "2K"
+  }
+ },
+ "jobs": [
+  {
+   "key": "a02_2x3",
+   "images": [
+    "a02_2x3_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg",
+    "a02_mask_ref.png"
+   ],
+   "prompt_file": "p_a02.txt",
+   "aspect": "2:3"
+  },
+  {
+   "key": "a02_4x5",
+   "images": [
+    "a02_4x5_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg",
+    "a02_mask_ref.png"
+   ],
+   "prompt_file": "p_a02.txt",
+   "aspect": "4:5"
+  },
+  {
+   "key": "a01_16x9",
+   "images": [
+    "a01_16x9_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg",
+    "a01_mask_ref.png"
+   ],
+   "prompt_file": "p_a01.txt",
+   "aspect": "16:9"
+  },
+  {
+   "key": "a01_4x5",
+   "images": [
+    "a01_4x5_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg",
+    "a01_mask_ref.png"
+   ],
+   "prompt_file": "p_a01.txt",
+   "aspect": "4:5"
+  },
+  {
+   "key": "a10_21x9",
+   "images": [
+    "a10_21x9_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg"
+   ],
+   "prompt_file": "p_a10.txt",
+   "aspect": "21:9"
+  },
+  {
+   "key": "a10_16x9",
+   "images": [
+    "a10_16x9_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg"
+   ],
+   "prompt_file": "p_a10.txt",
+   "aspect": "16:9"
+  },
+  {
+   "key": "a04_16x9",
+   "images": [
+    "a04_16x9_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg"
+   ],
+   "prompt_file": "p_a04.txt",
+   "aspect": "16:9"
+  },
+  {
+   "key": "a04_1x1",
+   "images": [
+    "a04_1x1_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg"
+   ],
+   "prompt_file": "p_a04.txt",
+   "aspect": "1:1"
+  },
+  {
+   "key": "t41_2x3",
+   "images": [
+    "t41_2x3_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg"
+   ],
+   "prompt_file": "p_t41.txt",
+   "aspect": "2:3"
+  },
+  {
+   "key": "t41_4x5",
+   "images": [
+    "t41_4x5_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg"
+   ],
+   "prompt_file": "p_t41.txt",
+   "aspect": "4:5"
+  },
+  {
+   "key": "s15_21x9",
+   "images": [
+    "s15_21x9_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg"
+   ],
+   "prompt_file": "p_s15.txt",
+   "aspect": "21:9"
+  },
+  {
+   "key": "s15_16x9",
+   "images": [
+    "s15_16x9_plate.png",
+    "style_p3.png",
+    "style_it_follows.jpg"
+   ],
+   "prompt_file": "p_s15.txt",
+   "aspect": "16:9"
+  }
+ ]
+}

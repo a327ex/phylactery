@@ -1,0 +1,46 @@
+{
+ "models": {
+  "nbpro": {
+   "id": "gemini-3-pro-image",
+   "size": "2K"
+  }
+ },
+ "jobs": [
+  {
+   "key": "a01_16x9_fix",
+   "images": [
+    "fix/a01_16x9.png",
+    "mask_front_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "aspect": "16:9"
+  },
+  {
+   "key": "a01_4x5_fix",
+   "images": [
+    "fix/a01_4x5.png",
+    "mask_front_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "aspect": "4:5"
+  },
+  {
+   "key": "a02_2x3_fix",
+   "images": [
+    "fix/a02_2x3.png",
+    "mask_front_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "aspect": "2:3"
+  },
+  {
+   "key": "a02_4x5_fix",
+   "images": [
+    "fix/a02_4x5.png",
+    "mask_front_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "aspect": "4:5"
+  }
+ ]
+}
