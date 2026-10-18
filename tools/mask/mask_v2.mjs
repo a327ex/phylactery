@@ -266,13 +266,25 @@ export function soot(x, y) {
   return { s, dens };
 }
 
+// ---------------------------------------------------------------- clean variants (2026-10-18, the store art)
+// MASK_CLEAN=soot,blood,claws,pierce,slits (any of them) builds the same model without those marks: the store art's
+// mask is this model "except making it non-burned" (owner). Unset = the game's mask, unchanged.
+const CLEAN = new Set((typeof process !== 'undefined' && process.env.MASK_CLEAN || '').split(',').filter(Boolean));
+const CL0 = { depth: 0, slot: -1, inside: 0, chip: 0, stria: 0 };
+const P0 = { sd: 1, r_out: 1, chip: 0, crack: 0, in_hole: false };
+const slit_ = (x, y) => CLEAN.has('slits') ? -1 : slit(x, y);
+const claws_ = (x, y) => CLEAN.has('claws') ? CL0 : claws(x, y);
+const pierce_ = (x, y) => CLEAN.has('pierce') ? P0 : pierce(x, y);
+const blood_ = (x, y, p) => CLEAN.has('blood') ? { m: 0, rim: 0 } : blood(x, y, p);
+const soot_ = (x, y) => CLEAN.has('soot') ? { s: 0, dens: 0 } : soot(x, y);
+
 // ---------------------------------------------------------------- the shape
 function field(x, y, z) {
   const o = outline(x, y);
   if (o > 0.012) return o;
   const f = face(x, y);
-  const s = slit(x, y), cl = claws(x, y), p = pierce(x, y);
-  const bl = blood(x, y, p);
+  const s = slit_(x, y), cl = claws_(x, y), p = pierce_(x, y);
+  const bl = blood_(x, y, p);
   let front = f - (s > 0 ? GROOVE*Math.min(1, s*3) : 0);
   front += -cl.depth - 0.0009*p.chip - 0.00022*p.crack + 0.00025*bl.m*(1 - 0.5*bl.rim);
   // the back: the shell; spalled off wide round the break's exit (a cone of loss)
@@ -293,7 +305,7 @@ export function geometry() {
   const GLAZE = [0.70, 0.672, 0.615], BODY = [0.56, 0.54, 0.505], SOOT = [0.0095, 0.008, 0.0072], FILM = [0.105, 0.095, 0.085];
   for (let i = 0; i < n; i++) {
     const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
-    const f = face(x, y), sl = slit(x, y), cl = claws(x, y), p = pierce(x, y), bl = blood(x, y, p), so = soot(x, y);
+    const f = face(x, y), sl = slit_(x, y), cl = claws_(x, y), p = pierce_(x, y), bl = blood_(x, y, p), so = soot_(x, y);
     const front = z > f - T*0.6;
     const wall = sstep(0.0012, 0.0, p.r_out);             // the break's own section
     const t = fbm3(x*70, y*70, 2.2, 55, 3);
