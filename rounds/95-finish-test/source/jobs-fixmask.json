@@ -1,0 +1,82 @@
+{
+ "models": {
+  "nbpro": {
+   "id": "gemini-3-pro-image",
+   "aspect": "16:9",
+   "size": "2K"
+  },
+  "nb21": {
+   "id": "gemini-nano-banana-2.1",
+   "aspect": "16:9",
+   "size": "2K"
+  }
+ },
+ "jobs": [
+  {
+   "key": "nbpro_d_painted",
+   "images": [
+    "fix/nbpro_d_painted.png",
+    "d_y300_mask_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "models": [
+    "nbpro"
+   ]
+  },
+  {
+   "key": "nbpro_d_painted_ref",
+   "images": [
+    "fix/nbpro_d_painted_ref.png",
+    "d_y300_mask_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "models": [
+    "nbpro"
+   ]
+  },
+  {
+   "key": "nbpro_d_engraved",
+   "images": [
+    "fix/nbpro_d_engraved.png",
+    "d_y300_mask_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "models": [
+    "nbpro"
+   ]
+  },
+  {
+   "key": "nb21_d_painted",
+   "images": [
+    "fix/nb21_d_painted.png",
+    "d_y300_mask_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "models": [
+    "nb21"
+   ]
+  },
+  {
+   "key": "nb21_d_painted_ref",
+   "images": [
+    "fix/nb21_d_painted_ref.png",
+    "d_y300_mask_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "models": [
+    "nb21"
+   ]
+  },
+  {
+   "key": "nbpro_a_painted_ref",
+   "images": [
+    "fix/nbpro_a_painted_ref.png",
+    "a_y090_mask_ref.png"
+   ],
+   "prompt_file": "p_fixmask.txt",
+   "models": [
+    "nbpro"
+   ]
+  }
+ ]
+}
