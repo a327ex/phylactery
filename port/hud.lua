@@ -17,10 +17,16 @@ local floor, max = math.floor, math.max
 -- pixel, the icons' size since round 49) into HUD.hi_layer. The game's is FACETED FINE (his pick); the
 -- testing text (HUD.plain) stays FACETED.
 local FONTS = require('port.hud_fonts')
+-- (2026-10-18, Phylactery 20, owner: "The UI should probably also use that font") the game's settled serif, baked by
+-- tools/hud_serif.py: mixed case, anti-aliased, kerned. HUD.case = 'caps' sets a text in spaced capitals (HUD.TRACK
+-- pixels between letters), 'mixed' as it is written.
+FONTS.serif = require('port.hud_serif')
 for _, f in pairs(FONTS) do f.glyphs[' '] = { w = f.space, px = {} } end
+HUD.case = 'caps'
+HUD.TRACK = 2
 HUD.FONTS = FONTS
--- (owner, 2026-10-07, on round 53: "second font is the correct one": FACETED FINE, the game's font)
-HUD.font_name = 'facet_fine'
+-- (owner, 2026-10-07, on round 53: "second font is the correct one": FACETED FINE, the game's font until 2026-10-18)
+HUD.font_name = 'serif'
 local FONT = FONTS.facet
 HUD.FONT = FONT
 HUD.plain = false
@@ -28,18 +34,27 @@ local function font() return HUD.plain and FONTS.facet or FONTS[HUD.font_name] o
 function HUD.set_font(name) if FONTS[name] then HUD.font_name = name end; return HUD.font_name end
 function HUD.font_label() local f = FONTS[HUD.font_name]; return f and f.label or HUD.font_name end
 local function k_hi(f) return f.hi and (HUD.HI or 2) or 1 end
+-- a text as the font sets it: the pixel fonts are all capitals; the serif as written, or in spaced capitals (HUD.case)
+local function setting(f, str)
+  if f.upper ~= false then return str:upper(), 0 end
+  if HUD.case == 'caps' then return str:upper(), HUD.TRACK end
+  return str, 0
+end
 -- (in the font's own pixels) each advance holds the letter and the gap after it; the last gap is not width
 -- (round 64: byte by byte through a per-font byte -> glyph table, upper-cased as it is filled: no copies, no iterator)
 local function glyph_width(f, str, scale)
   local G, gb = f.glyphs, f._by_byte
   if not gb then gb = {}; f._by_byte = gb end
-  local s = tostring(str)
-  local w = 0
+  local s, track = setting(f, tostring(str))
+  local KN = f.kern
+  local w, prev = 0, nil
   for i = 1, #s do
     local b = string.byte(s, i)
     local g = gb[b]
-    if not g then g = G[string.char(b):upper()] or G['?']; gb[b] = g end
-    w = w + g.w*scale
+    if not g then g = G[string.char(b)] or G[string.char(b):upper()] or G['?']; gb[b] = g end
+    if KN and prev then w = w + (KN[string.char(prev, b)] or 0)*scale end
+    w = w + (g.w + (i < #s and track or 0))*scale
+    prev = b
   end
   return max(0, w - scale)
 end
@@ -72,14 +87,16 @@ local function raster(str, color, scale, shadow, outline, drop)
   local fill = not HUD.plain
   local fx = fill and scale >= 2 and 'rim' or nil
   local fnt = font()
-  local key = (fill and 'e' or 'p') .. '\0' .. (HUD.plain and 'facet' or HUD.font_name) .. '\0' .. str .. '\0' .. color .. '\0' .. scale .. '\0' .. (shadow or '') .. '\0' .. (outline or '') .. '\0' .. (drop or '')
+  local key = (fill and 'e' or 'p') .. '\0' .. (HUD.plain and 'facet' or HUD.font_name) .. '\0' .. HUD.case .. '\0' .. str .. '\0' .. color .. '\0' .. scale .. '\0' .. (shadow or '') .. '\0' .. (outline or '') .. '\0' .. (drop or '')
   local e = cache[key]
   if e then e.used = HUD.frame; return e end
   local G = fnt.glyphs
-  str = str:upper()
   local tw = glyph_width(fnt, str, scale)
+  local track
+  str, track = setting(fnt, str)
+  local KN = fnt.kern
   local pad = 2 + scale
-  local W, Hh = tw + 2*pad, fnt.h*scale + 2*pad
+  local W, Hh = tw + 2*pad, (fnt.draw_h or fnt.h)*scale + 2*pad   -- (the serif's descenders fall below its layout height)
   local pix = {}          -- [y*W + x] = { r, g, b, a }
   local function put(x, y, c)
     x = x + pad; y = y + pad
@@ -94,15 +111,17 @@ local function raster(str, color, scale, shadow, outline, drop)
     d[1] = (c[1]*sa + d[1]*da*(1 - sa))/oa; d[2] = (c[2]*sa + d[2]*da*(1 - sa))/oa; d[3] = (c[3]*sa + d[3]*da*(1 - sa))/oa; d[4] = oa
   end
   local function each(fn, solid)
-    local px = 0
+    local px, prev = 0, nil
     for ch in str:gmatch('.') do
-      local f = G[ch] or G['?']
+      local f = G[ch] or G[ch:upper()] or G['?']
+      if KN and prev then px = px + (KN[prev .. ch] or 0)*scale end
       local p, pa = f.px, f.pa
       for i = 1, #p, 2 do
         local a = pa and pa[(i + 1)//2] or 1
         if not solid or a >= 0.5 then fn(px + p[i]*scale, p[i + 1]*scale, a) end
       end
-      px = px + f.w*scale
+      px = px + (f.w + track)*scale
+      prev = ch
     end
   end
   local function faded(c, a) if a >= 1 then return c end; return { c[1], c[2], c[3], c[4]*a } end
