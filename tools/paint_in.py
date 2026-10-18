@@ -4,7 +4,7 @@ things that must be exact come from the game: the shape and the shading are the 
 
     python tools/paint_in.py <painting.png> <cutout.png> <out.png> --at cx cy --length px [--rot deg]
         [--ramp-from painting_with_its_own_version.png --ramp-box x0 y0 x1 y1 --ramp-min L]
-        [--shadow r g b] [--glow strength] [--soft px]
+        [--shadow r g b] [--glow strength] [--soft px] [--cast dx dy strength]
 
 --ramp-from: the painting as the model first painted it, with ITS version of the thing: that version's pixels (inside
 --ramp-box, brighter than --ramp-min) give the colour for every brightness, darkest to brightest; the render's own
@@ -46,6 +46,7 @@ def main():
     ap.add_argument('--depth', type=float, default=1.3)
     ap.add_argument('--range', type=float, default=0.6)
     ap.add_argument('--texture-from'); ap.add_argument('--texture-box', type=int, nargs=4); ap.add_argument('--texture', type=float, default=0.8)
+    ap.add_argument('--cast', type=float, nargs=3, help='dx dy strength: a soft shadow of it on the painting behind')
     a = ap.parse_args()
 
     m = Image.open(a.cutout).convert('RGBA')
@@ -76,6 +77,13 @@ def main():
         thing = thing.filter(ImageFilter.GaussianBlur(a.soft))
     base = Image.open(a.painting).convert('RGB')
     ox, oy = round(a.at[0] - thing.size[0] / 2), round(a.at[1] - thing.size[1] / 2)
+    if a.cast:
+        # its shadow on what is behind it: the silhouette moved by (dx, dy), blurred, darkening the painting
+        dx, dy, st = a.cast
+        al = Image.new('L', base.size, 0); al.paste(thing.split()[3], (ox + round(dx), oy + round(dy)))
+        g = np.asarray(al.filter(ImageFilter.GaussianBlur(max(4, a.length * 0.05)))).astype(np.float32)[..., None] / 255
+        B = np.asarray(base).astype(np.float32) / 255
+        base = Image.fromarray((np.clip(B * (1 - g * st), 0, 1) * 255 + 0.5).astype(np.uint8))
     if a.glow:
         al = Image.new('L', base.size, 0); al.paste(thing.split()[3], (ox, oy))
         g = np.asarray(al.filter(ImageFilter.GaussianBlur(max(8, a.length * 0.19)))).astype(np.float32)[..., None] / 255

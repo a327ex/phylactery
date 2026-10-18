@@ -130,6 +130,23 @@ local function pose_over()
     end
     lich.root:update_world_matrix(true, true)
   end
+  -- both arms raised over his head (A34: holding up the egg): the shoulders turned up and out, the elbows in
+  if S.arms_up then
+    for _, Ar in ipairs(lich.nodes.arms) do
+      Ar.sh.quaternion:multiply(Quaternion.new():set_from_axis_angle(V(0, 0, 1), Ar.s*S.arms_up[1]))
+      Ar.el.quaternion:multiply(Quaternion.new():set_from_axis_angle(V(0, 0, 1), Ar.s*(S.arms_up[2] or 0.5)))
+      if S.arms_up[3] then Ar.sh.quaternion:multiply(Quaternion.new():set_from_axis_angle(V(1, 0, 0), S.arms_up[3])) end
+    end
+    lich.root:update_world_matrix(true, true)
+  end
+  -- the egg in his raised hands (scaled to be held)
+  if S.egg_at == 'hands' then
+    local a, b = lich.fingertip(0), lich.fingertip(1)
+    local egg = cave.egg
+    egg.scale:set_scalar(S.egg_scale or 0.55)
+    egg.position:set((a.x + b.x)/2, (a.y + b.y)/2 + (S.egg_up or 0.05), (a.z + b.z)/2)
+    egg:update_world_matrix(true, true)
+  end
   if S.mask == 'lift' then
     local head = lich.nodes.head
     head:update_world_matrix(true, false)
@@ -168,6 +185,15 @@ local function pose_over()
     if it.at == 'halo' then
       local h = wpos(lich.nodes.head)
       w.g.position:set(h.x + (it.dx or 0), h.y + (it.up or 0.3), h.z + (it.dz or 0))
+    elseif it.at == 'ring' then
+      -- round him in the picture's plane (A22): angle 0 = his right, 90 = over his head; fwd toward the camera
+      local c = wpos(lich.nodes.chest)
+      local face = GAME.state().yaw
+      local fx, fz = math.sin(face), math.cos(face)
+      local rx, rz = math.cos(face), -math.sin(face)
+      local th = math.rad(it.angle or 0)
+      local r = it.r or 0.9
+      w.g.position:set(c.x + rx*math.cos(th)*r + fx*(it.fwd or 0.2), c.y + math.sin(th)*r, c.z + rz*math.cos(th)*r + fz*(it.fwd or 0.2))
     elseif type(it.at) == 'table' then
       w.g.position:set(it.at[1], it.at[2], it.at[3])
     end
@@ -192,6 +218,16 @@ GAME.look(eye, { tgt.x, tgt.y + (c.look_up or 0), tgt.z }, c.fov or 40)
 GAME.step(1)
 pose_over()
 hide_rest()
+if c.late then
+  -- (aimed after the pose is laid over: targets that the overrides move, e.g. his raised hands, the egg in them)
+  local t2 = target_of(c.at or 'chest')
+  local e2 = { t2.x + math.sin(a)*c.dist, t2.y + (c.up or 0), t2.z + math.cos(a)*c.dist }
+  local cam = R.world_camera
+  cam.position:set(e2[1], e2[2], e2[3])
+  cam:look_at(t2.x, t2.y + (c.look_up or 0), t2.z)
+  cam:update_matrix_world()
+  eye = e2
+end
 if S.cave == false and S.key and SUN then
   local ch = target_of('chest')
   local ka = math.atan(eye[1] - ch.x, eye[3] - ch.z) + math.rad(S.key[1])
