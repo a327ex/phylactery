@@ -42,7 +42,7 @@ def main():
                 parts.append(types.Part.from_bytes(data=p.read_bytes(), mime_type=mime))
             cfg = types.GenerateContentConfig(response_modalities=['IMAGE', 'TEXT'],
                                               image_config=types.ImageConfig(aspect_ratio=j.get('aspect', m.get('aspect', '16:9')),
-                                                                             image_size=m.get('size', '2K')))
+                                                                             image_size=j.get('size', m.get('size', '2K'))))
             t0 = time.time()
             rec = {'time': time.strftime('%Y-%m-%dT%H:%M:%S'), 'model': mname, 'model_id': m['id'], 'key': j['key'],
                    'images': j.get('images', [])}

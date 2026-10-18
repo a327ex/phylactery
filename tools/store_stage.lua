@@ -12,6 +12,8 @@
     pose = 'idle' | 'hurt',        hand = 0 (open, clawed) | 1 (pointing),  hold = ticks after the pose (180),
     bow = { neck = rad, head = rad, chest = rad },   -- an extra forward bend, laid over the pose (his head bowed)
     mask = 'held' (in front of his face, as in the game) | 'lift' (lift = m off the face) | 'none',
+    mask_geo = 'identity/mask/avatar', -- his mask replaced by the burned mask's model built clean (tools/mask/build_clean.mjs)
+    only = 'mask' | 'items',       -- nothing but his mask (cam at = 'mask') / the placed objects (cam at = 'item'): to fit them onto a painting
     lich = true | false,           -- false: he is not in the picture
     cave = true | false,           -- false: a flat field (field = {r, g, b} linear), the sun as a key light (key = {yaw, elevation})
     drop = { 0, 1, ... },          -- objects discarded from his hand (they land where they fall), in this order
@@ -40,21 +42,51 @@ GAME.hud(false)                                   -- (after the walk-in: it turn
 if S.pose == 'hurt' then GAME.hand(S.hand or 0); GAME.hurt(1.0) end
 for _, i in ipairs(S.drop or {}) do GAME.drop(i); GAME.step(50) end
 GAME.step(S.hold or 180)
+if S.move then                                     -- (him moving: sent dx, dz metres from where he is, caught after `ticks`)
+  local st = GAME.state()
+  GAME.step(S.move[3], { ['goto'] = { st.lich[1] + S.move[1], st.lich[3] + S.move[2] } })
+end
 
+-- (the store art's mask: the burned mask's own model built clean by tools/mask/build_clean.mjs, worn as his)
+if S.mask_geo and not MASK_SWAPPED then
+  local T3 = require('port.three.core')
+  local g = T3.BufferGeometry.new()
+  g.name = 'store.mask'
+  for _, at in ipairs({ { 'position', 3 }, { 'normal', 3 }, { 'color', 3 }, { 'aMR', 2 } }) do
+    g:set_attribute(at[1], T3.BufferAttribute.from_blob(assert(file_read_string(S.mask_geo .. '/mask.' .. at[1] .. '.f32')), at[2]))
+  end
+  local ia = T3.BufferAttribute.from_blob(assert(file_read_string(S.mask_geo .. '/mask.index.u32')), 1)
+  ia.is_index = true
+  g:set_index(ia)
+  local bs = file_read_string(S.mask_geo .. '/mask.json'):match('"bs":%[([^%]]+)%]')
+  local b = {}
+  for v in bs:gmatch('[^,]+') do b[#b + 1] = tonumber(v) end
+  g.bounding_sphere = { center = Vector3.new(b[1], b[2], b[3]), radius = b[4] }
+  M.mesh.geometry = g
+  M.mesh.frustum_culled = false
+  M.mesh.scale:set_scalar(0.95)                    -- (lichmask builds its shell at 0.95 of the measures)
+  MASK_SWAPPED = S.mask_geo
+end
 local cave_root = cave.egg.parent
 local keep = {}
 local function under(o, roots)
   while o do if roots[o] then return true end; o = o.parent end
   return false
 end
-if S.lich ~= false then keep[lich.root] = true; if S.mask ~= 'none' then keep[M.mesh] = true end end
+if S.only == 'mask' then keep[M.mesh] = true                -- (his mask alone: to fit it onto a painting)
+elseif S.only == 'dropped' then                             -- (the dropped objects alone, where they lie / were gathered)
+  for _, i in ipairs(S.drop_kept or {}) do keep[items.W[i + 1].g] = true end
+elseif S.only == 'items' then                               -- (the placed objects alone: S.items)
+  for _, it in ipairs(S.items or {}) do keep[items.W[it.i + 1].g] = true end
+elseif S.lich ~= false then keep[lich.root] = true; if S.mask ~= 'none' then keep[M.mesh] = true end end
 if S.cave ~= false then keep[cave_root] = true end
-for _, i in ipairs(S.drop or {}) do keep[items.W[i + 1].g] = true end
+if not S.objects_hidden then for _, i in ipairs(S.drop or {}) do keep[items.W[i + 1].g] = true end end
 for _, it in ipairs(S.items or {}) do keep[items.W[it.i + 1].g] = true end
 
 P.hud = 0                                          -- (the inventory's icons: the final pass's HUD strength)
 local SUN
 cave_root:traverse(function(o) if o.is_light and o.target and not SUN then SUN = o end end)
+if S.exposure then P.exposure = S.exposure end            -- (the cave's darkness preset brightens: his mask alone wants less)
 if S.cave == false then
   P.shafts.on = false
   P.fog.max = 0
@@ -67,6 +99,12 @@ local function wpos(node) node:update_world_matrix(true, false); return node:get
 local function target_of(at)
   if type(at) == 'table' then return V(at[1], at[2], at[3]) end
   if at == 'head' then return wpos(lich.nodes.head) end
+  if at == 'item' then                                      -- (where the first of S.items is placed)
+    local it = S.items[1]
+    if it.at == 'halo' then local h = wpos(lich.nodes.head); return V(h.x + (it.dx or 0), h.y + (it.up or 0.3), h.z + (it.dz or 0)) end
+    return V(it.at[1], it.at[2], it.at[3])
+  end
+  if at == 'mask' then M.snap(); M.mesh:update_world_matrix(true, false); return M.mesh:get_world_position(V()) end
   if at == 'hand0' or at == 'hand1' then return lich.fingertip(at == 'hand0' and 0 or 1) end
   if at == 'egg' then local e = wpos(cave.egg); e.y = e.y + 0.4; return e end
   if at == 'gather' then
@@ -108,11 +146,20 @@ local function pose_over()
     if g.at == 'egg' then local e = wpos(cave.egg); cx, cz = e.x + (g.dx or 0), e.z + (g.dz or 0) else cx, cz = g.at[1], g.at[2] end
     for i, o in pairs(g.off) do
       local w = items.W[i + 1]
-      local p = w.g.position
-      local lift = p.y - cave.ground_y(p.x, p.z)
       local nx, nz = cx + o[1], cz + o[2]
-      p:set(nx, cave.ground_y(nx, nz) + lift, nz)
-      if o[3] then w.g.quaternion:premultiply(Quaternion.new():set_from_axis_angle(V(0, 1, 0), o[3])) end
+      if w.orbs then
+        -- the orbs lie where each ball fell (the meshes in the world, their group at the origin): a small cluster here
+        for k, m in ipairs(w.orbs) do
+          local a, rr = k*2.4, 0.06 + 0.05*k
+          local ox, oz = nx + math.cos(a)*rr, nz + math.sin(a)*rr
+          m.position:set(ox, cave.ground_y(ox, oz) + (m.user_data.r or m.scale.x), oz)
+        end
+      else
+        local p = w.g.position
+        local lift = p.y - cave.ground_y(p.x, p.z)
+        p:set(nx, cave.ground_y(nx, nz) + lift, nz)
+        if o[3] then w.g.quaternion:premultiply(Quaternion.new():set_from_axis_angle(V(0, 1, 0), o[3])) end
+      end
     end
   end
   for _, it in ipairs(S.items or {}) do
