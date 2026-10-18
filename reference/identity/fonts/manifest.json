@@ -1,0 +1,425 @@
+[
+  {
+    "file": "01-cinzel.png",
+    "name": "Cinzel (wght 500)",
+    "designer_or_foundry": "Natanael Gama",
+    "group": "inscriptional",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/cinzel/",
+    "source_page": "https://fonts.google.com/specimen/Cinzel",
+    "why": "The Trajan-descended baseline: carved-stone caps say 'dark fantasy' instantly, but it is the overused Dark Souls-era look and carries no personality of its own."
+  },
+  {
+    "file": "02-cinzel-decorative.png",
+    "name": "Cinzel Decorative (Bold)",
+    "designer_or_foundry": "Natanael Gama",
+    "group": "inscriptional",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/cinzeldecorative/",
+    "source_page": "https://fonts.google.com/specimen/Cinzel+Decorative",
+    "why": "Swash P, L and A turn the Roman baseline into reliquary engraving, a title that looks cut into a casket lid, though the flourishes get busy at capsule size."
+  },
+  {
+    "file": "03-marcellus.png",
+    "name": "Marcellus",
+    "designer_or_foundry": "Astigmatic",
+    "group": "inscriptional",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/marcellus/",
+    "source_page": "https://fonts.google.com/specimen/Marcellus",
+    "why": "Flared, chisel-cut Roman capitals with a gentle lowercase: stone-inscription authority with less genre cliche than Trajan."
+  },
+  {
+    "file": "04-forum.png",
+    "name": "Forum",
+    "designer_or_foundry": "Denis Masharov",
+    "group": "inscriptional",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/forum/",
+    "source_page": "https://fonts.google.com/specimen/Forum",
+    "why": "Wide, light Renaissance Roman capitals; a quiet museum-plaque voice that suits a game about letting go, but thin for a small capsule."
+  },
+  {
+    "file": "05-cormorant-sc.png",
+    "name": "Cormorant SC (SemiBold)",
+    "designer_or_foundry": "Christian Thalmann",
+    "group": "inscriptional",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/cormorantsc/",
+    "source_page": "https://fonts.google.com/specimen/Cormorant+SC",
+    "why": "Razor-serifed Garamond small capitals read as an engraved bookplate, the most elegant Trajan alternative while staying sharp enough for a logo."
+  },
+  {
+    "file": "06-imfell-english.png",
+    "name": "IM Fell English",
+    "designer_or_foundry": "Igino Marini",
+    "group": "old-style-book",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/imfellenglish/",
+    "source_page": "https://fonts.google.com/specimen/IM+Fell+English",
+    "why": "Roughened, ink-bled edges echo the slightly worn gold lettering of the It Follows cover and read as a surviving printed page, not a game."
+  },
+  {
+    "file": "07-imfell-double-pica.png",
+    "name": "IM Fell Double Pica",
+    "designer_or_foundry": "Igino Marini",
+    "group": "old-style-book",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/imfelldoublepica/",
+    "source_page": "https://fonts.google.com/specimen/IM+Fell+Double+Pica",
+    "why": "The Fell Types' baroque Roman with worn ink edges: the same 'old printed book' feel as the It Follows cover, a little narrower and more textured."
+  },
+  {
+    "file": "08-eb-garamond.png",
+    "name": "EB Garamond (wght 500)",
+    "designer_or_foundry": "Georg Duffner, Octavio Pardo",
+    "group": "old-style-book",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/ebgaramond/",
+    "source_page": "https://fonts.google.com/specimen/EB+Garamond",
+    "why": "Closest free match to the It Follows cover lettering (use medium weight): a sturdy, soft Garamond that reads as a bound book, not a game."
+  },
+  {
+    "file": "09-cormorant-garamond.png",
+    "name": "Cormorant Garamond (wght 500)",
+    "designer_or_foundry": "Christian Thalmann",
+    "group": "old-style-book",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/cormorantgaramond/",
+    "source_page": "https://fonts.google.com/specimen/Cormorant+Garamond",
+    "why": "A delicate, tall-ascendered Garamond that is elegant and bookish but too light to survive a Steam capsule without a heavier cut."
+  },
+  {
+    "file": "10-sorts-mill-goudy.png",
+    "name": "Sorts Mill Goudy",
+    "designer_or_foundry": "Barry Schwartz",
+    "group": "old-style-book",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/sortsmillgoudy/",
+    "source_page": "https://fonts.google.com/specimen/Sorts+Mill+Goudy",
+    "why": "Warm, wide Goudy forms with soft bracketed serifs, close to the cover's proportions but gentler and more hand-pressed than ominous."
+  },
+  {
+    "file": "11-libre-caslon-display.png",
+    "name": "Libre Caslon Display",
+    "designer_or_foundry": "Impallari Type",
+    "group": "old-style-book",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/librecaslondisplay/",
+    "source_page": "https://fonts.google.com/specimen/Libre+Caslon+Display",
+    "why": "Hairline-serifed Caslon display gives a rare-book title page that holds at large sizes but loses its hairlines on a small library logo."
+  },
+  {
+    "file": "12-unifraktur-maguntia.png",
+    "name": "UnifrakturMaguntia",
+    "designer_or_foundry": "J. 'mach' Wust",
+    "group": "gothic-scroll",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/unifrakturmaguntia/",
+    "source_page": "https://fonts.google.com/specimen/UnifrakturMaguntia",
+    "why": "True Fraktur with sweeping capitals recalls lettered speech scrolls in medieval art, but all-caps it turns illegible and heavy-metal while mixed-case 'Phylactery' works."
+  },
+  {
+    "file": "13-pirata-one.png",
+    "name": "Pirata One",
+    "designer_or_foundry": "Rodrigo Fuenzalida, Nicolas Massi",
+    "group": "gothic-scroll",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/pirataone/",
+    "source_page": "https://fonts.google.com/specimen/Pirata+One",
+    "why": "A condensed, angular blackletter-lite that is instantly legible but pushes a pirate/metal menace too loud for a quiet game about giving things up."
+  },
+  {
+    "file": "14-grenze-gotisch.png",
+    "name": "Grenze Gotisch (wght 600)",
+    "designer_or_foundry": "Omnibus-Type",
+    "group": "gothic-scroll",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/grenzegotisch/",
+    "source_page": "https://fonts.google.com/specimen/Grenze+Gotisch",
+    "why": "Squared, heavy Gothic cut like woodtype from a scroll caption, striking as a title though the long Y tail makes the all-caps line ragged."
+  },
+  {
+    "file": "15-jacquard-24.png",
+    "name": "Jacquard 24",
+    "designer_or_foundry": "Sarah Cadigan-Fried",
+    "group": "gothic-scroll",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/jacquard24/",
+    "source_page": "https://fonts.google.com/specimen/Jacquard+24",
+    "why": "A pixel-built blackletter that bridges the game's current pixel UI font and the medieval phylactery-scroll idea."
+  },
+  {
+    "file": "16-texturina.png",
+    "name": "Texturina (opsz 72, wght 600)",
+    "designer_or_foundry": "Guillermo Torres, Omnibus-Type",
+    "group": "gothic-scroll",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/texturina/",
+    "source_page": "https://fonts.google.com/specimen/Texturina",
+    "why": "A calm textura-inspired Roman that reads more rustic chapbook than gothic scroll, human rather than metal."
+  },
+  {
+    "file": "17-fruktur.png",
+    "name": "Fruktur",
+    "designer_or_foundry": "Viktoriya Grabowska, Eben Sorkin",
+    "group": "gothic-scroll",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/fruktur/",
+    "source_page": "https://fonts.google.com/specimen/Fruktur",
+    "why": "Brushy, bouncing Fraktur-derived forms with plenty of character but a cartoonish tone for a game about sacrifice."
+  },
+  {
+    "file": "18-uncial-antiqua.png",
+    "name": "Uncial Antiqua",
+    "designer_or_foundry": "Astigmatic",
+    "group": "uncial-insular-runic",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/uncialantiqua/",
+    "source_page": "https://fonts.google.com/specimen/Uncial+Antiqua",
+    "why": "Rounded uncial forms with tall P and L evoke Insular manuscripts and the egg's curves, an overtly monastic, rebirth-flavoured voice."
+  },
+  {
+    "file": "19-medievalsharp.png",
+    "name": "MedievalSharp",
+    "designer_or_foundry": "Wojciech Kalinowski",
+    "group": "uncial-insular-runic",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/medievalsharp/",
+    "source_page": "https://fonts.google.com/specimen/MedievalSharp",
+    "why": "Angular pen-cut medieval caps with sharp joins and runic-adjacent flair, legible but slightly costume-fantasy."
+  },
+  {
+    "file": "20-mystery-quest.png",
+    "name": "Mystery Quest",
+    "designer_or_foundry": "Sideshow",
+    "group": "uncial-insular-runic",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/mysteryquest/",
+    "source_page": "https://fonts.google.com/specimen/Mystery+Quest",
+    "why": "Curled, swashing storybook caps with spirals inside the letters read as whimsical spooky and miss the solemn lich tone."
+  },
+  {
+    "file": "21-almendra-display.png",
+    "name": "Almendra Display",
+    "designer_or_foundry": "Ana Sanfelippo",
+    "group": "uncial-insular-runic",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/almendradisplay/",
+    "source_page": "https://fonts.google.com/specimen/Almendra+Display",
+    "why": "Hairline calligraphic caps with long swash tails evoke a reliquary inscription or alchemical plate, but the hairline weight vanishes at capsule size."
+  },
+  {
+    "file": "22-spirax.png",
+    "name": "Spirax",
+    "designer_or_foundry": "Brenda Gallo",
+    "group": "engraved-alchemical",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/spirax/",
+    "source_page": "https://fonts.google.com/specimen/Spirax",
+    "why": "Art-nouveau curls on the Y, L and E read like an apothecary or alchemist's label, giving the lich a decorative, bottled-power register."
+  },
+  {
+    "file": "23-elsie-swash-caps.png",
+    "name": "Elsie Swash Caps (Black)",
+    "designer_or_foundry": "Alejandro Inler",
+    "group": "engraved-alchemical",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/elsieswashcaps/",
+    "source_page": "https://fonts.google.com/specimen/Elsie+Swash+Caps",
+    "why": "A fat Didone with ball terminals and long swashes is theatrical Victorian poster style, more circus than tomb."
+  },
+  {
+    "file": "24-vast-shadow.png",
+    "name": "Vast Shadow",
+    "designer_or_foundry": "Nicole Fally",
+    "group": "engraved-alchemical",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/vastshadow/",
+    "source_page": "https://fonts.google.com/specimen/Vast+Shadow",
+    "why": "A slab serif with a built-in inline drop-shadow gives a sign-painter's engraved look, more Western saloon than reliquary."
+  },
+  {
+    "file": "25-tilt-prism.png",
+    "name": "Tilt Prism",
+    "designer_or_foundry": "Andy Clymer",
+    "group": "engraved-alchemical",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/tiltprism/",
+    "source_page": "https://fonts.google.com/specimen/Tilt+Prism",
+    "why": "Bevelled, inline capitals look like faceted glass, a direct nod to the prism, gem and lens powers, though the thin outline struggles at small sizes."
+  },
+  {
+    "file": "26-bodoni-moda.png",
+    "name": "Bodoni Moda (opsz 96, wght 600)",
+    "designer_or_foundry": "Owen Earl",
+    "group": "contemporary-display",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/bodonimoda/",
+    "source_page": "https://fonts.google.com/specimen/Bodoni+Moda",
+    "why": "Ultra-high-contrast Didone with near-invisible hairlines is the fashion-cover register of the Kaen side, glamorous and brittle but fragile on a capsule."
+  },
+  {
+    "file": "27-playfair-display.png",
+    "name": "Playfair Display (wght 700)",
+    "designer_or_foundry": "Claus Eggers Sørensen",
+    "group": "contemporary-display",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/playfairdisplay/",
+    "source_page": "https://fonts.google.com/specimen/Playfair+Display",
+    "why": "A sturdy bold transitional Didone with magazine-cover confidence, high-contrast without losing its hairlines at small sizes."
+  },
+  {
+    "file": "28-fraunces.png",
+    "name": "Fraunces (opsz 144, wght 600, WONK 1)",
+    "designer_or_foundry": "Undercase Type, Phaedra Charles, Flavia Zimbardi",
+    "group": "contemporary-display",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/fraunces/",
+    "source_page": "https://fonts.google.com/specimen/Fraunces",
+    "why": "A soft, quirky 'old-style Didone' with ink-trap curves bridges book and fashion, warm in the cave light yet unmistakably contemporary."
+  },
+  {
+    "file": "29-instrument-serif.png",
+    "name": "Instrument Serif",
+    "designer_or_foundry": "Rodrigo Fuenzalida, Jordan Egstad",
+    "group": "contemporary-display",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/instrumentserif/",
+    "source_page": "https://fonts.google.com/specimen/Instrument+Serif",
+    "why": "A condensed editorial serif with tall stems feels like a quiet modern album sleeve and fits narrow hero-banner space."
+  },
+  {
+    "file": "30-syne.png",
+    "name": "Syne (wght 800)",
+    "designer_or_foundry": "Bonjour Monde, Lucas Descroix, George Triantafyllakos",
+    "group": "contemporary-display",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/syne/",
+    "source_page": "https://fonts.google.com/specimen/Syne",
+    "why": "An extra-wide ExtraBold grotesque gives a gallery-poster voice that bluntly contradicts the cave and book mood."
+  },
+  {
+    "file": "31-unbounded.png",
+    "name": "Unbounded (wght 700)",
+    "designer_or_foundry": "NaN (Google Fonts)",
+    "group": "contemporary-display",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/unbounded/",
+    "source_page": "https://fonts.google.com/specimen/Unbounded",
+    "why": "A rounded, ultra-wide heavy sans is gamey and contemporary and clashes with the gothic subject."
+  },
+  {
+    "file": "32-big-shoulders-display.png",
+    "name": "Big Shoulders Display (wght 800)",
+    "designer_or_foundry": "Patric King",
+    "group": "contemporary-display",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/bigshouldersdisplay/",
+    "source_page": "https://fonts.google.com/specimen/Big+Shoulders+Display",
+    "why": "A tall condensed industrial grotesque fits banner shapes and Kaen-style poster impact but reads sports/industrial, not medieval."
+  },
+  {
+    "file": "33-anton.png",
+    "name": "Anton",
+    "designer_or_foundry": "Vernon Adams",
+    "group": "contemporary-display",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/anton/",
+    "source_page": "https://fonts.google.com/specimen/Anton",
+    "why": "A heavy condensed gothic sans with loud poster legibility at any size (Kaen jacket register) but zero medieval or reliquary cue."
+  },
+  {
+    "file": "47-cardo.png",
+    "name": "Cardo",
+    "designer_or_foundry": "David Perry",
+    "group": "old-style-book",
+    "licence": "OFL 1.1 (free, commercial use allowed); TTF + OFL.txt in ttf/cardo/",
+    "source_page": "https://fonts.google.com/specimen/Cardo",
+    "why": "Wide, bookish Renaissance Roman with large x-height, the best free match to the cover's wide proportions after EB Garamond."
+  },
+  {
+    "file": "34-pp-editorial-new.jpg",
+    "name": "PP Editorial New",
+    "designer_or_foundry": "Pangram Pangram Foundry",
+    "group": "contemporary-display",
+    "licence": "commercial, licences from $40 per style (full-family and app/game-embedding terms per Pangram Pangram FAQ); specimen is the foundry's own 'MoMA Book Fair' in-use image",
+    "source_page": "https://pangrampangram.com/products/editorial-new",
+    "why": "A light, sharp-serifed Roman set in flat red on cream mirrors the flat-colour-field editorial look of the Kaen jacket and would give PHYLACTERY a fashion-masthead voice."
+  },
+  {
+    "file": "35-gt-sectra.jpg",
+    "name": "GT Sectra",
+    "designer_or_foundry": "Grilli Type",
+    "group": "contemporary-display",
+    "licence": "commercial, per-style Desktop / Web / App licences (prices only in the shop; embedding/unlimited by enquiry, unlimited from $10,000 per style); specimen is the foundry's own development diagram",
+    "source_page": "https://www.grillitype.com/typeface/gt-sectra",
+    "why": "Letterforms derived from a broad-nib pen and then cut with a scalpel give blade-sharp calligraphic terminals, a ritual-knife precision that suits sacrifice and bone."
+  },
+  {
+    "file": "36-canela.jpg",
+    "name": "Canela Collection",
+    "designer_or_foundry": "Commercial Type (Miguel Reyes)",
+    "group": "contemporary-display",
+    "licence": "commercial, Canela family $325, Canela Text $350, full collection $800 (desktop, one-time; app and web licences priced on request)",
+    "source_page": "https://commercialtype.com/catalog/canela",
+    "why": "A Caslon-derived serif with only vestigial flaring and a stone-carving lineage is the contemporary descendant of Trajan-style inscription without the dark-fantasy cliche."
+  },
+  {
+    "file": "37-druk.jpg",
+    "name": "Druk Collection",
+    "designer_or_foundry": "Commercial Type (Berton Hasebe)",
+    "group": "contemporary-display",
+    "licence": "commercial, Druk collection $600 (families $150-$200, desktop, one-time; app and web licences by enquiry)",
+    "source_page": "https://commercialtype.com/catalog/druk",
+    "why": "Heavy compressed Druk is the poster voice of fashion and streetwear covers, the loudest possible Kaen-side wordmark and a hard counterweight to the gothic lettering."
+  },
+  {
+    "file": "38-dark-souls.jpg",
+    "name": "Dark Souls (Remastered) logo",
+    "designer_or_foundry": "FromSoftware / Bandai Namco",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/570940/",
+    "why": "Wide, distressed Roman capitals with a hairline cut through the middle; no authoritative font credit exists (some font-ID sites claim Adobe Garamond Bold, unverified), so treat as custom lettering; it defines the stone-carved, scratched dark-fantasy look to avoid copying."
+  },
+  {
+    "file": "39-elden-ring.jpg",
+    "name": "Elden Ring logo",
+    "designer_or_foundry": "FromSoftware / Bandai Namco",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/1245620/",
+    "why": "Chisel-cut Roman capitals with long spurs, rendered as gold-cream cracked stone; custom lettering (no font credit found), and the closest game precedent for gold-on-black as a material."
+  },
+  {
+    "file": "40-hollow-knight.jpg",
+    "name": "Hollow Knight logo",
+    "designer_or_foundry": "Team Cherry",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/367520/",
+    "why": "Condensed Roman capitals framed by a symmetrical bug-and-filigree ornament; appears custom (community guesses of Trajan Pro and Perpetua are unsourced), a title card that reads like a bookplate."
+  },
+  {
+    "file": "41-blasphemous.jpg",
+    "name": "Blasphemous logo",
+    "designer_or_foundry": "The Game Kitchen",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/774361/",
+    "why": "Lowercase blackletter-derived lettering in gold-foil texture; appears custom (no font credit found) and shows blackletter working as liturgy in gold rather than as metal."
+  },
+  {
+    "file": "42-darkest-dungeon.jpg",
+    "name": "Darkest Dungeon logo",
+    "designer_or_foundry": "Red Hook Studios",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/262060/",
+    "why": "Hand-cut flared gothic lettering in glowing red beside a torch emblem; a forum thread and a blog name Blambot's Dwarven Axe BB (commercial) for it, unverified, and the emblem is custom regardless."
+  },
+  {
+    "file": "43-deaths-door.jpg",
+    "name": "Death's Door logo",
+    "designer_or_foundry": "Acid Nerve / Devolver Digital",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/894020/",
+    "why": "Chunky hand-cut serif where a door arch with the crow replaces a letter; appears custom (no font credit found), the lettering itself carries the story."
+  },
+  {
+    "file": "44-inscryption.jpg",
+    "name": "Inscryption logo",
+    "designer_or_foundry": "Daniel Mullins Games",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/1092790/",
+    "why": "Pixel-edged flared Roman capitals with an orange glow and a blood-ink drip; appears custom (no font credit found), pixel type made ominous."
+  },
+  {
+    "file": "45-signalis.jpg",
+    "name": "Signalis logo",
+    "designer_or_foundry": "rose-engine",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/1262350/",
+    "why": "Ultra-light, widely tracked geometric capitals; appears custom (no font credit found), proof that a dark game can wear a quiet hairline logo."
+  },
+  {
+    "file": "46-hades.jpg",
+    "name": "Hades logo",
+    "designer_or_foundry": "Supergiant Games",
+    "group": "game-logos",
+    "licence": "custom logo, reference only (image as served by its official Steam store page; not for reuse)",
+    "source_page": "https://store.steampowered.com/app/1145360/",
+    "why": "High-contrast Roman capitals with the A stretched into a bloody blade through the word; custom lettering (no font credit found), a logo that carries its premise in one gesture."
+  }
+]
