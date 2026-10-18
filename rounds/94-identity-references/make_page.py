@@ -10,6 +10,8 @@ GAME = os.path.dirname(os.path.dirname(HERE))
 REF = os.path.join(GAME, 'reference', 'identity')
 OUT = os.path.join(HERE, 'index.html')
 E = html.escape
+# shown once only: Kaen is N2; the Sabazios hand, Laocoon and La Tour's Magdalen stay with the themes
+EXCLUDE = {'albums': {'01'}, 'skeletons': {'77', '72', '40', '74'}}
 
 
 def uri(path, long_side=900, q=80):
@@ -30,7 +32,7 @@ def link(url, text):
 
 
 def card(code, path, title, meta, why, lic, src, wide=False):
-    u, (w, h) = uri(path, 1400 if wide else 900, 86 if wide else 80)
+    u, (w, h) = uri(path, 1200 if wide else 800, 84 if wide else 76)
     return (f'<figure class="{"wide" if wide else ""}" id="{code}"><img src="{u}" width="{w}" height="{h}" alt="{E(title)}" loading="lazy">'
             f'<figcaption><b>{code}</b> <span class="t">{E(title)}</span>'
             + (f'<span class="m">{E(meta)}</span>' if meta else '')
@@ -44,7 +46,7 @@ def section_from(folder, prefix, wide=False):
     groups, order = {}, []
     for it in man:
         f = os.path.join(d, it['file'])
-        if not os.path.exists(f):
+        if not os.path.exists(f) or it['file'].split('-')[0] in EXCLUDE.get(folder, ()):
             continue
         g = it.get('group', '')
         if g not in groups:
@@ -64,7 +66,7 @@ def section_from(folder, prefix, wide=False):
                 meta += (' · ' if meta else '') + it['credits']
             cards.append(card(code, os.path.join(d, it['file']), title, meta, it.get('why', ''),
                               it.get('license') or it.get('licence') or '', it.get('source_page', ''), wide))
-        out.append(f'<h3>{E(g)}</h3><div class="{"rows" if wide else "grid"}">{"".join(cards)}</div>')
+        out.append(f'<h3>{E(g.replace("-", " "))}</h3><div class="{"rows" if wide else "grid"}">{"".join(cards)}</div>')
     return ''.join(out), n
 
 
