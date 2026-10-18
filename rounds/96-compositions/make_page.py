@@ -22,10 +22,10 @@ REFS = {'A02': os.path.join(ALB, '03-q-queen-bee.jpg'), 'A01': os.path.join(ALB,
 # (code, title, staging, [(job key, slot name, w, h)], note)
 COMPS = [
     ('A02', 'Q: his head bowed, the mask before his face, the lens as a halo', 'a02',
-     [('a02_2x3', 'Library capsule', 600, 900), ('a02_4x5', 'Vertical capsule', 748, 896)],
+     [('a02_2x3_fix', 'Library capsule', 600, 900), ('a02_4x5_fix', 'Vertical capsule', 748, 896)],
      'The board\'s real A02 (my first round used A01 by mistake). The halo is his attack lens laid flat above his head.'),
     ('A01', 'Kirei: arched back, the mask before his face (the extra)', 'a01',
-     [('a01_16x9', 'Main capsule', 1232, 706), ('a01_4x5', 'Vertical capsule', 748, 896)],
+     [('a01_16x9_fix', 'Main capsule', 1232, 706), ('a01_4x5_fix', 'Vertical capsule', 748, 896)],
      'Round 95\'s pose, the mask now held in front of his face as the game holds it.'),
     ('A10', 'KiCk i: floating, just standing there, small in the vast cave', 'a10',
      [('a10_21x9', 'Library hero', 3840, 1240), ('a10_16x9', 'Page background', 1438, 810)],
@@ -116,7 +116,7 @@ figcaption {{ color:var(--dim); font-size:12px; padding:3px 1px; }} .miss {{ col
 <p>Your round 95 verdict: P3 (painted after the It Follows cover, dark, warm light), and the mask held in front of his face
 as in the game. Each composition was staged in the game itself (tools/store_stage.lua: his pose, his mask, his objects, a
 free camera), rendered at 4x, then painted with P3 itself and the It Follows cover as the style references, and cut to the
-exact Steam slots it suits. No titles yet: that is the next round, with the harder stagings (A22, A24, A34, T01).</p>
+exact Steam slots it suits. As in round 95 the model drew eyes on his mask every time; a second pass with his real mask as the reference made them blank shells again (A01, A02). No titles yet: that is the next round, with the harder stagings (A22, A24, A34, T01).</p>
 <p>What to say: per composition, keep / change / drop, and whether its slots are right.</p></header>
 {''.join(secs)}
 </body></html>'''
