@@ -25,8 +25,10 @@ for _, f in pairs(FONTS) do f.glyphs[' '] = { w = f.space, px = {} } end
 HUD.case = 'caps'
 HUD.TRACK = 2
 HUD.FONTS = FONTS
--- (owner, 2026-10-07, on round 53: "second font is the correct one": FACETED FINE, the game's font until 2026-10-18)
-HUD.font_name = 'serif'
+-- (owner, 2026-10-07, on round 53: "second font is the correct one": FACETED FINE, the game's font; 2026-10-18, on the
+-- serif everywhere: "go back to the old font in the game, the new one doesn't work there ... Only the title should have
+-- the new font": the serif sets only the viewer's object title, port/inspect.lua)
+HUD.font_name = 'facet_fine'
 local FONT = FONTS.facet
 HUD.FONT = FONT
 HUD.plain = false
