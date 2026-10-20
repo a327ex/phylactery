@@ -85,6 +85,9 @@ def main():
         return "'" + s.replace('\\', '\\\\').replace("'", "\\'") + "'"
 
     out = ['-- port/hud_serif.lua -- Phylactery Serif baked for the HUD by tools/hud_serif.py (do not edit by hand).',
+           '-- Phylactery Serif: a blend of IM Fell English (Copyright (c) 2010, Igino Marini) and EB Garamond (Copyright 2017',
+           '-- The EB Garamond Project Authors), 2026, a327ex. Licensed under the SIL Open Font License 1.1 (identity/font/OFL.txt);',
+           '-- this glyph table is a Modified Version of the font under that licence.',
            '-- A hi font (HUD.HI screen pixels per game pixel), mixed case, anti-aliased (pa), kerned (kern, whole pixels);',
            '-- h = the layout height (the capitals and a pixel either side), draw_h = with the descenders.',
            'return {',
