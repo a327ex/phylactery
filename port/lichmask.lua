@@ -15,6 +15,9 @@ local AU = require('port.audio')     -- 2026-10-10: the sounds
 local sqrt, exp, abs, cos, sin, max, min, pi = math.sqrt, math.exp, math.abs, math.cos, math.sin, math.max, math.min, math.pi
 
 local LM = {}
+-- (2026-10-21, after the release, the owner: "remove the mask from the lich, the one in front of his face") off: never
+-- in the scene, never ticked or dropped, not in the ending's silhouette (game.lua); true brings it back as it was
+LM.ON = false
 
 -- item_mask.js's measures (metres; E = 13.8 cm between the eyes' outer ends)
 local EY = 0.022
@@ -154,12 +157,12 @@ function LM.create(lich, GU, R)
   local m = T.Mesh.new(g, mat)
   m.name = 'lich.mask'
   m.cast_shadow = true; m.receive_shadow = true
-  R.world_scene:add(m)
+  if LM.ON then R.world_scene:add(m) end
   local head = lich.nodes.head
   local tp, tq, ts = Vector3.new(), Quaternion.new(), Vector3.new()
   local hold = Vector3.new()
   local INV, LP = Matrix4.new(), Vector3.new()
-  local M = { mesh = m, look = 0, p = nil, v = Vector3.new(), t = 0 }
+  local M = { mesh = m, look = 0, p = nil, v = Vector3.new(), t = 0, on = LM.ON }
   local function target()
     head:update_world_matrix(true, false)
     hold:set(0, LM.HOLD.y, LM.HOLD.z):apply_matrix4(head.matrix_world)
@@ -176,7 +179,7 @@ function LM.create(lich, GU, R)
   -- falls, bounces a little and lies on the floor face up, still (ground_y: the cave's floor)
   local LIE, FACE, UPV = Quaternion.new(), Vector3.new(), Vector3.new(0, 1, 0)
   function M.drop(ground_y)
-    if M.dropped then return end
+    if M.dropped or not LM.ON then return end
     if not M.p then M.snap() end
     M.dropped = { g = ground_y }
     FACE:set(0, 0, 1):apply_quaternion(m.quaternion)
@@ -198,6 +201,7 @@ function LM.create(lich, GU, R)
     m.quaternion:slerp(LIE, 1 - math.exp(-(near and 9 or 3)*dt))
   end
   function M.tick(dt)
+    if not LM.ON then return end
     if M.dropped then fall(dt); return end
     local p, q = target()
     if not M.p then M.snap(); return end

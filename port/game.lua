@@ -148,7 +148,7 @@ function GM.create(R, hud_layer)
     -- (round 61: the egg's pieces once it breaks: the cap, the shards)
     if G.eggphys then for _, r in ipairs(G.eggphys.roots) do egg[#egg + 1] = r end end
     -- (round 58: the snakes' burst, pale, then fading, from his death on: before it any gore is the dark's)
-    return { egg = egg, lich = { lich.root, lmask.mesh }, shell = cave.egg.user_data.shell, cap = G.eggphys and G.eggphys.cap and G.eggphys.cap.mesh,
+    return { egg = egg, lich = { lich.root, lmask.on and lmask.mesh or nil }, shell = cave.egg.user_data.shell, cap = G.eggphys and G.eggphys.cap and G.eggphys.cap.mesh,
       gore = (G.SEQ and G.SEQ.burst) and gore.meshes() or nil }
   end
   G.sil = sil
