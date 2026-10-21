@@ -267,18 +267,14 @@ function IN.create(ctx)
       UI.button(floor(cx - bw/2), y, bw, bh, label, S.hot == key, true)
       y = y - 8
     end
-    -- (2026-10-18, owner: "Only the title should have the new font") the object's title alone in the game's serif,
-    -- Phylactery Serif, in mixed case (HUD.name_case = 'caps': in spaced capitals); the buttons and the X keep FACETED
-    -- FINE
-    local was_font, was_case = HUD.font_name, HUD.case
-    HUD.set_font('serif'); HUD.case = HUD.name_case or 'mixed'
+    -- (2026-10-18, owner: "Only the title should have the new font": the title was set in the serif; 2026-10-21, after
+    -- the release: "Font for items should be the same as the throw font") the object's title in the buttons' and the
+    -- X's own FACETED FINE, its capitals
     local lowest = y - HUD.text_height(1)
     local want = object_bottom()
     want = want and want + 6 or lowest
     want = math.min(lowest, math.max(8, want))
-    local name = HUD.case == 'mixed' and it.name:lower():gsub("(%a)([%w']*)", function(a, b) return a:upper() .. b end) or it.name
-    HUD.text(name, cx, floor(want + 0.5), UI.CREAM, 1, 'center', nil, ink)
-    HUD.set_font(was_font); HUD.case = was_case
+    HUD.text(it.name, cx, floor(want + 0.5), UI.CREAM, 1, 'center', nil, ink)
     -- (round 52, owner: "Make the X on the top right normal size instead of double")
     local xs = HUD.text_height(1) + 14
     S.buttons.close = { R.W - 6 - xs, 6, xs, xs }
